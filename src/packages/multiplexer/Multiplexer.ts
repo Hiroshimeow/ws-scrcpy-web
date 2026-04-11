@@ -101,7 +101,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
                     if (data) {
                         const { channel } = data;
                         const msg = new MessageEventClass('message', {
-                            data: Util.utf8ByteArrayToString(Buffer.from(message.data)),
+                            data: Util.utf8ByteArrayToString(new Uint8Array(message.data)),
                             lastEventId: event.lastEventId,
                             origin: event.origin,
                             source: event.source,
@@ -258,9 +258,9 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
     public send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
         if (this.ws instanceof Multiplexer) {
             if (typeof data === 'string') {
-                data = Message.createBuffer(MessageType.RawStringData, this._id, Buffer.from(data));
+                data = Message.createBuffer(MessageType.RawStringData, this._id, new TextEncoder().encode(data));
             } else {
-                data = Message.createBuffer(MessageType.RawBinaryData, this._id, Buffer.from(data));
+                data = Message.createBuffer(MessageType.RawBinaryData, this._id, data as ArrayBuffer);
             }
         }
         this._send(data);
@@ -268,7 +268,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
 
     public sendData(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
         if (this.ws instanceof Multiplexer) {
-            data = Message.createBuffer(MessageType.Data, this._id, Buffer.from(data));
+            data = Message.createBuffer(MessageType.Data, this._id, typeof data === 'string' ? new TextEncoder().encode(data) : data as ArrayBuffer);
         }
         this._send(data);
     }
