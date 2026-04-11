@@ -7,14 +7,14 @@ import Size from '../../Size';
 import Util from '../../Util';
 import VideoSettings from '../../VideoSettings';
 import { BaseClient } from '../../client/BaseClient';
-import type { DisplayCombinedInfo } from '../../client/StreamReceiver';
+import { DeviceProbeClient } from '../../client/DeviceProbeClient';
+import type { ProbeResult } from '../../../common/ProbeResult';
 import type { PlayerClass } from '../../player/BasePlayer';
 import { ToolBoxButton } from '../../toolbox/ToolBoxButton';
 import { ToolBoxCheckbox } from '../../toolbox/ToolBoxCheckbox';
 import SvgImage from '../../ui/SvgImage';
 import type { DeviceTracker } from './DeviceTracker';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
-import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
 
 interface ConfigureScrcpyEvents {
     closed: { dialog: ConfigureScrcpy; result: boolean };
@@ -33,8 +33,9 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
     private readonly escapedUdid: string;
     private readonly playerStorageKey: string;
     private deviceName: string;
-    private streamReceiver?: StreamReceiverScrcpy;
     private playerName?: string;
+    private videoCodecSelect?: HTMLSelectElement;
+    private audioCodecSelect?: HTMLSelectElement;
     private displayInfo?: DisplayInfo;
     private background: HTMLElement;
     private dialogBody?: HTMLElement;
@@ -49,7 +50,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
     private connectionStatusElement?: HTMLElement;
     private dialogContainer?: HTMLElement;
     private statusText = '';
-    private connectionCount = 0;
 
     constructor(
         private readonly tracker: DeviceTracker,
@@ -62,148 +62,145 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         this.playerStorageKey = `configure_stream::${this.escapedUdid}::player`;
         this.deviceName = descriptor['ro.product.model'];
         this.TAG = `ConfigureScrcpy[${this.udid}]`;
-        this.createStreamReceiver(params);
         this.setTitle(`${this.deviceName}. Configure stream`);
         this.background = this.createUI();
+        this.runProbe();
     }
 
     public getTracker(): DeviceTracker {
         return this.tracker;
     }
 
-    private createStreamReceiver(params: ParamsStreamScrcpy): void {
-        if (this.streamReceiver) {
-            this.detachEventsListeners(this.streamReceiver);
-            this.streamReceiver.stop();
+    private async runProbe(): Promise<void> {
+        this.setStatus('Probing...');
+        try {
+            const result = await DeviceProbeClient.probe(this.udid, {
+                hostname: this.params.hostname || window.location.hostname,
+                port: this.params.port || Number.parseInt(window.location.port, 10) || 80,
+                secure: this.params.secure || false,
+            });
+            this.onProbeResult(result);
+        } catch (err) {
+            this.setStatus(`Probe failed: ${(err as Error).message}`);
         }
-        this.streamReceiver = new StreamReceiverScrcpy(params);
-        this.attachEventsListeners(this.streamReceiver);
     }
 
-    private attachEventsListeners(streamReceiver: StreamReceiverScrcpy): void {
-        streamReceiver.on('encoders', this.onEncoders);
-        streamReceiver.on('displayInfo', this.onDisplayInfo);
-        streamReceiver.on('connected', this.onConnected);
-        streamReceiver.on('disconnected', this.onDisconnected);
+    private onProbeResult(result: ProbeResult): void {
+        // Populate encoder dropdown (video encoders)
+        const encoderSelect = this.encoderSelectElement || document.createElement('select');
+        let child;
+        while ((child = encoderSelect.firstChild)) {
+            encoderSelect.removeChild(child);
+        }
+        const allEncoders = ['', ...result.videoEncoders];
+        allEncoders.forEach((value) => {
+            const optionElement = document.createElement('option');
+            optionElement.setAttribute('value', value);
+            optionElement.innerText = value;
+            encoderSelect.appendChild(optionElement);
+        });
+        this.encoderSelectElement = encoderSelect;
+
+        // Populate video codec dropdown
+        if (this.videoCodecSelect) {
+            while ((child = this.videoCodecSelect.firstChild)) {
+                this.videoCodecSelect.removeChild(child);
+            }
+            const videoCodecs = this.detectVideoCodecs(result.videoEncoders);
+            videoCodecs.forEach((codec) => {
+                const opt = document.createElement('option');
+                opt.value = codec;
+                opt.innerText = codec;
+                this.videoCodecSelect!.appendChild(opt);
+            });
+        }
+
+        // Populate audio codec dropdown
+        if (this.audioCodecSelect) {
+            while ((child = this.audioCodecSelect.firstChild)) {
+                this.audioCodecSelect.removeChild(child);
+            }
+            const audioCodecs = this.detectAudioCodecs(result.audioEncoders);
+            audioCodecs.forEach((codec) => {
+                const opt = document.createElement('option');
+                opt.value = codec;
+                opt.innerText = codec;
+                this.audioCodecSelect!.appendChild(opt);
+            });
+        }
+
+        // Populate display selector with probe data (single default display)
+        if (this.displayIdSelectElement) {
+            while ((child = this.displayIdSelectElement.firstChild)) {
+                this.displayIdSelectElement.removeChild(child);
+            }
+            const displayId = DisplayInfo.DEFAULT_DISPLAY;
+            const optionElement = document.createElement('option');
+            optionElement.setAttribute('value', displayId.toString());
+            optionElement.innerText = `ID: ${displayId}; ${result.width}x${result.height}`;
+            this.displayIdSelectElement.appendChild(optionElement);
+            this.displayInfo = new DisplayInfo(
+                displayId,
+                new Size(result.width, result.height),
+                0,
+                0,
+                0,
+            );
+        }
+
+        // Apply player video settings
+        this.updateVideoSettingsForPlayer();
+
+        // Mark ready
+        this.setStatus('Ready');
+        this.dialogContainer?.classList.add('ready');
+        if (this.okButton) {
+            this.okButton.disabled = false;
+        }
+        if (this.dialogBody) {
+            this.dialogBody.classList.remove('hidden');
+            this.dialogBody.classList.add('visible');
+        }
     }
 
-    private detachEventsListeners(streamReceiver: StreamReceiverScrcpy): void {
-        streamReceiver.off('encoders', this.onEncoders);
-        streamReceiver.off('displayInfo', this.onDisplayInfo);
-        streamReceiver.off('connected', this.onConnected);
-        streamReceiver.off('disconnected', this.onDisconnected);
+    private detectVideoCodecs(encoders: string[]): string[] {
+        const codecs: string[] = [];
+        const joined = encoders.join(' ').toLowerCase();
+        if (joined.includes('.avc.') || joined.includes('.h264.')) codecs.push('h264');
+        if (joined.includes('.hevc.')) codecs.push('h265');
+        if (joined.includes('.av1.')) codecs.push('av1');
+        if (codecs.length === 0) codecs.push('h264');
+        return codecs;
+    }
+
+    private detectAudioCodecs(encoders: string[]): string[] {
+        const codecs: string[] = [];
+        const joined = encoders.join(' ').toLowerCase();
+        if (joined.includes('.opus.')) codecs.push('opus');
+        if (joined.includes('.aac.')) codecs.push('aac');
+        if (joined.includes('.flac.')) codecs.push('flac');
+        codecs.push('raw');
+        return codecs;
+    }
+
+    private setStatus(text: string): void {
+        this.statusText = text;
+        this.updateStatus();
     }
 
     private updateStatus(): void {
         if (!this.connectionStatusElement) {
             return;
         }
-        let text = this.statusText;
-        if (this.connectionCount) {
-            text = `${text}. Other clients: ${this.connectionCount}.`;
-        }
-        this.connectionStatusElement.innerText = text;
+        this.connectionStatusElement.innerText = this.statusText;
     }
-
-    private onEncoders = (encoders: string[]): void => {
-        // console.log(this.TAG, 'Encoders', encoders);
-        const select = this.encoderSelectElement || document.createElement('select');
-        let child;
-        while ((child = select.firstChild)) {
-            select.removeChild(child);
-        }
-        encoders.unshift('');
-        encoders.forEach((value) => {
-            const optionElement = document.createElement('option');
-            optionElement.setAttribute('value', value);
-            optionElement.innerText = value;
-            select.appendChild(optionElement);
-        });
-        this.encoderSelectElement = select;
-    };
-
-    private onDisplayInfo = (infoArray: DisplayCombinedInfo[]): void => {
-        // console.log(this.TAG, 'Received info');
-        this.statusText = 'Ready';
-        this.updateStatus();
-        this.dialogContainer?.classList.add('ready');
-        const select = this.displayIdSelectElement || document.createElement('select');
-        let child;
-        while ((child = select.firstChild)) {
-            select.removeChild(child);
-        }
-        let selectedOptionIdx = -1;
-        infoArray.forEach((value: DisplayCombinedInfo, idx: number) => {
-            const { displayInfo } = value;
-            const { displayId, size } = displayInfo;
-            const optionElement = document.createElement('option');
-            optionElement.setAttribute('value', displayId.toString());
-            optionElement.innerText = `ID: ${displayId}; ${size.width}x${size.height}`;
-            select.appendChild(optionElement);
-            if (
-                (this.displayInfo && this.displayInfo.displayId === displayId) ||
-                (!this.displayInfo && displayId === DisplayInfo.DEFAULT_DISPLAY)
-            ) {
-                selectedOptionIdx = idx;
-            }
-        });
-        if (selectedOptionIdx > -1) {
-            select.selectedIndex = selectedOptionIdx;
-            const { videoSettings, connectionCount, displayInfo } = infoArray[selectedOptionIdx];
-            this.displayInfo = displayInfo;
-            if (connectionCount > 0 && videoSettings) {
-                // console.log(this.TAG, 'Apply other clients settings');
-                this.fillInputsFromVideoSettings(videoSettings, false);
-            } else {
-                // console.log(this.TAG, 'Apply settings for current player');
-                this.updateVideoSettingsForPlayer();
-            }
-            this.connectionCount = connectionCount;
-            this.updateStatus();
-        }
-        this.displayIdSelectElement = select;
-        if (this.dialogBody) {
-            this.dialogBody.classList.remove('hidden');
-            this.dialogBody.classList.add('visible');
-        }
-    };
-
-    private onConnected = (): void => {
-        // console.log(this.TAG, 'Connected');
-        this.statusText = 'Waiting for info...';
-        this.updateStatus();
-        if (this.okButton) {
-            this.okButton.disabled = false;
-        }
-    };
-
-    private onDisconnected = (): void => {
-        // console.log(this.TAG, 'Disconnected');
-        this.statusText = 'Disconnected';
-        this.updateStatus();
-        if (this.okButton) {
-            this.okButton.disabled = true;
-        }
-        if (this.dialogBody) {
-            this.dialogBody.classList.remove('visible');
-            this.dialogBody.classList.add('hidden');
-        }
-    };
 
     private onPlayerChange = (): void => {
         this.updateVideoSettingsForPlayer();
     };
 
     private onDisplayIdChange = (): void => {
-        const select = this.displayIdSelectElement;
-        if (!select || !this.streamReceiver) {
-            return;
-        }
-        const value = select.options[select.selectedIndex].value;
-        const displayId = Number.parseInt(value, 10);
-        if (!isNaN(displayId)) {
-            this.displayInfo = this.streamReceiver.getDisplayInfo(displayId);
-        }
+        // Display info is set during probe; just refresh player settings
         this.updateVideoSettingsForPlayer();
     };
 
@@ -509,6 +506,24 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         this.appendBasicInput(controls, { label: 'Max height', id: 'maxHeight' });
         this.appendBasicInput(controls, { label: 'Codec options', id: 'codecOptions' });
 
+        const videoCodecLabel = document.createElement('label');
+        videoCodecLabel.classList.add('label');
+        videoCodecLabel.innerText = 'Video codec:';
+        controls.appendChild(videoCodecLabel);
+        const videoCodecSelect = (this.videoCodecSelect = document.createElement('select'));
+        videoCodecSelect.classList.add('input');
+        videoCodecSelect.id = videoCodecLabel.htmlFor = `videoCodec_${this.escapedUdid}`;
+        controls.appendChild(videoCodecSelect);
+
+        const audioCodecLabel = document.createElement('label');
+        audioCodecLabel.classList.add('label');
+        audioCodecLabel.innerText = 'Audio codec:';
+        controls.appendChild(audioCodecLabel);
+        const audioCodecSelect = (this.audioCodecSelect = document.createElement('select'));
+        audioCodecSelect.classList.add('input');
+        audioCodecSelect.id = audioCodecLabel.htmlFor = `audioCodec_${this.escapedUdid}`;
+        controls.appendChild(audioCodecSelect);
+
         const encoderLabel = document.createElement('label');
         encoderLabel.classList.add('label');
         encoderLabel.innerText = 'Encoder:';
@@ -551,7 +566,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         statusElement.classList.add('subtitle');
         this.connectionStatusElement = statusElement;
         dialogFooter.appendChild(statusElement);
-        this.statusText = `Connecting...`;
+        this.statusText = 'Probing...';
         this.updateStatus();
 
         // const cancelButton = (this.cancelButton = document.createElement('button'));
@@ -591,10 +606,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
     };
 
     private cancel = (): void => {
-        if (this.streamReceiver) {
-            this.detachEventsListeners(this.streamReceiver);
-            this.streamReceiver.stop();
-        }
         this.emit('closed', { dialog: this, result: false });
         this.removeUI();
     };
@@ -621,11 +632,10 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
 
     private openStream = (): void => {
         const videoSettings = this.buildVideoSettings();
-        if (!videoSettings || !this.streamReceiver || !this.playerName) {
+        if (!videoSettings || !this.playerName) {
             return;
         }
         const fitToScreen = this.getFitToScreenValue();
-        this.detachEventsListeners(this.streamReceiver);
         this.emit('closed', { dialog: this, result: true });
         this.removeUI();
         const player = StreamClientScrcpy.createPlayer(this.playerName, this.udid, this.displayInfo);
@@ -633,12 +643,15 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             return;
         }
         this.setPreviouslyUsedPlayer(this.playerName);
-        // return;
         player.setVideoSettings(videoSettings, fitToScreen, false);
+        const videoCodec = this.videoCodecSelect?.value;
+        const audioCodec = this.audioCodecSelect?.value;
         const params: ParamsStreamScrcpy = {
             ...this.params,
             udid: this.udid,
             fitToScreen,
+            videoCodec,
+            audioCodec,
         };
         StreamClientScrcpy.start(params, player, fitToScreen, videoSettings);
     };
