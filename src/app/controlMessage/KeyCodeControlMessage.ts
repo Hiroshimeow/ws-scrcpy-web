@@ -1,4 +1,4 @@
-import { Buffer } from 'buffer';
+import { BinaryWriter } from '../BinaryWriter';
 import { ControlMessage, type ControlMessageInterface } from './ControlMessage';
 
 export interface KeyCodeControlMessageInterface extends ControlMessageInterface {
@@ -23,15 +23,14 @@ export class KeyCodeControlMessage extends ControlMessage {
     /**
      * @override
      */
-    public toBuffer(): Buffer {
-        const buffer = Buffer.alloc(KeyCodeControlMessage.PAYLOAD_LENGTH + 1);
-        let offset = 0;
-        offset = buffer.writeInt8(this.type, offset);
-        offset = buffer.writeInt8(this.action, offset);
-        offset = buffer.writeInt32BE(this.keycode, offset);
-        offset = buffer.writeInt32BE(this.repeat, offset);
-        buffer.writeInt32BE(this.metaState, offset);
-        return buffer;
+    public toUint8Array(): Uint8Array {
+        return new BinaryWriter(KeyCodeControlMessage.PAYLOAD_LENGTH + 1)
+            .writeInt8(this.type)
+            .writeInt8(this.action)
+            .writeInt32BE(this.keycode)
+            .writeInt32BE(this.repeat)
+            .writeInt32BE(this.metaState)
+            .toUint8Array();
     }
 
     public toString(): string {
