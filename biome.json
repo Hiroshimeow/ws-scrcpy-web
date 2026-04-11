@@ -14,13 +14,43 @@
         "rules": {
             "recommended": true,
             "suspicious": {
-                "noExplicitAny": "off"
+                "noExplicitAny": "off",
+                "noImplicitAnyLet": "off",
+                "noGlobalIsNan": "warn",
+                "noAssignInExpressions": "off",
+                "noDoubleEquals": "warn",
+                "noRedeclare": "warn",
+                "noConfusingVoidType": "warn",
+                "noEmptyBlock": "warn"
             },
             "complexity": {
-                "noForEach": "off"
+                "noForEach": "off",
+                "noStaticOnlyClass": "off",
+                "noThisInStatic": "off",
+                "useOptionalChain": "warn",
+                "useLiteralKeys": "warn",
+                "noUselessConstructor": "warn"
             },
             "style": {
-                "noNonNullAssertion": "off"
+                "noNonNullAssertion": "off",
+                "useDefaultParameterLast": "off",
+                "noParameterAssign": "off",
+                "useNodejsImportProtocol": "warn",
+                "useTemplate": "warn",
+                "noUnusedTemplateLiteral": "warn",
+                "noVar": "warn",
+                "noUselessElse": "warn",
+                "useSingleVarDeclarator": "warn",
+                "noArguments": "warn"
+            },
+            "correctness": {
+                "noSwitchDeclarations": "warn",
+                "noInnerDeclarations": "warn",
+                "noVoidTypeReturn": "warn",
+                "noConstantCondition": "warn"
+            },
+            "performance": {
+                "noDelete": "warn"
             }
         }
     },
