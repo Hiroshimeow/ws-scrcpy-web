@@ -7,4 +7,5 @@ export enum ACTION {
     PROXY_ADB = 'proxy-adb',
     STREAM_SCRCPY = 'stream',
     FILE_LISTING = 'list-files',
+    PROBE_DEVICE = 'probe',
 }
