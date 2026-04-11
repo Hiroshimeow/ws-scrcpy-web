@@ -26,7 +26,6 @@ export abstract class Mw {
     }
 
     protected constructor(protected readonly ws: WS | Multiplexer) {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         this.ws.addEventListener('message', this.onSocketMessage.bind(this));
         this.ws.addEventListener('close', this.onSocketClose.bind(this));

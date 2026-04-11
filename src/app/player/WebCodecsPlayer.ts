@@ -2,8 +2,7 @@ import { BaseCanvasBasedPlayer } from './BaseCanvasBasedPlayer';
 import VideoSettings from '../VideoSettings';
 import Size from '../Size';
 import { DisplayInfo } from '../DisplayInfo';
-import H264Parser from 'h264-converter/dist/h264-parser';
-import NALU from 'h264-converter/dist/util/NALU';
+import { parseSPS, NALU_TYPE } from './h264-utils';
 import ScreenInfo from '../ScreenInfo';
 import Rect from '../Rect';
 
@@ -54,7 +53,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             frame_crop_top_offset,
             frame_crop_bottom_offset,
             sar,
-        } = H264Parser.parseSPS(data);
+        } = parseSPS(data);
 
         const sarScale = sar[0] / sar[1];
         const codec = `avc1.${[profile_idc, constraint_set_flags, level_idc].map(toHex).join('')}`;
@@ -137,9 +136,9 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             return;
         }
         const type = data[4] & 31;
-        const isIDR = type === NALU.IDR;
+        const isIDR = type === NALU_TYPE.IDR;
 
-        if (type === NALU.SPS) {
+        if (type === NALU_TYPE.SPS) {
             const { codec, width, height } = WebCodecsPlayer.parseSPS(data.subarray(4));
             this.scaleCanvas(width, height);
             const config: VideoDecoderConfig = {
@@ -151,11 +150,11 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             this.addToBuffer(data);
             this.hadIDR = false;
             return;
-        } else if (type === NALU.PPS) {
+        } else if (type === NALU_TYPE.PPS) {
             this.bufferedPPS = true;
             this.addToBuffer(data);
             return;
-        } else if (type === NALU.SEI) {
+        } else if (type === NALU_TYPE.SEI) {
             // Workaround for lonely SEI from ws-qvh
             if (!this.bufferedSPS || !this.bufferedPPS) {
                 return;

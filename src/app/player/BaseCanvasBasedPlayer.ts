@@ -25,7 +25,6 @@ export abstract class BaseCanvasBasedPlayer extends BasePlayer {
         const testCanvas: HTMLCanvasElement = document.createElement('canvas');
         const validContextNames = ['webgl', 'experimental-webgl', 'moz-webgl', 'webkit-3d'];
         let index = 0;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let gl: any = null;
         while (!gl && index++ < validContextNames.length) {
             try {

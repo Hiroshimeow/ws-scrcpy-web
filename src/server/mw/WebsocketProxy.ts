@@ -9,7 +9,6 @@ export class WebsocketProxy extends Mw {
     private released = false;
     private storage: WS.MessageEvent[] = [];
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public static processRequest(ws: WS, params: RequestParameters): WebsocketProxy | undefined {
         const { action, url } = params;
         if (action !== ACTION.PROXY_WS) {

@@ -42,7 +42,6 @@ export class RemoteShell extends Mw {
     }
 
     public createTerminal(params: XtermServiceParameters): IPty {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const env = Object.assign({}, process.env) as any;
         env['COLORTERM'] = 'truecolor';
         const { cols = 80, rows = 24 } = params;
@@ -57,7 +56,6 @@ export class RemoteShell extends Mw {
             encoding: null,
         });
         const send = USE_BINARY ? this.bufferUtf8(5) : this.buffer(5);
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore Documentation is incorrect for `encoding: null`
         term.on('data', send);
         term.on('exit', (code: number) => {

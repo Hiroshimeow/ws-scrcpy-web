@@ -1,8 +1,8 @@
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
 import { ManagerClient } from '../../client/ManagerClient';
-import { Terminal } from 'xterm';
-import { AttachAddon } from 'xterm-addon-attach';
-import { FitAddon } from 'xterm-addon-fit';
+import { Terminal } from '@xterm/xterm';
+import { AttachAddon } from '@xterm/addon-attach';
+import { FitAddon } from '@xterm/addon-fit';
 import { MessageXtermClient } from '../../../types/MessageXtermClient';
 import { ACTION } from '../../../common/Action';
 import { ParamsShell } from '../../../types/ParamsShell';
@@ -100,7 +100,6 @@ export class ShellClient extends ManagerClient<ParamsShell, never> {
     }
 
     private updateTerminalSize(): void {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const term: any = this.term;
         const terminalContainer: HTMLElement = ShellClient.getOrCreateContainer(this.escapedUdid);
         const { rows, cols } = this.fitAddon.proposeDimensions();

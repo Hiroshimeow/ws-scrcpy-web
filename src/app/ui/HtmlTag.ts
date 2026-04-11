@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
 
 function htmlValue(value: Value): string {
