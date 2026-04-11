@@ -1,5 +1,6 @@
-import Point, { PointInterface } from './Point';
-import Size, { SizeInterface } from './Size';
+import Point, { type PointInterface } from './Point';
+import type Size from './Size';
+import type { SizeInterface } from './Size';
 
 export interface PositionInterface {
     point: PointInterface;
@@ -7,7 +8,10 @@ export interface PositionInterface {
 }
 
 export default class Position {
-    public constructor(readonly point: Point, readonly screenSize: Size) {}
+    public constructor(
+        readonly point: Point,
+        readonly screenSize: Size,
+    ) {}
 
     public equals(o: Position): boolean {
         if (this === o) {

@@ -1,9 +1,9 @@
-import { Mw } from '../../mw/Mw';
-import { AdbUtils } from '../AdbUtils';
 import Util from '../../../app/Util';
 import Protocol from '../../../common/AdbProtocol';
-import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import { ChannelCode } from '../../../common/ChannelCode';
+import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import { Mw } from '../../mw/Mw';
+import { AdbUtils } from '../AdbUtils';
 import { FilePushReader } from '../filePush/FilePushReader';
 
 export class FileListing extends Mw {
@@ -23,7 +23,10 @@ export class FileListing extends Mw {
         return new FileListing(ws, serial);
     }
 
-    constructor(ws: Multiplexer, private readonly serial: string) {
+    constructor(
+        ws: Multiplexer,
+        private readonly serial: string,
+    ) {
         super(ws);
         ws.on('channel', (params) => {
             FileListing.handleNewChannel(this.serial, params.channel, params.data);

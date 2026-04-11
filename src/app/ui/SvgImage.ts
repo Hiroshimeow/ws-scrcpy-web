@@ -1,39 +1,39 @@
+import ArrowBackSVG from '../../public/images/buttons/arrow_back.svg';
+import CancelSVG from '../../public/images/buttons/cancel.svg';
+import MenuSVG from '../../public/images/buttons/menu.svg';
+import OfflineSVG from '../../public/images/buttons/offline.svg';
+import RefreshSVG from '../../public/images/buttons/refresh.svg';
+import SettingsSVG from '../../public/images/buttons/settings.svg';
+import ToggleOffSVG from '../../public/images/buttons/toggle_off.svg';
+import ToggleOnSVG from '../../public/images/buttons/toggle_on.svg';
+import BackSVG from '../../public/images/skin-light/System_Back_678.svg';
+import HomeSVG from '../../public/images/skin-light/System_Home_678.svg';
+import OverviewSVG from '../../public/images/skin-light/System_Overview_678.svg';
 import KeyboardSVG from '../../public/images/skin-light/ic_keyboard_678_48dp.svg';
 import MoreSVG from '../../public/images/skin-light/ic_more_horiz_678_48dp.svg';
 import CameraSVG from '../../public/images/skin-light/ic_photo_camera_678_48dp.svg';
 import PowerSVG from '../../public/images/skin-light/ic_power_settings_new_678_48px.svg';
 import VolumeDownSVG from '../../public/images/skin-light/ic_volume_down_678_48px.svg';
 import VolumeUpSVG from '../../public/images/skin-light/ic_volume_up_678_48px.svg';
-import BackSVG from '../../public/images/skin-light/System_Back_678.svg';
-import HomeSVG from '../../public/images/skin-light/System_Home_678.svg';
-import OverviewSVG from '../../public/images/skin-light/System_Overview_678.svg';
-import CancelSVG from '../../public/images/buttons/cancel.svg';
-import OfflineSVG from '../../public/images/buttons/offline.svg';
-import RefreshSVG from '../../public/images/buttons/refresh.svg';
-import SettingsSVG from '../../public/images/buttons/settings.svg';
-import MenuSVG from '../../public/images/buttons/menu.svg';
-import ArrowBackSVG from '../../public/images/buttons/arrow_back.svg';
-import ToggleOnSVG from '../../public/images/buttons/toggle_on.svg';
-import ToggleOffSVG from '../../public/images/buttons/toggle_off.svg';
 
 export enum Icon {
-    BACK,
-    HOME,
-    OVERVIEW,
-    POWER,
-    VOLUME_UP,
-    VOLUME_DOWN,
-    MORE,
-    CAMERA,
-    KEYBOARD,
-    CANCEL,
-    OFFLINE,
-    REFRESH,
-    SETTINGS,
-    MENU,
-    ARROW_BACK,
-    TOGGLE_ON,
-    TOGGLE_OFF,
+    BACK = 0,
+    HOME = 1,
+    OVERVIEW = 2,
+    POWER = 3,
+    VOLUME_UP = 4,
+    VOLUME_DOWN = 5,
+    MORE = 6,
+    CAMERA = 7,
+    KEYBOARD = 8,
+    CANCEL = 9,
+    OFFLINE = 10,
+    REFRESH = 11,
+    SETTINGS = 12,
+    MENU = 13,
+    ARROW_BACK = 14,
+    TOGGLE_ON = 15,
+    TOGGLE_OFF = 16,
 }
 
 export default class SvgImage {

@@ -1,19 +1,19 @@
 import '../../../style/filelisting.css';
-import { ParamsFileListing } from '../../../types/ParamsFileListing';
-import { ManagerClient } from '../../client/ManagerClient';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
-import { ACTION } from '../../../common/Action';
-import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
-import Util from '../../Util';
-import Protocol from '../../../common/AdbProtocol';
-import { Entry } from '../Entry';
-import { html } from '../../ui/HtmlTag';
 import * as path from 'path';
+import { ACTION } from '../../../common/Action';
+import Protocol from '../../../common/AdbProtocol';
 import { ChannelCode } from '../../../common/ChannelCode';
 import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
-import FilePushHandler, { DragAndPushListener, PushUpdateParams } from '../filePush/FilePushHandler';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
+import type { ParamsFileListing } from '../../../types/ParamsFileListing';
+import Util from '../../Util';
+import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
+import { ManagerClient } from '../../client/ManagerClient';
+import { html } from '../../ui/HtmlTag';
+import { Entry } from '../Entry';
 import { AdbkitFilePushStream } from '../filePush/AdbkitFilePushStream';
+import FilePushHandler, { type DragAndPushListener, type PushUpdateParams } from '../filePush/FilePushHandler';
 
 const TAG = '[FileListing]';
 
@@ -152,7 +152,7 @@ export class FileListingClient extends ManagerClient<ParamsFileListing, never> i
                     let entry: Entry | undefined;
                     let anchor: HTMLElement | undefined;
                     if (entryIdString) {
-                        const entryId = parseInt(entryIdString, 10);
+                        const entryId = Number.parseInt(entryIdString, 10);
                         if (!isNaN(entryId) && this.entries[entryId]) {
                             entry = this.entries[entryId];
                             anchor = e.target;

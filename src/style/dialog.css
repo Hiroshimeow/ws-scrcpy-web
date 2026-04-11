@@ -32,7 +32,9 @@
     min-height: 100%;
 }
 
-.dialog-container button, .dialog-container select, .dialog-container input {
+.dialog-container button,
+.dialog-container select,
+.dialog-container input {
     font-family: monospace;
 }
 
@@ -75,11 +77,13 @@
 
 .dialog-body.visible {
     height: calc(
-            100%
-            - 2 * var(--block-top-padding)
-            - 2 * var(--block-bottom-padding)
-            - var(--header-height)
-            - var(--footer-height)
+        100% -
+        2 *
+        var(--block-top-padding) -
+        2 *
+        var(--block-bottom-padding) -
+        var(--header-height) -
+        var(--footer-height)
     );
 }
 

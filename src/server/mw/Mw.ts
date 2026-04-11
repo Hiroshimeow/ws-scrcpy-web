@@ -1,7 +1,7 @@
-import { Message } from '../../types/Message';
-import * as http from 'http';
-import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
-import WS from 'ws';
+import type * as http from 'http';
+import type WS from 'ws';
+import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import type { Message } from '../../types/Message';
 
 export type RequestParameters = {
     request: http.IncomingMessage;

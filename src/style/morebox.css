@@ -11,7 +11,8 @@
     padding: 0 .714rem .714rem .714rem;
 }
 
-.text-with-shadow, .more-box label {
+.text-with-shadow,
+.more-box label {
     color: var(--text-color);
     text-shadow: var(--text-shadow-color) 0 0 .357rem;
 }
@@ -25,12 +26,12 @@
 }
 
 .spoiler > label::before {
-    content: '►';
+    content: "►";
     margin-right: 5px;
 }
 
 .spoiler > input:checked ~ label::before {
-    content: '▼';
+    content: "▼";
 }
 
 .spoiler > input:checked ~ div {

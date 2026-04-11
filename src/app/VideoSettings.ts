@@ -28,7 +28,10 @@ export default class VideoSettings {
     public readonly codecOptions?: string;
     public readonly encoderName?: string;
 
-    constructor(data?: Settings, public readonly bytesLength: number = VideoSettings.BASE_BUFFER_LENGTH) {
+    constructor(
+        data?: Settings,
+        public readonly bytesLength: number = VideoSettings.BASE_BUFFER_LENGTH,
+    ) {
         if (data) {
             this.crop = data.crop;
             this.bitrate = data.bitrate;
@@ -198,17 +201,11 @@ export default class VideoSettings {
 
     public toString(): string {
         // prettier-ignore
-        return `VideoSettings{bitrate=${
-            this.bitrate}, maxFps=${
-            this.maxFps}, iFrameInterval=${
-            this.iFrameInterval}, bounds=${
-            this.bounds}, crop=${
-            this.crop}, metaFrame=${
-            this.sendFrameMeta}, lockedVideoOrientation=${
-            this.lockedVideoOrientation}, displayId=${
-            this.displayId}, codecOptions=${
-            this.codecOptions}, encoderName=${
-            this.encoderName}}`;
+        return `VideoSettings{bitrate=${this.bitrate}, maxFps=${this.maxFps}, iFrameInterval=${
+            this.iFrameInterval
+        }, bounds=${this.bounds}, crop=${this.crop}, metaFrame=${this.sendFrameMeta}, lockedVideoOrientation=${
+            this.lockedVideoOrientation
+        }, displayId=${this.displayId}, codecOptions=${this.codecOptions}, encoderName=${this.encoderName}}`;
     }
 
     public toJSON(): Settings {

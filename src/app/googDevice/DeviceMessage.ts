@@ -6,7 +6,10 @@ export default class DeviceMessage {
 
     public static readonly MAGIC_BYTES_MESSAGE = Util.stringToUtf8ByteArray('scrcpy_message');
 
-    constructor(public readonly type: number, protected readonly buffer: Buffer) {}
+    constructor(
+        public readonly type: number,
+        protected readonly buffer: Buffer,
+    ) {}
 
     public static fromBuffer(data: ArrayBuffer): DeviceMessage {
         const magicSize = this.MAGIC_BYTES_MESSAGE.length;

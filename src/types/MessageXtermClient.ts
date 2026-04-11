@@ -1,5 +1,5 @@
-import { Message } from './Message';
-import { XtermClientMessage } from './XtermMessage';
+import type { Message } from './Message';
+import type { XtermClientMessage } from './XtermMessage';
 
 export interface MessageXtermClient extends Message {
     type: 'shell';

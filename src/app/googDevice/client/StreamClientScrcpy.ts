@@ -1,35 +1,35 @@
-import { BaseClient } from '../../client/BaseClient';
-import { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
-import { GoogMoreBox } from '../toolbox/GoogMoreBox';
-import { GoogToolBox } from '../toolbox/GoogToolBox';
-import VideoSettings from '../../VideoSettings';
-import Size from '../../Size';
-import { ControlMessage } from '../../controlMessage/ControlMessage';
-import { ClientsStats, DisplayCombinedInfo } from '../../client/StreamReceiver';
-import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
-import Util from '../../Util';
-import FilePushHandler from '../filePush/FilePushHandler';
-import DragAndPushLogger from '../DragAndPushLogger';
-import { KeyEventListener, KeyInputHandler } from '../KeyInputHandler';
-import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
-import { BasePlayer, PlayerClass } from '../../player/BasePlayer';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { ConfigureScrcpy } from './ConfigureScrcpy';
-import { DeviceTracker } from './DeviceTracker';
+import { ACTION } from '../../../common/Action';
 import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
-import { html } from '../../ui/HtmlTag';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
+import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
+import { Attribute } from '../../Attribute';
+import type { DisplayInfo } from '../../DisplayInfo';
+import Size from '../../Size';
+import Util from '../../Util';
+import VideoSettings from '../../VideoSettings';
+import { BaseClient } from '../../client/BaseClient';
+import { HostTracker } from '../../client/HostTracker';
+import type { ClientsStats, DisplayCombinedInfo } from '../../client/StreamReceiver';
+import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
+import type { ControlMessage } from '../../controlMessage/ControlMessage';
+import type { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
 import {
     FeaturedInteractionHandler,
-    InteractionHandlerListener,
+    type InteractionHandlerListener,
 } from '../../interactionHandler/FeaturedInteractionHandler';
-import DeviceMessage from '../DeviceMessage';
-import { DisplayInfo } from '../../DisplayInfo';
-import { Attribute } from '../../Attribute';
-import { HostTracker } from '../../client/HostTracker';
-import { ACTION } from '../../../common/Action';
-import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
-import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
+import { BasePlayer, type PlayerClass } from '../../player/BasePlayer';
+import { html } from '../../ui/HtmlTag';
+import type DeviceMessage from '../DeviceMessage';
+import DragAndPushLogger from '../DragAndPushLogger';
+import { type KeyEventListener, KeyInputHandler } from '../KeyInputHandler';
+import FilePushHandler from '../filePush/FilePushHandler';
 import { ScrcpyFilePushStream } from '../filePush/ScrcpyFilePushStream';
+import { GoogMoreBox } from '../toolbox/GoogMoreBox';
+import { GoogToolBox } from '../toolbox/GoogToolBox';
+import { ConfigureScrcpy } from './ConfigureScrcpy';
+import { DeviceTracker } from './DeviceTracker';
+import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
 
 type StartParams = {
     udid: string;

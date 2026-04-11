@@ -1,8 +1,11 @@
-import { Readable, ReadableOptions } from 'stream';
+import { Readable, type ReadableOptions } from 'stream';
 
 export class ReadStream extends Readable {
     private _bytesRead = 0;
-    constructor(private readonly _path: string, opts?: ReadableOptions) {
+    constructor(
+        private readonly _path: string,
+        opts?: ReadableOptions,
+    ) {
         super(opts);
     }
     public get bytesRead(): number {

@@ -14,7 +14,6 @@
     }
 }
 
-
 body.list {
     height: auto;
     width: auto;
@@ -30,7 +29,7 @@ body.list {
 
 body.stream #devices {
     background-color: var(--device-list-default-color);
-    opacity: .8;
+    opacity: 0.8;
     position: absolute;
     top: 0;
     left: 0;
@@ -54,11 +53,11 @@ body.list #device_list_menu {
     color: var(--button-text-color);
 }
 
-#devices .device-list div.device:nth-child(2n+1){
+#devices .device-list div.device:nth-child(2n + 1) {
     background-color: var(--device-list-default-color);
 }
 
-#devices .device-list div.device:nth-child(2n){
+#devices .device-list div.device:nth-child(2n) {
     background-color: var(--device-list-stripe-color);
 }
 
@@ -128,7 +127,7 @@ body.list #device_list_menu {
 }
 
 #devices .device-list div.device:hover {
-    background-color: var(--device-list-hover-color)
+    background-color: var(--device-list-hover-color);
 }
 
 #devices .device-list div.device select {
@@ -139,7 +138,7 @@ body.list #device_list_menu {
 }
 
 #devices .device-list div.device:hover select {
-    background-color: var(--device-list-hover-color);;
+    background-color: var(--device-list-hover-color);
 }
 
 #devices .device-list div.desc-block {
@@ -165,7 +164,7 @@ body.list #device_list_menu {
 }
 
 #devices .device-list div.desc-block button {
-    fill: var(--text-color)
+    fill: var(--text-color);
 }
 
 #devices .device-list div.desc-block button > span {

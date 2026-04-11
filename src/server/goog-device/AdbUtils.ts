@@ -1,10 +1,10 @@
-import * as portfinder from 'portfinder';
-import { AdbClient } from '../AdbClient';
-import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
-import AdbProtocol from '../../common/AdbProtocol';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { FileStats } from '../../types/FileStats';
+import * as portfinder from 'portfinder';
+import AdbProtocol from '../../common/AdbProtocol';
+import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import type { FileStats } from '../../types/FileStats';
+import { AdbClient } from '../AdbClient';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,14 +19,20 @@ export class AdbUtils {
      * Stat a remote file via `adb shell stat`.
      * Returns { mode, size, mtime } matching the old adbkit Stats shape.
      */
-    private static async statRemote(serial: string, pathString: string): Promise<{ mode: number; size: number; mtime: number }> {
+    private static async statRemote(
+        serial: string,
+        pathString: string,
+    ): Promise<{ mode: number; size: number; mtime: number }> {
         // Use stat with format: mode (octal), size, mtime (epoch)
-        const output = await adbClient.shell(serial, `stat -c '%f %s %Y' "${pathString}" 2>/dev/null || stat -c '%a %s %Y' "${pathString}" 2>/dev/null`);
+        const output = await adbClient.shell(
+            serial,
+            `stat -c '%f %s %Y' "${pathString}" 2>/dev/null || stat -c '%a %s %Y' "${pathString}" 2>/dev/null`,
+        );
         const parts = output.trim().split(/\s+/);
         if (parts.length >= 3) {
-            const mode = parseInt(parts[0], 16) || parseInt(parts[0], 8) || 0;
-            const size = parseInt(parts[1], 10) || 0;
-            const mtime = parseInt(parts[2], 10) || 0;
+            const mode = Number.parseInt(parts[0], 16) || Number.parseInt(parts[0], 8) || 0;
+            const size = Number.parseInt(parts[1], 10) || 0;
+            const mtime = Number.parseInt(parts[2], 10) || 0;
             return { mode, size, mtime };
         }
         throw new Error(`Failed to stat "${pathString}"`);
@@ -43,7 +49,7 @@ export class AdbUtils {
             const parts = trimmed.split(/\s+/);
             if (parts.length < 7) continue;
             const permissions = parts[0];
-            const size = parseInt(parts[3], 10) || 0;
+            const size = Number.parseInt(parts[3], 10) || 0;
             const name = parts.slice(6).join(' ');
             if (name === '.' || name === '..') continue;
             const isDir = permissions.startsWith('d') ? 1 : 0;
@@ -88,7 +94,10 @@ export class AdbUtils {
         try {
             // Use ls -la for listing, then stat each entry for mode/size/mtime
             const output = await adbClient.shell(serial, `ls -1a "${pathString}"`);
-            const names = output.split('\n').map((n) => n.trim()).filter((n) => n.length > 0);
+            const names = output
+                .split('\n')
+                .map((n) => n.trim())
+                .filter((n) => n.length > 0);
 
             for (const name of names) {
                 try {
@@ -172,7 +181,7 @@ export class AdbUtils {
         });
         if (forward) {
             const { local } = forward;
-            return parseInt(local.split('tcp:')[1], 10);
+            return Number.parseInt(local.split('tcp:')[1], 10);
         }
         const port = await portfinder.getPortPromise();
         const local = `tcp:${port}`;

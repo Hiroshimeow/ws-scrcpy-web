@@ -1,7 +1,7 @@
-import { Mw, RequestParameters } from './Mw';
 import WS from 'ws';
 import { ACTION } from '../../common/Action';
-import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import { Mw, type RequestParameters } from './Mw';
 
 export class WebsocketProxy extends Mw {
     public static readonly TAG = 'WebsocketProxy';

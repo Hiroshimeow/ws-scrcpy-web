@@ -1,7 +1,7 @@
-import { StreamReceiver } from '../../client/StreamReceiver';
-import { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import { ACTION } from '../../../common/Action';
+import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import Util from '../../Util';
+import { StreamReceiver } from '../../client/StreamReceiver';
 
 export class StreamReceiverScrcpy extends StreamReceiver<ParamsStreamScrcpy> {
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {

@@ -1,11 +1,11 @@
+import Util from '../../app/Util';
 import { TypedEmitter } from '../../common/TypedEmitter';
-import { Message } from './Message';
-import { MessageType } from './MessageType';
-import { EventClass } from './Event';
 import { CloseEventClass } from './CloseEventClass';
 import { ErrorEventClass } from './ErrorEventClass';
+import { EventClass } from './Event';
+import { Message } from './Message';
 import { MessageEventClass } from './MessageEventClass';
-import Util from '../../app/Util';
+import { MessageType } from './MessageType';
 
 interface MultiplexerEvents extends WebSocketEventMap {
     empty: Multiplexer;
@@ -53,7 +53,11 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
         return new Multiplexer(ws);
     }
 
-    protected constructor(public readonly ws: WebSocket, private _id = 0, emitter?: WebsocketEventEmitter) {
+    protected constructor(
+        public readonly ws: WebSocket,
+        private _id = 0,
+        emitter?: WebsocketEventEmitter,
+    ) {
         super();
         this.readyState = this.CONNECTING;
         if (this._id === 0) {

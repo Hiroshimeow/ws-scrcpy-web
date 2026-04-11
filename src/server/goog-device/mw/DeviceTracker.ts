@@ -1,13 +1,13 @@
-import WS from 'ws';
-import { Mw, RequestParameters } from '../../mw/Mw';
-import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
-import { ControlCenter } from '../services/ControlCenter';
+import type WS from 'ws';
 import { ACTION } from '../../../common/Action';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { DeviceTrackerEvent } from '../../../types/DeviceTrackerEvent';
-import { DeviceTrackerEventList } from '../../../types/DeviceTrackerEventList';
-import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import { ChannelCode } from '../../../common/ChannelCode';
+import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
+import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import type { DeviceTrackerEvent } from '../../../types/DeviceTrackerEvent';
+import type { DeviceTrackerEventList } from '../../../types/DeviceTrackerEventList';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import { Mw, type RequestParameters } from '../../mw/Mw';
+import { ControlCenter } from '../services/ControlCenter';
 
 export class DeviceTracker extends Mw {
     public static readonly TAG = 'DeviceTracker';

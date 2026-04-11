@@ -1,13 +1,13 @@
+import CenterPointPNG from '../../public/images/multitouch/center_point.png';
+import TouchPointPNG from '../../public/images/multitouch/touch_point.png';
 import MotionEvent from '../MotionEvent';
-import ScreenInfo from '../ScreenInfo';
-import { TouchControlMessage } from '../controlMessage/TouchControlMessage';
-import Size from '../Size';
 import Point from '../Point';
 import Position from '../Position';
-import TouchPointPNG from '../../public/images/multitouch/touch_point.png';
-import CenterPointPNG from '../../public/images/multitouch/center_point.png';
+import type ScreenInfo from '../ScreenInfo';
+import Size from '../Size';
 import Util from '../Util';
-import { BasePlayer } from '../player/BasePlayer';
+import { TouchControlMessage } from '../controlMessage/TouchControlMessage';
+import type { BasePlayer } from '../player/BasePlayer';
 
 interface Touch {
     action: number;

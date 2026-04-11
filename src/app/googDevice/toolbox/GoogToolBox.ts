@@ -1,12 +1,12 @@
-import { ToolBox } from '../../toolbox/ToolBox';
-import KeyEvent from '../android/KeyEvent';
-import SvgImage from '../../ui/SvgImage';
 import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
+import type { BasePlayer } from '../../player/BasePlayer';
+import { ToolBox } from '../../toolbox/ToolBox';
 import { ToolBoxButton } from '../../toolbox/ToolBoxButton';
-import { ToolBoxElement } from '../../toolbox/ToolBoxElement';
 import { ToolBoxCheckbox } from '../../toolbox/ToolBoxCheckbox';
-import { StreamClientScrcpy } from '../client/StreamClientScrcpy';
-import { BasePlayer } from '../../player/BasePlayer';
+import type { ToolBoxElement } from '../../toolbox/ToolBoxElement';
+import SvgImage from '../../ui/SvgImage';
+import KeyEvent from '../android/KeyEvent';
+import type { StreamClientScrcpy } from '../client/StreamClientScrcpy';
 
 const BUTTONS = [
     {

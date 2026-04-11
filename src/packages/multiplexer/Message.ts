@@ -1,6 +1,6 @@
-import { MessageType } from './MessageType';
 import Util from '../../app/Util';
 import { CloseEventClass } from './CloseEventClass';
+import { MessageType } from './MessageType';
 
 export class Message {
     public static parse(buffer: ArrayBuffer): Message {

@@ -1,5 +1,5 @@
-import { Optional, ToolBoxElement } from './ToolBoxElement';
-import SvgImage, { Icon } from '../ui/SvgImage';
+import SvgImage, { type Icon } from '../ui/SvgImage';
+import { type Optional, ToolBoxElement } from './ToolBoxElement';
 
 export class ToolBoxButton extends ToolBoxElement<HTMLButtonElement> {
     private readonly btn: HTMLButtonElement;

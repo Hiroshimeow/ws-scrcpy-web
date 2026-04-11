@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import { ControlMessage, ControlMessageInterface } from './ControlMessage';
+import { ControlMessage, type ControlMessageInterface } from './ControlMessage';
 
 export interface TextControlMessageInterface extends ControlMessageInterface {
     text: string;

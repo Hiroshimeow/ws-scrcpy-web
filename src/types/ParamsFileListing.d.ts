@@ -1,5 +1,5 @@
-import { ACTION } from '../common/Action';
-import { ParamsBase } from './ParamsBase';
+import type { ACTION } from '../common/Action';
+import type { ParamsBase } from './ParamsBase';
 
 export interface ParamsFileListing extends ParamsBase {
     action: ACTION.FILE_LISTING;

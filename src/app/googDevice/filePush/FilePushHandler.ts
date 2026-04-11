@@ -1,6 +1,6 @@
-import { DragAndDropHandler, DragEventListener } from '../DragAndDropHandler';
-import { FilePushStream, PushResponse } from './FilePushStream';
+import { DragAndDropHandler, type DragEventListener } from '../DragAndDropHandler';
 import { FilePushResponseStatus } from './FilePushResponseStatus';
+import type { FilePushStream, PushResponse } from './FilePushStream';
 
 type Resolve = (response: PushResponse) => void;
 
@@ -30,7 +30,10 @@ export default class FilePushHandler implements DragEventListener {
     private listeners: Set<DragAndPushListener> = new Set();
     private pushIdFileNameMap: Map<number, string> = new Map();
 
-    constructor(private readonly element: HTMLElement, private readonly filePushStream: FilePushStream) {
+    constructor(
+        private readonly element: HTMLElement,
+        private readonly filePushStream: FilePushStream,
+    ) {
         DragAndDropHandler.addEventListener(this);
         filePushStream.on('response', this.onStreamResponse);
         filePushStream.on('error', this.onStreamError);

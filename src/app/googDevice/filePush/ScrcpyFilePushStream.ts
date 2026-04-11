@@ -1,7 +1,7 @@
-import { FilePushStream } from './FilePushStream';
-import { StreamReceiverScrcpy } from '../client/StreamReceiverScrcpy';
-import DeviceMessage from '../DeviceMessage';
 import { CommandControlMessage, FilePushState } from '../../controlMessage/CommandControlMessage';
+import DeviceMessage from '../DeviceMessage';
+import type { StreamReceiverScrcpy } from '../client/StreamReceiverScrcpy';
+import { FilePushStream } from './FilePushStream';
 
 const ALLOWED_TYPES = ['application/vnd.android.package-archive'];
 const ALLOWED_NAME_RE = /\.apk$/i;

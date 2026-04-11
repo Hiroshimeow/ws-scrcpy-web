@@ -1,8 +1,8 @@
 import { Server as WSServer } from 'ws';
-import WS from 'ws';
-import { Service } from './Service';
-import { HttpServer, ServerAndPort } from './HttpServer';
-import { MwFactory } from '../mw/Mw';
+import type WS from 'ws';
+import type { MwFactory } from '../mw/Mw';
+import { HttpServer, type ServerAndPort } from './HttpServer';
+import type { Service } from './Service';
 
 export class WebSocketServer implements Service {
     private static instance?: WebSocketServer;

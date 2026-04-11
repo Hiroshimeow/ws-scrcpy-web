@@ -1,11 +1,11 @@
-import { ManagerClient } from './ManagerClient';
-import { ControlMessage } from '../controlMessage/ControlMessage';
-import DeviceMessage from '../googDevice/DeviceMessage';
-import VideoSettings from '../VideoSettings';
+import type { ParamsStream } from '../../types/ParamsStream';
+import { DisplayInfo } from '../DisplayInfo';
 import ScreenInfo from '../ScreenInfo';
 import Util from '../Util';
-import { DisplayInfo } from '../DisplayInfo';
-import { ParamsStream } from '../../types/ParamsStream';
+import VideoSettings from '../VideoSettings';
+import type { ControlMessage } from '../controlMessage/ControlMessage';
+import DeviceMessage from '../googDevice/DeviceMessage';
+import { ManagerClient } from './ManagerClient';
 
 const DEVICE_NAME_FIELD_LENGTH = 64;
 const MAGIC_BYTES_INITIAL = Util.stringToUtf8ByteArray('scrcpy_initial');

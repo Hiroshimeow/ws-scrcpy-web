@@ -1,17 +1,17 @@
-import { AdbClient } from '../AdbClient';
-import { NetInterface } from '../../types/NetInterface';
 import { TypedEmitter } from '../../common/TypedEmitter';
-import GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
-import { ScrcpyServer } from './ScrcpyServer';
+import type GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
+import type { NetInterface } from '../../types/NetInterface';
+import { AdbClient } from '../AdbClient';
 import { Properties } from './Properties';
+import { ScrcpyServer } from './ScrcpyServer';
 import Timeout = NodeJS.Timeout;
 
 enum PID_DETECTION {
-    UNKNOWN,
-    PIDOF,
-    GREP_PS,
-    GREP_PS_A,
-    LS_PROC,
+    UNKNOWN = 0,
+    PIDOF = 1,
+    GREP_PS = 2,
+    GREP_PS_A = 3,
+    LS_PROC = 4,
 }
 
 export interface DeviceEvents {
@@ -34,7 +34,10 @@ export class Device extends TypedEmitter<DeviceEvents> {
     public readonly TAG: string;
     public readonly descriptor: GoogDeviceDescriptor;
 
-    constructor(public readonly udid: string, state: string) {
+    constructor(
+        public readonly udid: string,
+        state: string,
+    ) {
         super();
         this.TAG = `[${udid}]`;
         this.descriptor = {
@@ -150,7 +153,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             .then((output) => {
                 return output
                     .split(' ')
-                    .map((pid) => parseInt(pid, 10))
+                    .map((pid) => Number.parseInt(pid, 10))
                     .filter((num) => !isNaN(num));
             })
             .catch(() => {
@@ -167,7 +170,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
                 .split(' ')
                 .filter((item) => item.length);
             if (cols[cols.length - 1] === processName) {
-                const pid = parseInt(cols[1], 10);
+                const pid = Number.parseInt(cols[1], 10);
                 if (!isNaN(pid)) {
                     list.push(pid);
                 }
@@ -207,7 +210,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             const trim = line.trim();
             const m = trim.match(re);
             if (m) {
-                list.push(parseInt(m[1], 10));
+                list.push(Number.parseInt(m[1], 10));
             }
         });
         return list;
@@ -216,7 +219,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
     private async executedWithoutError(command: string): Promise<boolean> {
         return this.runShellCommand(command)
             .then((output) => {
-                const err = parseInt(output, 10);
+                const err = Number.parseInt(output, 10);
                 return err === 0;
             })
             .catch(() => {

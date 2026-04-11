@@ -1,5 +1,5 @@
-import { Message } from '../types/Message';
-import { HostItem } from '../types/Configuration';
+import type { HostItem } from '../types/Configuration';
+import type { Message } from '../types/Message';
 
 export enum MessageType {
     HOSTS = 'hosts',

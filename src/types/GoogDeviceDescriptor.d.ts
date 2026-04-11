@@ -1,5 +1,5 @@
-import { NetInterface } from './NetInterface';
-import { BaseDeviceDescriptor } from './BaseDeviceDescriptor';
+import type { BaseDeviceDescriptor } from './BaseDeviceDescriptor';
+import type { NetInterface } from './NetInterface';
 
 export default interface GoogDeviceDescriptor extends BaseDeviceDescriptor {
     'ro.build.version.release': string;

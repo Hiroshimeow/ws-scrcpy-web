@@ -1,14 +1,14 @@
 import * as http from 'http';
+import type { IncomingMessage, ServerResponse } from 'http';
 import * as https from 'https';
 import path from 'path';
-import { IncomingMessage, ServerResponse } from 'http';
-import { Service } from './Service';
-import { Utils } from '../Utils';
-import { createStaticHandler } from '../StaticFileServer';
-import { Config } from '../Config';
-import { TypedEmitter } from '../../common/TypedEmitter';
 import * as process from 'process';
+import { TypedEmitter } from '../../common/TypedEmitter';
+import { Config } from '../Config';
 import { EnvName } from '../EnvName';
+import { createStaticHandler } from '../StaticFileServer';
+import { Utils } from '../Utils';
+import type { Service } from './Service';
 
 const DEFAULT_STATIC_DIR = path.join(__dirname, './public');
 

@@ -1,20 +1,20 @@
 import '../../../style/dialog.css';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { DisplayCombinedInfo } from '../../client/StreamReceiver';
-import VideoSettings from '../../VideoSettings';
-import { StreamClientScrcpy } from './StreamClientScrcpy';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
+import { Attribute } from '../../Attribute';
+import { DisplayInfo } from '../../DisplayInfo';
 import Size from '../../Size';
 import Util from '../../Util';
-import { DisplayInfo } from '../../DisplayInfo';
-import { ToolBoxButton } from '../../toolbox/ToolBoxButton';
-import SvgImage from '../../ui/SvgImage';
-import { PlayerClass } from '../../player/BasePlayer';
-import { ToolBoxCheckbox } from '../../toolbox/ToolBoxCheckbox';
-import { DeviceTracker } from './DeviceTracker';
-import { Attribute } from '../../Attribute';
-import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
-import { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
+import VideoSettings from '../../VideoSettings';
 import { BaseClient } from '../../client/BaseClient';
+import type { DisplayCombinedInfo } from '../../client/StreamReceiver';
+import type { PlayerClass } from '../../player/BasePlayer';
+import { ToolBoxButton } from '../../toolbox/ToolBoxButton';
+import { ToolBoxCheckbox } from '../../toolbox/ToolBoxCheckbox';
+import SvgImage from '../../ui/SvgImage';
+import type { DeviceTracker } from './DeviceTracker';
+import { StreamClientScrcpy } from './StreamClientScrcpy';
+import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
 
 interface ConfigureScrcpyEvents {
     closed: { dialog: ConfigureScrcpy; result: boolean };
@@ -51,7 +51,11 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
     private statusText = '';
     private connectionCount = 0;
 
-    constructor(private readonly tracker: DeviceTracker, descriptor: GoogDeviceDescriptor, params: ParamsStreamScrcpy) {
+    constructor(
+        private readonly tracker: DeviceTracker,
+        descriptor: GoogDeviceDescriptor,
+        params: ParamsStreamScrcpy,
+    ) {
         super(params);
         this.udid = descriptor.udid;
         this.escapedUdid = Util.escapeUdid(this.udid);
@@ -196,7 +200,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             return;
         }
         const value = select.options[select.selectedIndex].value;
-        const displayId = parseInt(value, 10);
+        const displayId = Number.parseInt(value, 10);
         if (!isNaN(displayId)) {
             this.displayInfo = this.streamReceiver.getDisplayInfo(displayId);
         }
@@ -323,7 +327,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         if (range) {
             label.setAttribute('title', opts.label);
             input.oninput = () => {
-                const value = range.formatter ? range.formatter(parseInt(input.value, 10)) : input.value;
+                const value = range.formatter ? range.formatter(Number.parseInt(input.value, 10)) : input.value;
                 label.innerText = `${opts.label} (${value}):`;
             };
             input.setAttribute('type', 'range');
@@ -337,7 +341,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
 
     private getNumberValueFromInput(name: string): number {
         const value = (document.getElementById(`${name}_${this.escapedUdid}`) as HTMLInputElement).value;
-        return parseInt(value, 10);
+        return Number.parseInt(value, 10);
     }
 
     private getStringValueFromInput(name: string): string {

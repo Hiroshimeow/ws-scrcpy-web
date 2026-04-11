@@ -1,7 +1,7 @@
-import * as process from 'process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ServerItem } from '../types/Configuration';
+import * as process from 'process';
+import type { ServerItem } from '../types/Configuration';
 import { EnvName } from './EnvName';
 
 const DEFAULT_PORT = 8000;
@@ -36,7 +36,7 @@ export class Config {
     private static buildServers(fileConfig: FlatConfig): ServerItem[] {
         // Env var PORT takes highest priority
         const envPort = process.env['PORT'];
-        const port = envPort ? parseInt(envPort, 10) : (fileConfig.port ?? DEFAULT_PORT);
+        const port = envPort ? Number.parseInt(envPort, 10) : (fileConfig.port ?? DEFAULT_PORT);
 
         if (fileConfig.server && fileConfig.server.length > 0) {
             // Advanced multi-server config: still honour PORT env override on first server

@@ -1,5 +1,6 @@
-import { ControlMessage, ControlMessageInterface } from './ControlMessage';
-import Position, { PositionInterface } from '../Position';
+import type Position from '../Position';
+import type { PositionInterface } from '../Position';
+import { ControlMessage, type ControlMessageInterface } from './ControlMessage';
 
 export interface TouchControlMessageInterface extends ControlMessageInterface {
     type: number;

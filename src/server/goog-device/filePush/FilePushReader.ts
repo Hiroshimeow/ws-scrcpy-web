@@ -1,17 +1,17 @@
-import { CommandControlMessage, FilePushState } from '../../../app/controlMessage/CommandControlMessage';
-import { FilePushResponseStatus } from '../../../app/googDevice/filePush/FilePushResponseStatus';
-import { AdbClient } from '../../AdbClient';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { CommandControlMessage, FilePushState } from '../../../app/controlMessage/CommandControlMessage';
+import { FilePushResponseStatus } from '../../../app/googDevice/filePush/FilePushResponseStatus';
+import { AdbClient } from '../../AdbClient';
 
 enum State {
-    INITIAL,
-    NEW,
-    START,
-    APPEND,
-    FINISH,
-    CANCEL,
+    INITIAL = 0,
+    NEW = 1,
+    START = 2,
+    APPEND = 3,
+    FINISH = 4,
+    CANCEL = 5,
 }
 
 export class FilePushReader {
@@ -46,7 +46,10 @@ export class FilePushReader {
     private writeStream?: fs.WriteStream;
     private disposed = false;
 
-    constructor(private readonly serial: string, private readonly channel: WebSocket) {
+    constructor(
+        private readonly serial: string,
+        private readonly channel: WebSocket,
+    ) {
         channel.addEventListener('message', this.onMessage);
         channel.addEventListener('close', this.onClose);
     }

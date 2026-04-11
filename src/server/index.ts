@@ -1,12 +1,12 @@
 import * as readline from 'readline';
 import { Config } from './Config';
-import { HttpServer } from './services/HttpServer';
-import { WebSocketServer } from './services/WebSocketServer';
-import { Service, ServiceClass } from './services/Service';
-import { MwFactory } from './mw/Mw';
-import { WebsocketProxy } from './mw/WebsocketProxy';
 import { HostTracker } from './mw/HostTracker';
+import type { MwFactory } from './mw/Mw';
 import { WebsocketMultiplexer } from './mw/WebsocketMultiplexer';
+import { WebsocketProxy } from './mw/WebsocketProxy';
+import { HttpServer } from './services/HttpServer';
+import type { Service, ServiceClass } from './services/Service';
+import { WebSocketServer } from './services/WebSocketServer';
 
 const servicesToStart: ServiceClass[] = [HttpServer, WebSocketServer];
 

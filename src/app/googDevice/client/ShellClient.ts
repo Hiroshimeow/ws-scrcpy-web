@@ -1,16 +1,16 @@
 import '@xterm/xterm/css/xterm.css';
-import { ManagerClient } from '../../client/ManagerClient';
-import { Terminal } from '@xterm/xterm';
 import { AttachAddon } from '@xterm/addon-attach';
 import { FitAddon } from '@xterm/addon-fit';
-import { MessageXtermClient } from '../../../types/MessageXtermClient';
+import { Terminal } from '@xterm/xterm';
 import { ACTION } from '../../../common/Action';
-import { ParamsShell } from '../../../types/ParamsShell';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
-import Util from '../../Util';
-import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
 import { ChannelCode } from '../../../common/ChannelCode';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { MessageXtermClient } from '../../../types/MessageXtermClient';
+import type { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
+import type { ParamsShell } from '../../../types/ParamsShell';
+import Util from '../../Util';
+import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
+import { ManagerClient } from '../../client/ManagerClient';
 
 const TAG = '[ShellClient]';
 

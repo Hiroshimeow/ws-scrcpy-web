@@ -222,22 +222,54 @@ export function parseSPS(data: Uint8Array): SPS {
             // aspect_ratio_info_present_flag
             const aspectRatioIdc = decoder.readUByte();
             switch (aspectRatioIdc) {
-                case 1: sar = [1, 1]; break;
-                case 2: sar = [12, 11]; break;
-                case 3: sar = [10, 11]; break;
-                case 4: sar = [16, 11]; break;
-                case 5: sar = [40, 33]; break;
-                case 6: sar = [24, 11]; break;
-                case 7: sar = [20, 11]; break;
-                case 8: sar = [32, 11]; break;
-                case 9: sar = [80, 33]; break;
-                case 10: sar = [18, 11]; break;
-                case 11: sar = [15, 11]; break;
-                case 12: sar = [64, 33]; break;
-                case 13: sar = [160, 99]; break;
-                case 14: sar = [4, 3]; break;
-                case 15: sar = [3, 2]; break;
-                case 16: sar = [2, 1]; break;
+                case 1:
+                    sar = [1, 1];
+                    break;
+                case 2:
+                    sar = [12, 11];
+                    break;
+                case 3:
+                    sar = [10, 11];
+                    break;
+                case 4:
+                    sar = [16, 11];
+                    break;
+                case 5:
+                    sar = [40, 33];
+                    break;
+                case 6:
+                    sar = [24, 11];
+                    break;
+                case 7:
+                    sar = [20, 11];
+                    break;
+                case 8:
+                    sar = [32, 11];
+                    break;
+                case 9:
+                    sar = [80, 33];
+                    break;
+                case 10:
+                    sar = [18, 11];
+                    break;
+                case 11:
+                    sar = [15, 11];
+                    break;
+                case 12:
+                    sar = [64, 33];
+                    break;
+                case 13:
+                    sar = [160, 99];
+                    break;
+                case 14:
+                    sar = [4, 3];
+                    break;
+                case 15:
+                    sar = [3, 2];
+                    break;
+                case 16:
+                    sar = [2, 1];
+                    break;
                 case 255:
                     sar = [
                         (decoder.readUByte() << 8) | decoder.readUByte(),

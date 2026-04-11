@@ -1,10 +1,10 @@
-import VideoSettings from '../VideoSettings';
-import ScreenInfo from '../ScreenInfo';
-import Rect from '../Rect';
-import Size from '../Size';
-import Util from '../Util';
 import { TypedEmitter } from '../../common/TypedEmitter';
 import { DisplayInfo } from '../DisplayInfo';
+import Rect from '../Rect';
+import ScreenInfo from '../ScreenInfo';
+import Size from '../Size';
+import Util from '../Util';
+import VideoSettings from '../VideoSettings';
 
 interface BitrateStat {
     timestamp: number;
@@ -106,14 +106,14 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
     constructor(
         public readonly udid: string,
         protected displayInfo?: DisplayInfo,
-        protected name: string = 'BasePlayer',
-        protected storageKeyPrefix: string = 'Dummy',
+        protected name = 'BasePlayer',
+        protected storageKeyPrefix = 'Dummy',
         protected tag: HTMLElement = document.createElement('div'),
     ) {
         super();
         this.touchableCanvas = document.createElement('canvas');
         this.touchableCanvas.className = 'touch-layer';
-        this.touchableCanvas.oncontextmenu = function (event: MouseEvent): void {
+        this.touchableCanvas.oncontextmenu = (event: MouseEvent): void => {
             event.preventDefault();
         };
         const preferred = this.getPreferredVideoSetting();

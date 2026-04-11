@@ -1,10 +1,10 @@
-import WS from 'ws';
-import { Mw } from './Mw';
-import { Config } from '../Config';
-import { MessageError, MessageHosts, MessageType } from '../../common/HostTrackerMessage';
-import { HostItem } from '../../types/Configuration';
-import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import type WS from 'ws';
 import { ChannelCode } from '../../common/ChannelCode';
+import { type MessageError, type MessageHosts, MessageType } from '../../common/HostTrackerMessage';
+import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
+import type { HostItem } from '../../types/Configuration';
+import { Config } from '../Config';
+import { Mw } from './Mw';
 
 export interface TrackerClass {
     type: string;

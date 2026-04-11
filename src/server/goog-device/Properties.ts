@@ -1,4 +1,4 @@
-import GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
+import type GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
 
 export const Properties: ReadonlyArray<keyof GoogDeviceDescriptor> = [
     'ro.product.cpu.abi',

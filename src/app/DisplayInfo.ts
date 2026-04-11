@@ -32,12 +32,9 @@ export class DisplayInfo {
 
     public toString(): string {
         // prettier-ignore
-        return `DisplayInfo{displayId=${
-            this.displayId}, size=${
-            this.size}, rotation=${
-            this.rotation}, layerStack=${
-            this.layerStack}, flags=${
-            this.flags}}`;
+        return `DisplayInfo{displayId=${this.displayId}, size=${this.size}, rotation=${this.rotation}, layerStack=${
+            this.layerStack
+        }, flags=${this.flags}}`;
     }
 
     public static fromBuffer(buffer: Buffer): DisplayInfo {

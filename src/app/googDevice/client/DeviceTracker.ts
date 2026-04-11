@@ -1,20 +1,20 @@
 import '../../../style/devicelist.css';
-import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
-import { SERVER_PORT } from '../../../common/Constants';
 import { ACTION } from '../../../common/Action';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
-import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
-import { StreamClientScrcpy } from './StreamClientScrcpy';
-import SvgImage from '../../ui/SvgImage';
-import { html } from '../../ui/HtmlTag';
-import Util from '../../Util';
-import { Attribute } from '../../Attribute';
-import { DeviceState } from '../../../common/DeviceState';
-import { Message } from '../../../types/Message';
-import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
-import { HostItem } from '../../../types/Configuration';
 import { ChannelCode } from '../../../common/ChannelCode';
-import { Tool } from '../../client/Tool';
+import { SERVER_PORT } from '../../../common/Constants';
+import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
+import { DeviceState } from '../../../common/DeviceState';
+import type { HostItem } from '../../../types/Configuration';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { Message } from '../../../types/Message';
+import type { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
+import { Attribute } from '../../Attribute';
+import Util from '../../Util';
+import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
+import type { Tool } from '../../client/Tool';
+import { html } from '../../ui/HtmlTag';
+import SvgImage from '../../ui/SvgImage';
+import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 type Field = keyof GoogDeviceDescriptor | ((descriptor: GoogDeviceDescriptor) => string);
 type DescriptionColumn = { title: string; field: Field };
@@ -125,7 +125,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         const udid = button.getAttribute(Attribute.UDID);
         const pidString = button.getAttribute(Attribute.PID) || '';
         const command = button.getAttribute(Attribute.COMMAND) as string;
-        const pid = parseInt(pidString, 10);
+        const pid = Number.parseInt(pidString, 10);
         const data: Message = {
             id: this.getNextId(),
             type: command,

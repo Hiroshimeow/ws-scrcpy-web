@@ -1,15 +1,18 @@
-import { FilePushStream } from './FilePushStream';
-import { CommandControlMessage, FilePushState } from '../../controlMessage/CommandControlMessage';
-import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
-import { FilePushResponseStatus } from './FilePushResponseStatus';
-import Protocol from '../../../common/AdbProtocol';
-import { FileListingClient } from '../client/FileListingClient';
 import * as path from 'path';
+import Protocol from '../../../common/AdbProtocol';
+import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import { CommandControlMessage, FilePushState } from '../../controlMessage/CommandControlMessage';
+import type { FileListingClient } from '../client/FileListingClient';
 import FilePushHandler from './FilePushHandler';
+import { FilePushResponseStatus } from './FilePushResponseStatus';
+import { FilePushStream } from './FilePushStream';
 
 export class AdbkitFilePushStream extends FilePushStream {
     private channels: Map<number, Multiplexer> = new Map();
-    constructor(private readonly socket: Multiplexer, private readonly fileListingClient: FileListingClient) {
+    constructor(
+        private readonly socket: Multiplexer,
+        private readonly fileListingClient: FileListingClient,
+    ) {
         super();
     }
     public hasConnection(): boolean {

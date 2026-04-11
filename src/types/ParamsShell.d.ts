@@ -1,5 +1,5 @@
-import { ParamsBase } from './ParamsBase';
-import { ACTION } from '../common/Action';
+import type { ACTION } from '../common/Action';
+import type { ParamsBase } from './ParamsBase';
 
 export interface ParamsShell extends ParamsBase {
     action: ACTION.SHELL;

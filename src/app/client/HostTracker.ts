@@ -1,11 +1,11 @@
-import { ManagerClient } from './ManagerClient';
-import { Message } from '../../types/Message';
-import { MessageError, MessageHosts, MessageType } from '../../common/HostTrackerMessage';
 import { ACTION } from '../../common/Action';
-import { DeviceTracker as GoogDeviceTracker } from '../googDevice/client/DeviceTracker';
-import { ParamsBase } from '../../types/ParamsBase';
-import { HostItem } from '../../types/Configuration';
 import { ChannelCode } from '../../common/ChannelCode';
+import { type MessageError, type MessageHosts, MessageType } from '../../common/HostTrackerMessage';
+import type { HostItem } from '../../types/Configuration';
+import type { Message } from '../../types/Message';
+import type { ParamsBase } from '../../types/ParamsBase';
+import { DeviceTracker as GoogDeviceTracker } from '../googDevice/client/DeviceTracker';
+import { ManagerClient } from './ManagerClient';
 
 const TAG = '[HostTracker]';
 
@@ -67,7 +67,7 @@ export class HostTracker extends ManagerClient<ParamsBase, HostTrackerEvents> {
                 if (msg.data.local) {
                     msg.data.local.forEach(({ type }) => {
                         const secure = location.protocol === 'https:';
-                        const port = location.port ? parseInt(location.port, 10) : secure ? 443 : 80;
+                        const port = location.port ? Number.parseInt(location.port, 10) : secure ? 443 : 80;
                         const { hostname, pathname } = location;
                         if (type !== 'android') {
                             console.warn(TAG, `Unsupported host type: "${type}"`);

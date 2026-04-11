@@ -1,7 +1,7 @@
-import { InteractionEvents, InteractionHandler } from './InteractionHandler';
-import { BasePlayer } from '../player/BasePlayer';
-import ScreenInfo from '../ScreenInfo';
-import Position from '../Position';
+import type Position from '../Position';
+import type ScreenInfo from '../ScreenInfo';
+import type { BasePlayer } from '../player/BasePlayer';
+import { type InteractionEvents, InteractionHandler } from './InteractionHandler';
 
 export interface TouchHandlerListener {
     performClick: (position: Position) => void;
@@ -16,7 +16,10 @@ export class SimpleInteractionHandler extends InteractionHandler {
     private static readonly touchEventsNames: InteractionEvents[] = ['mousedown', 'mouseup', 'mousemove'];
     private storage = new Map();
 
-    constructor(player: BasePlayer, private readonly listener: TouchHandlerListener) {
+    constructor(
+        player: BasePlayer,
+        private readonly listener: TouchHandlerListener,
+    ) {
         super(player, SimpleInteractionHandler.touchEventsNames, []);
     }
 

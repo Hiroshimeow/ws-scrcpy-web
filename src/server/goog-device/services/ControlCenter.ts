@@ -1,13 +1,13 @@
-import { Device } from '../Device';
-import { Service } from '../../services/Service';
+import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import { AdbClient } from '../../AdbClient';
-import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
+import type { Service } from '../../services/Service';
+import { Device } from '../Device';
 import Timeout = NodeJS.Timeout;
-import { BaseControlCenter } from '../../services/BaseControlCenter';
-import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
-import * as os from 'os';
 import * as crypto from 'crypto';
+import * as os from 'os';
+import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
 import { DeviceState } from '../../../common/DeviceState';
+import { BaseControlCenter } from '../../services/BaseControlCenter';
 
 export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> implements Service {
     private static readonly POLL_INTERVAL = 2000;

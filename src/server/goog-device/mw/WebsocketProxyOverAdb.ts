@@ -1,8 +1,8 @@
+import type WS from 'ws';
+import { ACTION } from '../../../common/Action';
+import type { RequestParameters } from '../../mw/Mw';
 import { WebsocketProxy } from '../../mw/WebsocketProxy';
 import { AdbUtils } from '../AdbUtils';
-import WS from 'ws';
-import { RequestParameters } from '../../mw/Mw';
-import { ACTION } from '../../../common/Action';
 
 export class WebsocketProxyOverAdb extends WebsocketProxy {
     public static processRequest(ws: WS, params: RequestParameters): WebsocketProxy | undefined {

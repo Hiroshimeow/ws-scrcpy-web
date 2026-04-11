@@ -1,8 +1,8 @@
-import { Mw, MwFactory, RequestParameters } from './Mw';
+import type WS from 'ws';
+import Util from '../../app/Util';
 import { ACTION } from '../../common/Action';
 import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
-import WS from 'ws';
-import Util from '../../app/Util';
+import { Mw, type MwFactory, type RequestParameters } from './Mw';
 
 export class WebsocketMultiplexer extends Mw {
     public static readonly TAG = 'WebsocketMultiplexer';

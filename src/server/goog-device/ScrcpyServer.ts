@@ -1,7 +1,7 @@
-// TODO: scrcpy-server.jar relocation (Task 9) — vendor directory removed
-import { Device } from './Device';
-import { ARGS_STRING, SERVER_PACKAGE, SERVER_PROCESS_NAME, SERVER_VERSION } from '../../common/Constants';
 import path from 'path';
+import { ARGS_STRING, SERVER_PACKAGE, SERVER_PROCESS_NAME, SERVER_VERSION } from '../../common/Constants';
+// TODO: scrcpy-server.jar relocation (Task 9) — vendor directory removed
+import type { Device } from './Device';
 import { ServerVersion } from './ServerVersion';
 
 const TEMP_PATH = '/data/local/tmp/';
@@ -32,7 +32,7 @@ export class ScrcpyServer {
             const fileName = ScrcpyServer.PID_FILE_PATH;
             const content = await device.runShellCommand(`test -f ${fileName} && cat ${fileName}`);
             if (content.trim()) {
-                const pid = parseInt(content, 10);
+                const pid = Number.parseInt(content, 10);
                 if (pid && !isNaN(pid)) {
                     const realPid = await this.getServerPid(device);
                     if (realPid?.includes(pid)) {

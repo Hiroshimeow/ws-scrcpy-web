@@ -1,13 +1,13 @@
-import { ControlMessage } from './ControlMessage';
-import VideoSettings from '../VideoSettings';
 import Util from '../Util';
+import type VideoSettings from '../VideoSettings';
+import { ControlMessage } from './ControlMessage';
 
 export enum FilePushState {
-    NEW,
-    START,
-    APPEND,
-    FINISH,
-    CANCEL,
+    NEW = 0,
+    START = 1,
+    APPEND = 2,
+    FINISH = 3,
+    CANCEL = 4,
 }
 
 type FilePushParams = {

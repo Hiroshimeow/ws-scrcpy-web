@@ -1,10 +1,10 @@
-import { BaseCanvasBasedPlayer } from './BaseCanvasBasedPlayer';
-import VideoSettings from '../VideoSettings';
-import Size from '../Size';
-import { DisplayInfo } from '../DisplayInfo';
-import { parseSPS, NALU_TYPE } from './h264-utils';
-import ScreenInfo from '../ScreenInfo';
+import type { DisplayInfo } from '../DisplayInfo';
 import Rect from '../Rect';
+import ScreenInfo from '../ScreenInfo';
+import Size from '../Size';
+import VideoSettings from '../VideoSettings';
+import { BaseCanvasBasedPlayer } from './BaseCanvasBasedPlayer';
+import { NALU_TYPE, parseSPS } from './h264-utils';
 
 type ParametersSubSet = {
     codec: string;

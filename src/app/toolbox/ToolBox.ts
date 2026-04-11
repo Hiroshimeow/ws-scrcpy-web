@@ -1,4 +1,4 @@
-import { ToolBoxElement } from './ToolBoxElement';
+import type { ToolBoxElement } from './ToolBoxElement';
 
 export class ToolBox {
     private readonly holder: HTMLElement;

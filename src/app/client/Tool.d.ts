@@ -1,5 +1,5 @@
-import { ParamsDeviceTracker } from '../../types/ParamsDeviceTracker';
-import { BaseDeviceDescriptor } from '../../types/BaseDeviceDescriptor';
+import type { BaseDeviceDescriptor } from '../../types/BaseDeviceDescriptor';
+import type { ParamsDeviceTracker } from '../../types/ParamsDeviceTracker';
 
 type Entry = HTMLElement | DocumentFragment;
 

@@ -1,14 +1,14 @@
-import { ManagerClient } from './ManagerClient';
-import { Message } from '../../types/Message';
-import { BaseDeviceDescriptor } from '../../types/BaseDeviceDescriptor';
-import { DeviceTrackerEvent } from '../../types/DeviceTrackerEvent';
-import { DeviceTrackerEventList } from '../../types/DeviceTrackerEventList';
-import { html } from '../ui/HtmlTag';
-import { ParamsDeviceTracker } from '../../types/ParamsDeviceTracker';
-import { HostItem } from '../../types/Configuration';
-import { Tool } from './Tool';
+import type { EventMap } from '../../common/TypedEmitter';
+import type { BaseDeviceDescriptor } from '../../types/BaseDeviceDescriptor';
+import type { HostItem } from '../../types/Configuration';
+import type { DeviceTrackerEvent } from '../../types/DeviceTrackerEvent';
+import type { DeviceTrackerEventList } from '../../types/DeviceTrackerEventList';
+import type { Message } from '../../types/Message';
+import type { ParamsDeviceTracker } from '../../types/ParamsDeviceTracker';
 import Util from '../Util';
-import { EventMap } from '../../common/TypedEmitter';
+import { html } from '../ui/HtmlTag';
+import { ManagerClient } from './ManagerClient';
+import type { Tool } from './Tool';
 
 const TAG = '[BaseDeviceTracker]';
 
@@ -82,7 +82,10 @@ export abstract class BaseDeviceTracker<DD extends BaseDeviceDescriptor, TE exte
     private created = false;
     private messageId = 0;
 
-    protected constructor(params: ParamsDeviceTracker, protected readonly directUrl: string) {
+    protected constructor(
+        params: ParamsDeviceTracker,
+        protected readonly directUrl: string,
+    ) {
         super(params);
         this.elementId = `tracker_instance${++BaseDeviceTracker.instanceId}`;
         this.trackerName = `Unavailable. Host: ${params.hostname}, type: ${params.type}`;

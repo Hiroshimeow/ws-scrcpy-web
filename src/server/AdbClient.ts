@@ -1,4 +1,4 @@
-import { execFile, spawn, ChildProcess } from 'child_process';
+import { type ChildProcess, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -9,7 +9,7 @@ export interface AdbDevice {
 }
 
 export class AdbClient {
-    constructor(private adbPath: string = 'adb') {}
+    constructor(private adbPath = 'adb') {}
 
     private async exec(args: string[]): Promise<string> {
         const { stdout } = await execFileAsync(this.adbPath, args, { maxBuffer: 10 * 1024 * 1024 });

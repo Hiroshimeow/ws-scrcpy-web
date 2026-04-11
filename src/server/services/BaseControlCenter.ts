@@ -1,4 +1,4 @@
-import { ControlCenterCommand } from '../../common/ControlCenterCommand';
+import type { ControlCenterCommand } from '../../common/ControlCenterCommand';
 import { TypedEmitter } from '../../common/TypedEmitter';
 
 export interface ControlCenterEvents<T> {

@@ -1,9 +1,9 @@
 import '../style/app.css';
-import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 import { HostTracker } from './client/HostTracker';
-import { Tool } from './client/Tool';
+import type { Tool } from './client/Tool';
+import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 
-window.onload = async function (): Promise<void> {
+window.onload = async (): Promise<void> => {
     const hash = location.hash.replace(/^#!/, '');
     const parsedQuery = new URLSearchParams(hash);
     const action = parsedQuery.get('action');

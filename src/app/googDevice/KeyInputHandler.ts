@@ -1,6 +1,6 @@
 import { KeyCodeControlMessage } from '../controlMessage/KeyCodeControlMessage';
-import KeyEvent from './android/KeyEvent';
 import { KeyToCodeMap } from './KeyToCodeMap';
+import KeyEvent from './android/KeyEvent';
 
 export interface KeyEventListener {
     onKeyEvent: (event: KeyCodeControlMessage) => void;

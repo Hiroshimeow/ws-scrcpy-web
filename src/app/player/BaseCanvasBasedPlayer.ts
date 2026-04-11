@@ -1,7 +1,7 @@
-import { BasePlayer, PlaybackQuality } from './BasePlayer';
-import ScreenInfo from '../ScreenInfo';
-import VideoSettings from '../VideoSettings';
-import { DisplayInfo } from '../DisplayInfo';
+import type { DisplayInfo } from '../DisplayInfo';
+import type ScreenInfo from '../ScreenInfo';
+import type VideoSettings from '../VideoSettings';
+import { BasePlayer, type PlaybackQuality } from './BasePlayer';
 
 type DecodedFrame = {
     width: number;

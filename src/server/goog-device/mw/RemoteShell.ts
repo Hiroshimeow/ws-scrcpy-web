@@ -1,13 +1,13 @@
-import WS from 'ws';
-import { Mw, RequestParameters } from '../../mw/Mw';
-import * as pty from 'node-pty';
 import * as os from 'os';
-import { IPty } from 'node-pty';
-import { Message } from '../../../types/Message';
-import { XtermClientMessage, XtermServiceParameters } from '../../../types/XtermMessage';
+import * as pty from 'node-pty';
+import type { IPty } from 'node-pty';
+import type WS from 'ws';
 import { ACTION } from '../../../common/Action';
-import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import { ChannelCode } from '../../../common/ChannelCode';
+import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import type { Message } from '../../../types/Message';
+import type { XtermClientMessage, XtermServiceParameters } from '../../../types/XtermMessage';
+import { Mw, type RequestParameters } from '../../mw/Mw';
 
 const OS_WINDOWS = os.platform() === 'win32';
 const USE_BINARY = !OS_WINDOWS;

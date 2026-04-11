@@ -1,5 +1,5 @@
-import { Message } from './Message';
-import { FileStats } from './FileStats';
+import type { FileStats } from './FileStats';
+import type { Message } from './Message';
 
 export interface ReplyFileListing extends Message {
     success: boolean;

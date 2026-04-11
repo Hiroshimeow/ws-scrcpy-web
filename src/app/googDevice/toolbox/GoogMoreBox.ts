@@ -1,12 +1,12 @@
 import '../../../style/morebox.css';
-import { BasePlayer } from '../../player/BasePlayer';
-import { TextControlMessage } from '../../controlMessage/TextControlMessage';
+import Size from '../../Size';
+import VideoSettings from '../../VideoSettings';
 import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
 import { ControlMessage } from '../../controlMessage/ControlMessage';
-import Size from '../../Size';
+import { TextControlMessage } from '../../controlMessage/TextControlMessage';
+import { BasePlayer } from '../../player/BasePlayer';
 import DeviceMessage from '../DeviceMessage';
-import VideoSettings from '../../VideoSettings';
-import { StreamClientScrcpy } from '../client/StreamClientScrcpy';
+import type { StreamClientScrcpy } from '../client/StreamClientScrcpy';
 
 const TAG = '[GoogMoreBox]';
 
@@ -21,7 +21,11 @@ export class GoogMoreBox {
     private readonly maxWidthInput?: HTMLInputElement;
     private readonly maxHeightInput?: HTMLInputElement;
 
-    constructor(udid: string, private player: BasePlayer, private client: StreamClientScrcpy) {
+    constructor(
+        udid: string,
+        private player: BasePlayer,
+        private client: StreamClientScrcpy,
+    ) {
         const playerName = player.getName();
         const videoSettings = player.getVideoSettings();
         const { displayId } = videoSettings;
@@ -138,14 +142,14 @@ export class GoogMoreBox {
             btn.innerText = command;
             if (action === ControlMessage.TYPE_CHANGE_STREAM_PARAMETERS) {
                 btn.onclick = () => {
-                    const bitrate = parseInt(bitrateInput.value, 10);
-                    const maxFps = parseInt(maxFpsInput.value, 10);
-                    const iFrameInterval = parseInt(iFrameIntervalInput.value, 10);
+                    const bitrate = Number.parseInt(bitrateInput.value, 10);
+                    const maxFps = Number.parseInt(maxFpsInput.value, 10);
+                    const iFrameInterval = Number.parseInt(iFrameIntervalInput.value, 10);
                     if (isNaN(bitrate) || isNaN(maxFps)) {
                         return;
                     }
-                    const width = parseInt(maxWidthInput.value, 10) & ~15;
-                    const height = parseInt(maxHeightInput.value, 10) & ~15;
+                    const width = Number.parseInt(maxWidthInput.value, 10) & ~15;
+                    const height = Number.parseInt(maxHeightInput.value, 10) & ~15;
                     const bounds = new Size(width, height);
                     const current = player.getVideoSettings();
                     const { lockedVideoOrientation, sendFrameMeta, displayId, codecOptions, encoderName } = current;

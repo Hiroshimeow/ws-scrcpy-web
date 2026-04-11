@@ -1,6 +1,6 @@
 import * as fs from 'fs';
+import type { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
-import { IncomingMessage, ServerResponse } from 'http';
 
 const MIME_TYPES: Record<string, string> = {
     '.html': 'text/html',

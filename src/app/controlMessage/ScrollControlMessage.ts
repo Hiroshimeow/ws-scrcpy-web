@@ -1,5 +1,6 @@
-import { ControlMessage, ControlMessageInterface } from './ControlMessage';
-import Position, { PositionInterface } from '../Position';
+import type Position from '../Position';
+import type { PositionInterface } from '../Position';
+import { ControlMessage, type ControlMessageInterface } from './ControlMessage';
 
 export interface ScrollControlMessageInterface extends ControlMessageInterface {
     position: PositionInterface;
@@ -10,7 +11,11 @@ export interface ScrollControlMessageInterface extends ControlMessageInterface {
 export class ScrollControlMessage extends ControlMessage {
     public static PAYLOAD_LENGTH = 20;
 
-    constructor(readonly position: Position, readonly hScroll: number, readonly vScroll: number) {
+    constructor(
+        readonly position: Position,
+        readonly hScroll: number,
+        readonly vScroll: number,
+    ) {
         super(ControlMessage.TYPE_SCROLL);
     }
 
