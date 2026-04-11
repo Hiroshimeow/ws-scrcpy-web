@@ -66,6 +66,10 @@ export class AdbClient {
         await this.exec(['-s', serial, 'reverse', remote, local]);
     }
 
+    async removeReverse(serial: string, remote: string): Promise<void> {
+        await this.exec(['-s', serial, 'reverse', '--remove', remote]);
+    }
+
     async getProperties(serial: string): Promise<Record<string, string>> {
         const output = await this.shell(serial, 'getprop');
         const props: Record<string, string> = {};
