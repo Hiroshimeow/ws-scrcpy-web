@@ -3,6 +3,7 @@ import { Config } from './Config';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
 import { WebsocketMultiplexer } from './mw/WebsocketMultiplexer';
+import { DeviceProbe } from './DeviceProbe';
 import { ScrcpyConnection } from './ScrcpyConnection';
 import { HttpServer } from './services/HttpServer';
 import type { Service, ServiceClass } from './services/Service';
@@ -11,7 +12,7 @@ import { WebSocketServer } from './services/WebSocketServer';
 const servicesToStart: ServiceClass[] = [HttpServer, WebSocketServer];
 
 // MWs that accept WebSocket
-const mwList: MwFactory[] = [ScrcpyConnection, WebsocketMultiplexer];
+const mwList: MwFactory[] = [ScrcpyConnection, DeviceProbe, WebsocketMultiplexer];
 
 // MWs that accept Multiplexer
 const mw2List: MwFactory[] = [HostTracker];
