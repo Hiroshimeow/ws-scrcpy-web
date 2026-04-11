@@ -95,18 +95,12 @@ const front: webpack.Configuration = {
     externals: ['fs'],
     plugins: [
         new MiniCssExtractPlugin({ filename: 'bundle.css' }),
-        new webpack.ProvidePlugin({
-            Buffer: ['buffer', 'Buffer'],
-        }),
         new CopyIndexHtmlPlugin(
             path.resolve(PROJECT_ROOT, 'public/index.html'),
             path.resolve(CLIENT_DIST_PATH, 'index.html'),
         ),
     ],
     resolve: {
-        fallback: {
-            path: 'path-browserify',
-        },
         extensions: ['.tsx', '.ts', '.js'],
     },
     output: {

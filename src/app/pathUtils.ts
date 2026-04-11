@@ -12,10 +12,7 @@ export function dirname(p: string): string {
 }
 
 export function join(...parts: string[]): string {
-    return parts
-        .join('/')
-        .replace(/\/+/g, '/')
-        .replace(/\/$/, '') || '/';
+    return parts.join('/').replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 }
 
 export function resolve(base: string, name: string): string {

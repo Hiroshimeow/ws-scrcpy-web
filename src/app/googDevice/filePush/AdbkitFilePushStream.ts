@@ -1,7 +1,8 @@
-import * as path from 'path';
 import Protocol from '../../../common/AdbProtocol';
 import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import { BinaryReader } from '../../BinaryReader';
 import { CommandControlMessage, FilePushState } from '../../controlMessage/CommandControlMessage';
+import { join } from '../../pathUtils';
 import type { FileListingClient } from '../client/FileListingClient';
 import FilePushHandler from './FilePushHandler';
 import { FilePushResponseStatus } from './FilePushResponseStatus';
@@ -16,7 +17,7 @@ export class AdbkitFilePushStream extends FilePushStream {
         super();
     }
     public hasConnection(): boolean {
-        return this.socket.readyState == this.socket.OPEN;
+        return this.socket.readyState === this.socket.OPEN;
     }
 
     public isAllowedFile(): boolean {
@@ -57,13 +58,11 @@ export class AdbkitFilePushStream extends FilePushStream {
     public sendEventNew({ id }: { id: number }): void {
         let pushId = id;
         const newParams = { id, state: FilePushState.NEW };
-        const channel = this.socket.createChannel(Buffer.from(Protocol.SEND));
+        const channel = this.socket.createChannel(new TextEncoder().encode(Protocol.SEND));
         const onMessage = (event: MessageEvent): void => {
-            let offset = 0;
-            const buffer = Buffer.from(event.data);
-            const id = buffer.readInt16BE(offset);
-            offset += 2;
-            const code = buffer.readInt8(offset);
+            const reader = new BinaryReader(new Uint8Array(event.data as ArrayBuffer));
+            const id = reader.readInt16BE();
+            const code = reader.readInt8();
             if (code === FilePushResponseStatus.NEW_PUSH_ID) {
                 this.channels.set(id, channel);
                 pushId = id;
@@ -88,7 +87,7 @@ export class AdbkitFilePushStream extends FilePushStream {
     }
 
     public sendEventStart({ id, fileName, fileSize }: { id: number; fileName: string; fileSize: number }): void {
-        const filePath = path.join(this.fileListingClient.getPath(), fileName);
+        const filePath = join(this.fileListingClient.getPath(), fileName);
         const startParams = { id, fileName: filePath, fileSize, state: FilePushState.START };
         const channel = this.getChannel(id);
         if (!channel) {
