@@ -18,7 +18,7 @@ export const NALU_TYPE = {
 
 // ── BitStream (Exp-Golomb reader) ───────────────────────────────
 
-class BitStream {
+export class BitStream {
     private index = 0;
     private readonly bitLength: number;
 
