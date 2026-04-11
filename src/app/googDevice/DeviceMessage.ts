@@ -1,4 +1,5 @@
 import Util from '../Util';
+import { BinaryReader } from '../BinaryReader';
 
 export default class DeviceMessage {
     public static TYPE_CLIPBOARD = 0;
@@ -10,33 +11,31 @@ export default class DeviceMessage {
 
     constructor(
         public readonly type: number,
-        protected readonly buffer: Buffer,
+        protected readonly data: Uint8Array,
     ) {}
 
     public static fromBuffer(data: ArrayBuffer): DeviceMessage {
         const magicSize = this.MAGIC_BYTES_MESSAGE.length;
-        const buffer = Buffer.from(data, magicSize, data.byteLength - magicSize);
-        const type = buffer.readUInt8(0);
-        return new DeviceMessage(type, buffer);
+        const slice = new Uint8Array(data, magicSize, data.byteLength - magicSize);
+        const type = slice[0];
+        return new DeviceMessage(type, slice);
     }
 
     public static fromRaw(data: Uint8Array): DeviceMessage {
-        const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-        const type = buffer.readUInt8(0);
-        return new DeviceMessage(type, buffer);
+        const type = data[0];
+        return new DeviceMessage(type, data);
     }
 
     public getText(): string {
         if (this.type !== DeviceMessage.TYPE_CLIPBOARD) {
             throw TypeError(`Wrong message type: ${this.type}`);
         }
-        if (!this.buffer) {
+        if (!this.data) {
             throw Error('Empty buffer');
         }
-        let offset = 1;
-        const length = this.buffer.readInt32BE(offset);
-        offset += 4;
-        const textBytes = this.buffer.slice(offset, offset + length);
+        const reader = new BinaryReader(this.data, 1);
+        const length = reader.readInt32BE();
+        const textBytes = reader.readBytes(length);
         return Util.utf8ByteArrayToString(textBytes);
     }
 
@@ -44,27 +43,28 @@ export default class DeviceMessage {
         if (this.type !== DeviceMessage.TYPE_ACK_CLIPBOARD) {
             throw TypeError(`Wrong message type: ${this.type}`);
         }
-        return this.buffer.readBigUInt64BE(1);
+        return new BinaryReader(this.data, 1).readBigUInt64BE();
     }
 
     public getPushStats(): { id: number; code: number } {
         if (this.type !== DeviceMessage.TYPE_PUSH_RESPONSE) {
             throw TypeError(`Wrong message type: ${this.type}`);
         }
-        if (!this.buffer) {
+        if (!this.data) {
             throw Error('Empty buffer');
         }
-        const id = this.buffer.readInt16BE(1);
-        const code = this.buffer.readInt8(3);
+        const reader = new BinaryReader(this.data, 1);
+        const id = reader.readInt16BE();
+        const code = reader.readInt8();
         return { id, code };
     }
 
     public toString(): string {
         let desc: string;
-        if (this.type === DeviceMessage.TYPE_CLIPBOARD && this.buffer) {
+        if (this.type === DeviceMessage.TYPE_CLIPBOARD && this.data) {
             desc = `, text=[${this.getText()}]`;
         } else {
-            desc = this.buffer ? `, buffer=[${this.buffer.join(',')}]` : '';
+            desc = this.data ? `, buffer=[${Array.from(this.data).join(',')}]` : '';
         }
         return `DeviceMessage{type=${this.type}${desc}}`;
     }
