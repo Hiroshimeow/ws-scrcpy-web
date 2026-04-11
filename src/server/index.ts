@@ -1,4 +1,3 @@
-import '../../LICENSE';
 import * as readline from 'readline';
 import { Config } from './Config';
 import { HttpServer } from './services/HttpServer';

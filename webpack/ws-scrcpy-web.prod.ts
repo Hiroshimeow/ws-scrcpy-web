@@ -1,4 +1,4 @@
-import { backend, frontend } from './ws-scrcpy.common';
+import { backend, frontend } from './ws-scrcpy-web.common';
 import webpack from 'webpack';
 
 const prodOpts: webpack.Configuration = {
