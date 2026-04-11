@@ -1,9 +1,10 @@
 import * as http from 'http';
 import * as https from 'https';
 import path from 'path';
+import { IncomingMessage, ServerResponse } from 'http';
 import { Service } from './Service';
 import { Utils } from '../Utils';
-import express, { Express } from 'express';
+import { createStaticHandler } from '../StaticFileServer';
 import { Config } from '../Config';
 import { TypedEmitter } from '../../common/TypedEmitter';
 import * as process from 'process';
@@ -27,7 +28,7 @@ export class HttpServer extends TypedEmitter<HttpServerEvents> implements Servic
     private static PUBLIC_DIR = DEFAULT_STATIC_DIR;
     private static SERVE_STATIC = true;
     private servers: ServerAndPort[] = [];
-    private mainApp?: Express;
+    private mainHandler?: (req: IncomingMessage, res: ServerResponse) => void;
     private started = false;
 
     protected constructor() {
@@ -75,9 +76,8 @@ export class HttpServer extends TypedEmitter<HttpServerEvents> implements Servic
     }
 
     public async start(): Promise<void> {
-        this.mainApp = express();
         if (HttpServer.SERVE_STATIC && HttpServer.PUBLIC_DIR) {
-            this.mainApp.use(PATHNAME, express.static(HttpServer.PUBLIC_DIR));
+            this.mainHandler = createStaticHandler(HttpServer.PUBLIC_DIR);
         }
         const config = Config.getInstance();
         config.servers.forEach((serverItem) => {
@@ -88,37 +88,37 @@ export class HttpServer extends TypedEmitter<HttpServerEvents> implements Servic
                 if (!serverItem.options) {
                     throw Error('Must provide option for secure server configuration');
                 }
-                server = https.createServer(serverItem.options, this.mainApp);
+                server = https.createServer(serverItem.options, this.mainHandler);
                 proto = 'https';
             } else {
                 const options = serverItem.options ? { ...serverItem.options } : {};
                 proto = 'http';
-                let currentApp = this.mainApp;
-                let host = '';
-                let port = 443;
+                let handler: ((req: IncomingMessage, res: ServerResponse) => void) | undefined = this.mainHandler;
+                let redirectHost = '';
+                let redirectPort = 443;
                 let doRedirect = false;
                 if (redirectToSecure === true) {
                     doRedirect = true;
                 } else if (typeof redirectToSecure === 'object') {
                     doRedirect = true;
                     if (typeof redirectToSecure.port === 'number') {
-                        port = redirectToSecure.port;
+                        redirectPort = redirectToSecure.port;
                     }
                     if (typeof redirectToSecure.host === 'string') {
-                        host = redirectToSecure.host;
+                        redirectHost = redirectToSecure.host;
                     }
                 }
                 if (doRedirect) {
-                    currentApp = express();
-                    currentApp.use(function (req, res) {
-                        const url = new URL(`https://${host ? host : req.headers.host}${req.url}`);
-                        if (port && port !== 443) {
-                            url.port = port.toString();
+                    handler = (req: IncomingMessage, res: ServerResponse) => {
+                        const url = new URL(`https://${redirectHost ? redirectHost : req.headers.host}${req.url}`);
+                        if (redirectPort && redirectPort !== 443) {
+                            url.port = redirectPort.toString();
                         }
-                        return res.redirect(301, url.toString());
-                    });
+                        res.writeHead(301, { Location: url.toString() });
+                        res.end();
+                    };
                 }
-                server = http.createServer(options, currentApp);
+                server = http.createServer(options, handler);
             }
             this.servers.push({ server, port });
             server.listen(port, () => {
