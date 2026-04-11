@@ -5,17 +5,14 @@ import webpack from 'webpack';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import GeneratePackageJsonPlugin from '@dead50f7/generate-package-json-webpack-plugin';
-import { mergeWithDefaultConfig } from './build.config.utils';
 
 export const PROJECT_ROOT = path.resolve(__dirname, '..');
 export const SERVER_DIST_PATH = path.join(PROJECT_ROOT, 'dist');
 export const CLIENT_DIST_PATH = path.join(PROJECT_ROOT, 'dist/public');
 const PACKAGE_JSON = path.join(PROJECT_ROOT, 'package.json');
 
-const override = path.join(PROJECT_ROOT, '/build.config.override.json');
-const buildConfigOptions = mergeWithDefaultConfig(override);
 const buildConfigDefinePlugin = new webpack.DefinePlugin({
-    '__PATHNAME__': JSON.stringify(buildConfigOptions.PATHNAME),
+    '__PATHNAME__': JSON.stringify('/'),
 });
 
 export const common = () => {
@@ -28,13 +25,7 @@ export const common = () => {
                 },
                 {
                     test: /\.tsx?$/,
-                    use: [
-                        { loader: 'ts-loader' },
-                        {
-                            loader: 'ifdef-loader',
-                            options: buildConfigOptions,
-                        },
-                    ],
+                    use: [{ loader: 'ts-loader' }],
                     exclude: /node_modules/,
                 },
                 {

@@ -269,7 +269,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                     'name',
                     encodeURIComponent(`${DeviceTracker.AttributePrefixInterfaceSelectFor}${fullName}`),
                 );
-                /// #if SCRCPY_LISTENS_ON_ALL_INTERFACES
                 device.interfaces.forEach((value) => {
                     const params = {
                         ...this.params,
@@ -291,11 +290,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                         optionElement.selected = true;
                     }
                 });
-                /// #else
-                selectedInterfaceUrl = proxyInterfaceUrl;
-                selectedInterfaceName = proxyInterfaceName;
-                td.classList.add('hidden');
-                /// #endif
                 if (isActive) {
                     const adbProxyOption = DeviceTracker.createInterfaceOption(proxyInterfaceName, proxyInterfaceUrl);
                     if (lastSelected === proxyInterfaceName || !selectedInterfaceName) {

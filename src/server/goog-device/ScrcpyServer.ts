@@ -1,6 +1,4 @@
-import '../../../vendor/Genymobile/scrcpy/scrcpy-server.jar';
-import '../../../vendor/Genymobile/scrcpy/LICENSE';
-
+// TODO: scrcpy-server.jar relocation (Task 9) — vendor directory removed
 import { Device } from './Device';
 import { ARGS_STRING, SERVER_PACKAGE, SERVER_PROCESS_NAME, SERVER_VERSION } from '../../common/Constants';
 import path from 'path';

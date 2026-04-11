@@ -3,29 +3,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Configuration, HostItem, ServerItem } from '../types/Configuration';
 import { EnvName } from './EnvName';
-import YAML from 'yaml';
 
 const DEFAULT_PORT = 8000;
 
-const YAML_RE = /^.+\.(yaml|yml)$/i;
 const JSON_RE = /^.+\.(json|js)$/i;
 
 export class Config {
     private static instance?: Config;
     private static initConfig(userConfig: Configuration = {}): Required<Configuration> {
-        let runGoogTracker = false;
-        let announceGoogTracker = false;
-        /// #if INCLUDE_GOOG
-        runGoogTracker = true;
-        announceGoogTracker = true;
-        /// #endif
+        const runGoogTracker = true;
+        const announceGoogTracker = true;
 
-        let runApplTracker = false;
-        let announceApplTracker = false;
-        /// #if INCLUDE_APPL
-        runApplTracker = true;
-        announceApplTracker = true;
-        /// #endif
         const server: ServerItem[] = [
             {
                 secure: false,
@@ -34,9 +22,7 @@ export class Config {
         ];
         const defaultConfig: Required<Configuration> = {
             runGoogTracker,
-            runApplTracker,
             announceGoogTracker,
-            announceApplTracker,
             server,
             remoteHostList: [],
         };
@@ -84,9 +70,7 @@ export class Config {
             if (!configPath) {
                 userConfig = {};
             } else {
-                if (configPath.match(YAML_RE)) {
-                    userConfig = YAML.parse(this.readFile(configPath));
-                } else if (configPath.match(JSON_RE)) {
+                if (configPath.match(JSON_RE)) {
                     userConfig = JSON.parse(this.readFile(configPath));
                 } else {
                     throw Error(`Unknown file type: ${configPath}`);
@@ -140,14 +124,6 @@ export class Config {
 
     public get announceLocalGoogTracker(): boolean {
         return this.fullConfig.runGoogTracker;
-    }
-
-    public get runLocalApplTracker(): boolean {
-        return this.fullConfig.runApplTracker;
-    }
-
-    public get announceLocalApplTracker(): boolean {
-        return this.fullConfig.runApplTracker;
     }
 
     public get servers(): ServerItem[] {
