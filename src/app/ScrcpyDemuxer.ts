@@ -62,10 +62,10 @@ export class ScrcpyDemuxer {
     }
 
     sendControl(message: ControlMessage): void {
-        const payload = message.toBuffer();
+        const payload = message.toUint8Array();
         const msg = new Uint8Array(1 + payload.length);
         msg[0] = ChannelId.CONTROL;
-        msg.set(new Uint8Array(payload.buffer, payload.byteOffset, payload.length), 1);
+        msg.set(payload, 1);
         if (this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(msg);
         } else {

@@ -26,7 +26,7 @@ export class ControlMessage {
 
     constructor(readonly type: number) {}
 
-    public toBuffer(): Buffer {
+    public toUint8Array(): Uint8Array {
         throw Error('Not implemented');
     }
 
