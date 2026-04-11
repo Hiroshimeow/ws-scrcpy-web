@@ -272,10 +272,7 @@ export abstract class BaseDeviceTracker<DD extends BaseDeviceDescriptor, TE exte
         throw Error('Not implemented. Must override');
     }
 
-    protected getChannelInitData(): Buffer {
-        const code = this.getChannelCode();
-        const buffer = Buffer.alloc(code.length);
-        buffer.write(code, 'ascii');
-        return buffer;
+    protected getChannelInitData(): Uint8Array {
+        return new TextEncoder().encode(this.getChannelCode());
     }
 }

@@ -24,7 +24,7 @@ export class Message {
         return new Message(MessageType.CloseChannel, id, buffer);
     }
 
-    public static createBuffer(type: MessageType, channelId: number, data?: ArrayBuffer): Buffer {
+    public static createBuffer(type: MessageType, channelId: number, data?: ArrayBuffer): Uint8Array {
         const result = Buffer.alloc(5 + (data ? data.byteLength : 0));
         result.writeUInt8(type, 0);
         result.writeUInt32LE(channelId, 1);

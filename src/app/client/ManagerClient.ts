@@ -121,8 +121,8 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
         return false;
     }
 
-    protected getChannelInitData(): Buffer {
-        return Buffer.from(ManagerClient.CODE);
+    protected getChannelInitData(): Uint8Array {
+        return new TextEncoder().encode(ManagerClient.CODE);
     }
 
     protected abstract onSocketOpen(event: Event): void;

@@ -583,7 +583,7 @@ export class FileListingClient extends ManagerClient<ParamsFileListing, never> i
         return true;
     }
 
-    protected getChannelInitData(): Buffer {
+    protected getChannelInitData(): Uint8Array {
         const serial = Util.stringToUtf8ByteArray(this.serial);
         const buffer = Buffer.alloc(4 + 4 + serial.byteLength);
         buffer.write(ChannelCode.FSLS, 'ascii');

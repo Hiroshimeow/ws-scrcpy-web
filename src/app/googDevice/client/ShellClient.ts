@@ -136,9 +136,7 @@ export class ShellClient extends ManagerClient<ParamsShell, never> {
         return entry;
     }
 
-    protected getChannelInitData(): Buffer {
-        const buffer = Buffer.alloc(4);
-        buffer.write(ChannelCode.SHEL, 'ascii');
-        return buffer;
+    protected getChannelInitData(): Uint8Array {
+        return new TextEncoder().encode(ChannelCode.SHEL);
     }
 }

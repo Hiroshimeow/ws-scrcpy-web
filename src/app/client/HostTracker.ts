@@ -111,9 +111,7 @@ export class HostTracker extends ManagerClient<ParamsBase, HostTrackerEvents> {
         return true;
     }
 
-    protected getChannelInitData(): Buffer {
-        const buffer = Buffer.alloc(4);
-        buffer.write(ChannelCode.HSTS, 'ascii');
-        return buffer;
+    protected getChannelInitData(): Uint8Array {
+        return new TextEncoder().encode(ChannelCode.HSTS);
     }
 }

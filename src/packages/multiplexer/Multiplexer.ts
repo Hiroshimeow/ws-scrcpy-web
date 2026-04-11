@@ -312,7 +312,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
         return channel;
     }
 
-    public createChannel(data: Buffer): Multiplexer {
+    public createChannel(data: Uint8Array): Multiplexer {
         if (this.readyState === this.CLOSING || this.readyState === this.CLOSED) {
             throw Error('Incorrect socket state');
         }
