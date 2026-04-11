@@ -640,7 +640,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             udid: this.udid,
             fitToScreen,
         };
-        StreamClientScrcpy.start(params, this.streamReceiver, player, fitToScreen, videoSettings);
-        this.streamReceiver.triggerInitialInfoEvents();
+        StreamClientScrcpy.start(params, player, fitToScreen, videoSettings);
     };
 }
