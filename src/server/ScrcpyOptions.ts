@@ -2,7 +2,7 @@
 export interface ScrcpyOptions {
     scid: string;
     videoCodec?: 'h264' | 'h265' | 'av1';
-    audioCodec?: 'opus';
+    audioCodec?: 'opus' | 'aac' | 'flac' | 'raw';
     maxSize?: number;
     videoBitRate?: number;
     maxFps?: number;

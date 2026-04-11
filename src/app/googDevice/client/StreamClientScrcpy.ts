@@ -150,6 +150,11 @@ export class StreamClientScrcpy
             url.searchParams.set('videoCodec', videoCodec);
         }
 
+        const audioCodec = this.params.audioCodec;
+        if (audioCodec && audioCodec !== 'opus') {
+            url.searchParams.set('audioCodec', audioCodec);
+        }
+
         return url.toString();
     }
 

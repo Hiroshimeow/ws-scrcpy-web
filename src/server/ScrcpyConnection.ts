@@ -87,6 +87,11 @@ export class ScrcpyConnection extends Mw {
             options.videoCodec = videoCodec;
         }
 
+        const audioCodec = this.queryParams.get('audioCodec');
+        if (audioCodec === 'aac' || audioCodec === 'flac' || audioCodec === 'raw') {
+            options.audioCodec = audioCodec;
+        }
+
         return options;
     }
 
