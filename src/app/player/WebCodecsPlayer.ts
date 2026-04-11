@@ -4,13 +4,8 @@ import ScreenInfo from '../ScreenInfo';
 import Size from '../Size';
 import VideoSettings from '../VideoSettings';
 import { BaseCanvasBasedPlayer } from './BaseCanvasBasedPlayer';
-import { NALU_TYPE, parseSPS } from './h264-utils';
-
-type ParametersSubSet = {
-    codec: string;
-    width: number;
-    height: number;
-};
+import { BasePlayer } from './BasePlayer';
+import { parseSPS } from './h264-utils';
 
 function toHex(value: number) {
     return value.toString(16).padStart(2, '0').toUpperCase();
@@ -23,24 +18,18 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
 
     public static readonly preferredVideoSettings: VideoSettings = new VideoSettings({
         lockedVideoOrientation: -1,
-        bitrate: 524288,
-        maxFps: 24,
-        iFrameInterval: 5,
-        bounds: new Size(480, 480),
+        bitrate: 8000000,
+        maxFps: 60,
+        iFrameInterval: 10,
+        bounds: new Size(0, 0),
         sendFrameMeta: false,
     });
 
     public static isSupported(): boolean {
-        if (typeof VideoDecoder !== 'function' || typeof VideoDecoder.isConfigSupported !== 'function') {
-            return false;
-        }
-
-        // FIXME: verify support
-        // const result = await VideoDecoder.isConfigSupported();
-        return true;
+        return typeof VideoDecoder === 'function' && typeof VideoDecoder.isConfigSupported === 'function';
     }
 
-    private static parseSPS(data: Uint8Array): ParametersSubSet {
+    private static parseSPSCodecString(data: Uint8Array): { codec: string; width: number; height: number } {
         const {
             profile_idc,
             constraint_set_flags,
@@ -69,10 +58,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     public readonly supportsScreenshot = true;
     private context: CanvasRenderingContext2D;
     private decoder: VideoDecoder;
-    private buffer: ArrayBuffer | undefined;
-    private hadIDR = false;
-    private bufferedSPS = false;
-    private bufferedPPS = false;
+    private configData?: Uint8Array;
 
     constructor(udid: string, displayInfo?: DisplayInfo, name = WebCodecsPlayer.playerFullName) {
         super(udid, displayInfo, name, WebCodecsPlayer.storageKeyPrefix);
@@ -90,23 +76,91 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
                 this.onFrameDecoded(0, 0, frame);
             },
             error: (error: DOMException) => {
-                console.error(error, `code: ${error.code}`);
+                console.error('[WebCodecsPlayer]', error, `code: ${error.code}`);
                 this.stop();
             },
         });
     }
 
-    protected addToBuffer(data: Uint8Array): Uint8Array {
-        let array: Uint8Array;
-        if (this.buffer) {
-            array = new Uint8Array(this.buffer.byteLength + data.byteLength);
-            array.set(new Uint8Array(this.buffer));
-            array.set(new Uint8Array(data), this.buffer.byteLength);
-        } else {
-            array = data;
+    /**
+     * Called by ScrcpyDemuxer via StreamClientScrcpy with pre-parsed frame metadata.
+     * Replaces the old pushFrame(Uint8Array) → decode() pipeline.
+     */
+    public pushVideoFrame(data: Uint8Array, pts: bigint, isConfig: boolean, isKeyframe: boolean): void {
+        // Track stats via BasePlayer
+        BasePlayer.prototype.pushFrame.call(this, data);
+
+        if (isConfig) {
+            // Config packet contains SPS + PPS NAL units
+            // Find SPS NAL (type 7) to extract codec string and dimensions
+            const spsOffset = this.findNaluOffset(data, 7);
+            if (spsOffset >= 0) {
+                const { codec, width, height } = WebCodecsPlayer.parseSPSCodecString(data.subarray(spsOffset));
+                this.scaleCanvas(width, height);
+                if (this.decoder.state === 'configured') {
+                    this.decoder.flush().catch(() => {});
+                }
+                this.decoder.configure({
+                    codec,
+                    optimizeForLatency: true,
+                } as VideoDecoderConfig);
+            }
+            this.configData = new Uint8Array(data);
+            return;
         }
-        this.buffer = array.buffer;
-        return array;
+
+        if (this.decoder.state !== 'configured') return;
+
+        if (isKeyframe && this.configData) {
+            // Prepend SPS/PPS config to keyframe for decoder
+            const fullData = new Uint8Array(this.configData.length + data.length);
+            fullData.set(this.configData);
+            fullData.set(data, this.configData.length);
+
+            if (!this.receivedFirstFrame) {
+                this.receivedFirstFrame = true;
+            }
+
+            this.decoder.decode(
+                new EncodedVideoChunk({
+                    type: 'key',
+                    timestamp: Number(pts),
+                    data: fullData,
+                }),
+            );
+            return;
+        }
+
+        if (!this.receivedFirstFrame) return; // Skip delta frames before first keyframe
+
+        this.decoder.decode(
+            new EncodedVideoChunk({
+                type: isKeyframe ? 'key' : 'delta',
+                timestamp: Number(pts),
+                data,
+            }),
+        );
+    }
+
+    /** Find offset of NALU with given type in Annex B stream. Returns -1 if not found. */
+    private findNaluOffset(data: Uint8Array, naluType: number): number {
+        for (let i = 0; i < data.length - 4; i++) {
+            // Look for start code 00 00 00 01 or 00 00 01
+            if (data[i] === 0 && data[i + 1] === 0) {
+                let offset: number;
+                if (data[i + 2] === 1) {
+                    offset = i + 3;
+                } else if (data[i + 2] === 0 && data[i + 3] === 1) {
+                    offset = i + 4;
+                } else {
+                    continue;
+                }
+                if (offset < data.length && (data[offset] & 0x1f) === naluType) {
+                    return offset;
+                }
+            }
+        }
+        return -1;
     }
 
     protected scaleCanvas(width: number, height: number): void {
@@ -120,61 +174,18 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
         const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(w, h), 0);
         this.emit('input-video-resize', screenInfo);
         this.setScreenInfo(screenInfo);
-
-        // FIXME: canvas was initialized from `.setScreenInfo()` call above, but with wrong values
         this.initCanvas(width, height);
         if (scale !== 1) {
             this.tag.style.transform = `scale(${scale.toFixed(4)})`;
         } else {
-            this.tag.style.transform = ``;
+            this.tag.style.transform = '';
         }
         this.tag.style.transformOrigin = 'top left';
     }
 
-    protected decode(data: Uint8Array): void {
-        if (!data || data.length < 4) {
-            return;
-        }
-        const type = data[4] & 31;
-        const isIDR = type === NALU_TYPE.IDR;
-
-        if (type === NALU_TYPE.SPS) {
-            const { codec, width, height } = WebCodecsPlayer.parseSPS(data.subarray(4));
-            this.scaleCanvas(width, height);
-            const config: VideoDecoderConfig = {
-                codec,
-                optimizeForLatency: true,
-            } as VideoDecoderConfig;
-            this.decoder.configure(config);
-            this.bufferedSPS = true;
-            this.addToBuffer(data);
-            this.hadIDR = false;
-            return;
-        } else if (type === NALU_TYPE.PPS) {
-            this.bufferedPPS = true;
-            this.addToBuffer(data);
-            return;
-        } else if (type === NALU_TYPE.SEI) {
-            // Workaround for lonely SEI from ws-qvh
-            if (!this.bufferedSPS || !this.bufferedPPS) {
-                return;
-            }
-        }
-        const array = this.addToBuffer(data);
-        this.hadIDR = this.hadIDR || isIDR;
-        if (array && this.decoder.state === 'configured' && this.hadIDR) {
-            this.buffer = undefined;
-            this.bufferedPPS = false;
-            this.bufferedSPS = false;
-            this.decoder.decode(
-                new EncodedVideoChunk({
-                    type: 'key',
-                    timestamp: 0,
-                    data: array.buffer,
-                }),
-            );
-            return;
-        }
+    /** Legacy decode path — not used with v3.x demuxer. */
+    protected decode(_data: Uint8Array): void {
+        // No-op: v3.x uses pushVideoFrame() instead
     }
 
     protected drawDecoded = (): void => {
@@ -218,5 +229,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
         if (this.decoder.state === 'configured') {
             this.decoder.close();
         }
+        this.decoder = this.createDecoder();
+        this.configData = undefined;
     }
 }
