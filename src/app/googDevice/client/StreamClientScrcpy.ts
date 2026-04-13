@@ -141,6 +141,10 @@ export class StreamClientScrcpy
     private fitToScreen?: boolean;
     private demuxer?: ScrcpyDemuxer;
     private audioPlayer?: AudioPlayer;
+    private frameSizes: number[] = [];
+    private baselineFrameSize = 0;
+    private degradationCount = 0;
+    private lastRefreshTime = 0;
 
     public static registerPlayer(playerClass: PlayerClass): void {
         if (playerClass.isSupported()) {
@@ -267,6 +271,20 @@ export class StreamClientScrcpy
         }
         if (this.player.getState() === STATE.PLAYING) {
             (this.player as WebCodecsPlayer).pushVideoFrame(data, pts, isConfig, isKeyframe);
+        }
+
+        // Track frame sizes for degradation detection (skip config frames)
+        if (!isConfig && data.length > 0) {
+            this.frameSizes.push(data.length);
+            // Build baseline from first 30 frames
+            if (this.frameSizes.length === 30) {
+                this.baselineFrameSize = this.frameSizes.reduce((a, b) => a + b, 0) / 30;
+            }
+            // Keep rolling window of 30 frames
+            if (this.frameSizes.length > 30) {
+                this.frameSizes.shift();
+                this.checkForDegradation();
+            }
         }
     };
 
@@ -417,6 +435,56 @@ export class StreamClientScrcpy
 
     public sendMessage(message: ControlMessage): void {
         this.demuxer?.sendControl(message);
+    }
+
+    private checkForDegradation(): void {
+        if (this.baselineFrameSize === 0) return;
+        const now = Date.now();
+        // Don't check within 10s of a refresh
+        if (now - this.lastRefreshTime < 10000) return;
+
+        const avg = this.frameSizes.reduce((a, b) => a + b, 0) / this.frameSizes.length;
+        // If average frame size drops below 25% of baseline for sustained period
+        if (avg < this.baselineFrameSize * 0.25) {
+            this.degradationCount++;
+            if (this.degradationCount >= 3) {
+                console.log(TAG, `Quality degradation detected (avg=${Math.round(avg)} vs baseline=${Math.round(this.baselineFrameSize)}), refreshing stream`);
+                this.degradationCount = 0;
+                this.frameSizes = [];
+                this.baselineFrameSize = 0;
+                this.refreshStream();
+            }
+        } else {
+            this.degradationCount = 0;
+        }
+    }
+
+    public refreshStream(): void {
+        console.log(TAG, 'Refreshing stream (reconnect for fresh keyframe)');
+        this.lastRefreshTime = Date.now();
+        this.frameSizes = [];
+        this.baselineFrameSize = 0;
+        this.degradationCount = 0;
+
+        // Close existing demuxer
+        this.demuxer?.close();
+        this.audioPlayer?.stop();
+        this.audioPlayer = undefined;
+
+        // Reset player state for fresh frames
+        if (this.player) {
+            this.player.stop();
+            this.player.pause();
+        }
+
+        // Reconnect
+        const streamUrl = this.buildStreamUrl();
+        this.demuxer = new ScrcpyDemuxer(streamUrl);
+        this.demuxer.onVideoFrame(this.onVideoFrame);
+        this.demuxer.onAudioFrame(this.onAudioFrame);
+        this.demuxer.onDeviceMessage(this.OnDeviceMessage);
+        this.demuxer.onMetadata(this.onMetadata);
+        this.demuxer.onDisconnect(this.onDisconnected);
     }
 
     public getDeviceName(): string {

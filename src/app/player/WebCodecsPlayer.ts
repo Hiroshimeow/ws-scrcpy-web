@@ -22,7 +22,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
         lockedVideoOrientation: -1,
         bitrate: 8000000,
         maxFps: 15,
-        iFrameInterval: 10,
+        iFrameInterval: 2,
         bounds: new Size(0, 0),
         sendFrameMeta: false,
     });

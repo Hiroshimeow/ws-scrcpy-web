@@ -115,6 +115,12 @@ export class GoogToolBox extends ToolBox {
         });
         elements.push(stats);
 
+        const refresh = new ToolBoxButton('Refresh stream', SvgImage.Icon.REFRESH);
+        refresh.addEventListener('click', () => {
+            client.refreshStream();
+        });
+        elements.push(refresh);
+
         if (moreBox) {
             const displayId = player.getVideoSettings().displayId;
             const id = `show_more_${udid}_${playerName}_${displayId}`;
