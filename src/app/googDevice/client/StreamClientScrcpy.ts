@@ -42,29 +42,82 @@ type StartParams = {
 
 const TAG = '[StreamClientScrcpy]';
 
-const CODEC_PREFERENCE = ['h265', 'av1', 'h264'] as const;
 const CODEC_WEBCODEC_MAP: Record<string, string> = {
     h264: 'avc1.42E01E',
     h265: 'hev1.1.6.L93.B0',
     av1: 'av01.0.04M.08',
 };
 
-async function detectBestCodec(): Promise<string> {
+// Maps codec names to patterns that identify them in encoder names
+const CODEC_ENCODER_PATTERN: Record<string, string> = {
+    h264: '.avc.',
+    h265: '.hevc.',
+    av1: '.av1.',
+};
+
+// Hardware encoder vendor prefixes (preferred over software c2.android.* encoders)
+const HW_ENCODER_RE = /\.mtk\.|\.qcom\.|\.exynos\.|\.intel\.|\.nvidia\./i;
+
+async function browserSupportsCodec(codec: string): Promise<boolean> {
     if (typeof VideoDecoder === 'undefined' || typeof VideoDecoder.isConfigSupported !== 'function') {
-        return 'h264';
+        return codec === 'h264';
     }
-    for (const codec of CODEC_PREFERENCE) {
-        try {
-            const result = await VideoDecoder.isConfigSupported({ codec: CODEC_WEBCODEC_MAP[codec] });
-            if (result.supported) {
-                console.log(TAG, `Auto-detected best codec: ${codec}`);
-                return codec;
+    const webCodecStr = CODEC_WEBCODEC_MAP[codec];
+    if (!webCodecStr) return false;
+    try {
+        const result = await VideoDecoder.isConfigSupported({ codec: webCodecStr });
+        return !!result.supported;
+    } catch {
+        return false;
+    }
+}
+
+async function detectBestCodecAndEncoder(
+    udid: string,
+    params: { hostname?: string; port?: number; secure?: boolean },
+): Promise<{ videoCodec: string; encoderName?: string }> {
+    // 1. Probe the device for available encoders
+    let videoEncoders: string[] = [];
+    try {
+        const { DeviceProbeClient } = await import('../../client/DeviceProbeClient');
+        const probe = await DeviceProbeClient.probe(udid, {
+            hostname: params.hostname || window.location.hostname,
+            port: params.port || Number.parseInt(window.location.port, 10) || 80,
+            secure: params.secure || false,
+        });
+        videoEncoders = probe.videoEncoders;
+        console.log(TAG, `Probe returned encoders: ${videoEncoders.join(', ')}`);
+    } catch (err) {
+        console.warn(TAG, `Device probe failed, falling back to browser-only detection:`, (err as Error).message);
+        // Fall back to browser-only detection without device info
+        for (const codec of ['h265', 'av1', 'h264']) {
+            if (await browserSupportsCodec(codec)) {
+                console.log(TAG, `Auto-detected best codec (no probe): ${codec}`);
+                return { videoCodec: codec };
             }
-        } catch {
-            // not supported
         }
+        return { videoCodec: 'h264' };
     }
-    return 'h264';
+
+    // 2. For each codec in preference order, check device has encoder AND browser can decode
+    const joined = videoEncoders.join(' ').toLowerCase();
+    for (const codec of ['h265', 'av1', 'h264'] as const) {
+        const pattern = CODEC_ENCODER_PATTERN[codec];
+        if (!joined.includes(pattern)) continue;
+        if (!(await browserSupportsCodec(codec))) {
+            console.log(TAG, `Device has ${codec} encoder but browser cannot decode it`);
+            continue;
+        }
+
+        // 3. Pick the best encoder for this codec (prefer hardware)
+        const matchingEncoders = videoEncoders.filter((e) => e.toLowerCase().includes(pattern));
+        const hwEncoder = matchingEncoders.find((e) => HW_ENCODER_RE.test(e));
+        const encoder = hwEncoder || matchingEncoders[0];
+        console.log(TAG, `Auto-detected: codec=${codec}, encoder=${encoder}`);
+        return { videoCodec: codec, encoderName: encoder };
+    }
+
+    return { videoCodec: 'h264' };
 }
 
 export class StreamClientScrcpy
@@ -326,9 +379,17 @@ export class StreamClientScrcpy
         document.addEventListener('click', resumeAudio, { once: true });
         document.addEventListener('keydown', resumeAudio, { once: true });
 
-        // Auto-detect best codec if not specified (direct link without ConfigureScrcpy)
+        // Auto-detect best codec + encoder if not specified (direct link without ConfigureScrcpy)
         if (!this.params.videoCodec) {
-            this.params.videoCodec = await detectBestCodec();
+            const detected = await detectBestCodecAndEncoder(udid, {
+                hostname: this.params.hostname,
+                port: this.params.port,
+                secure: this.params.secure,
+            });
+            this.params.videoCodec = detected.videoCodec;
+            if (detected.encoderName) {
+                this.params.encoderName = detected.encoderName;
+            }
         }
 
         // Connect via ScrcpyDemuxer
