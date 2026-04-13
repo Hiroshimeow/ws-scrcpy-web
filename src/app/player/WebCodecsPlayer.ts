@@ -298,7 +298,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             const data = this.decodedFrames.shift();
             if (data) {
                 const frame: VideoFrame = data.frame;
-                this.context.drawImage(frame, 0, 0);
+                this.context.drawImage(frame, 0, 0, this.tag.width, this.tag.height);
                 frame.close();
             }
         }

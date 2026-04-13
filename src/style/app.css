@@ -127,13 +127,11 @@ body.stream {
     float: right;
     width: 3.715rem;
     background-color: var(--control-buttons-bg-color);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    text-align: center;
 }
 
 .control-button {
-    margin: .357rem auto;
+    margin: .571rem auto;
     padding: 0;
     display: block;
     width: 2.143rem;
@@ -151,8 +149,9 @@ body.stream {
     display: none;
 }
 
-.control-wrapper > label {
+.control-wrapper > label.control-button {
     display: block;
+    margin: .571rem auto;
 }
 
 .control-button > svg {
