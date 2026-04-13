@@ -35,6 +35,10 @@ export class BaseClient<P extends ParamsBase, TE extends EventMap> extends Typed
     }
 
     public setBodyClass(text: string): void {
+        const wasEmbed = document.body.classList.contains('embed');
         document.body.className = text;
+        if (wasEmbed) {
+            document.body.classList.add('embed');
+        }
     }
 }

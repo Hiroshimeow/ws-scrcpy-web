@@ -8,6 +8,10 @@ window.onload = async (): Promise<void> => {
     const parsedQuery = new URLSearchParams(hash);
     const action = parsedQuery.get('action');
 
+    if (parsedQuery.get('embed') === 'true') {
+        document.body.classList.add('embed');
+    }
+
     const { WebCodecsPlayer } = await import('./player/WebCodecsPlayer');
     StreamClientScrcpy.registerPlayer(WebCodecsPlayer);
 

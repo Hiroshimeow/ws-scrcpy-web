@@ -174,3 +174,23 @@ body.stream {
 .control-wrapper > input[type="checkbox"]:checked + label > svg {
     fill: var(--svg-checkbox-bg-color);
 }
+
+/* Embed mode — minimal UI for iframe embedding */
+body.embed .control-buttons-list,
+body.embed .more-box {
+    display: none !important;
+}
+
+body.embed .device-view {
+    float: none;
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+body.embed .video {
+    float: none;
+    flex: 1;
+    max-height: 100vh;
+    max-width: 100vw;
+}

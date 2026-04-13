@@ -110,7 +110,7 @@ export class StreamClientScrcpy
     ) {
         super(params);
         const { udid, player: playerName } = this.params;
-        this.startStream({ udid, player, playerName, fitToScreen, videoSettings });
+        this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings });
         this.setBodyClass('stream');
     }
 
@@ -120,12 +120,14 @@ export class StreamClientScrcpy
         if (action !== ACTION.STREAM_SCRCPY) {
             throw Error('Incorrect action');
         }
+        const embed = params.get('embed') === 'true';
         return {
             ...typedParams,
             action,
             player: Util.parseString(params, 'player', true),
             udid: Util.parseString(params, 'udid', true),
             ws: Util.parseString(params, 'ws') || '',
+            ...(embed ? { fitToScreen: true } : {}),
         };
     }
 
@@ -297,6 +299,12 @@ export class StreamClientScrcpy
         this.demuxer.onDeviceMessage(this.OnDeviceMessage);
         this.demuxer.onMetadata(this.onMetadata);
         this.demuxer.onDisconnect(this.onDisconnected);
+
+        // In embed mode, auto-enable keyboard capture and click-to-focus
+        if (document.body.classList.contains('embed')) {
+            this.setHandleKeyboardEvents(true);
+            video.addEventListener('click', () => video.focus(), { once: true });
+        }
 
         console.log(TAG, player.getName(), udid);
     }
