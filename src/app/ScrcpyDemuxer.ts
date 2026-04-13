@@ -13,6 +13,7 @@ export interface SessionMetadata {
     screenWidth: number;
     screenHeight: number;
     audioCodec: string;
+    videoEncoder?: string;
 }
 
 export type VideoFrameCallback = (data: Uint8Array, pts: bigint, isConfig: boolean, isKeyframe: boolean) => void;

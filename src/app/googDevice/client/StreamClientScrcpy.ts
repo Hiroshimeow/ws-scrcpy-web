@@ -230,7 +230,7 @@ export class StreamClientScrcpy
 
         // Pass session info for quality stats overlay
         if (this.player) {
-            this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, this.params.encoderName);
+            this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, meta.videoEncoder || this.params.encoderName);
         }
 
         if (meta.audioCodec !== 'disabled' && meta.audioCodec !== 'error') {

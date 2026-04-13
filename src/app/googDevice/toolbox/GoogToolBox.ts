@@ -107,7 +107,7 @@ export class GoogToolBox extends ToolBox {
 
         const stats = new ToolBoxCheckbox(
             'Display quality stats',
-            SvgImage.Icon.SETTINGS,
+            SvgImage.Icon.BAR_CHART,
             `quality_stats_${udid}_${playerName}`,
         );
         stats.addEventListener('click', (_, el) => {

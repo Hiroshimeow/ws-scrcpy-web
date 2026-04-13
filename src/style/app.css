@@ -127,10 +127,13 @@ body.stream {
     float: right;
     width: 3.715rem;
     background-color: var(--control-buttons-bg-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .control-button {
-    margin: .357rem .786rem;
+    margin: .357rem 0;
     padding: 0;
     width: 2.143rem;
     height: 2.143rem;

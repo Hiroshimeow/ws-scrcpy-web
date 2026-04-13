@@ -4,6 +4,7 @@ import MenuSVG from '../../public/images/buttons/menu.svg';
 import OfflineSVG from '../../public/images/buttons/offline.svg';
 import RefreshSVG from '../../public/images/buttons/refresh.svg';
 import SettingsSVG from '../../public/images/buttons/settings.svg';
+import BarChartSVG from '../../public/images/buttons/bar_chart.svg';
 import ToggleOffSVG from '../../public/images/buttons/toggle_off.svg';
 import ToggleOnSVG from '../../public/images/buttons/toggle_on.svg';
 import BackSVG from '../../public/images/skin-light/System_Back_678.svg';
@@ -34,6 +35,7 @@ export enum Icon {
     ARROW_BACK = 14,
     TOGGLE_ON = 15,
     TOGGLE_OFF = 16,
+    BAR_CHART = 17,
 }
 
 export default class SvgImage {
@@ -74,6 +76,8 @@ export default class SvgImage {
                 return ToggleOnSVG;
             case Icon.TOGGLE_OFF:
                 return ToggleOffSVG;
+            case Icon.BAR_CHART:
+                return BarChartSVG;
             default:
                 return '';
         }

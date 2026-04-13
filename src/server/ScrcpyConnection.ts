@@ -24,6 +24,7 @@ interface SessionMetadata {
     screenWidth: number;
     screenHeight: number;
     audioCodec: string;
+    videoEncoder?: string;
 }
 
 export class ScrcpyConnection extends Mw {
@@ -134,6 +135,9 @@ export class ScrcpyConnection extends Mw {
 
         // 6. Parse initial metadata
         const metadata = await this.parseMetadata();
+        if (options.videoEncoder) {
+            metadata.videoEncoder = options.videoEncoder;
+        }
         console.log(TAG, `Session ready: ${metadata.deviceName} ${metadata.screenWidth}x${metadata.screenHeight}`);
 
         // 7. Send metadata to browser
