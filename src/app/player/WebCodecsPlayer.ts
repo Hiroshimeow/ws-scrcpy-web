@@ -64,6 +64,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     private detectedCodec: 'h264' | 'h265' | 'av1' | null = null;
     private metadataWidth = 0;
     private metadataHeight = 0;
+    private loggedFrameSize = false;
 
     constructor(udid: string, displayInfo?: DisplayInfo, name = WebCodecsPlayer.playerFullName) {
         super(udid, displayInfo, name, WebCodecsPlayer.storageKeyPrefix);
@@ -78,7 +79,11 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     private createDecoder(): VideoDecoder {
         return new VideoDecoder({
             output: (frame) => {
-                this.onFrameDecoded(0, 0, frame);
+                if (!this.loggedFrameSize) {
+                    console.log(`[WebCodecsPlayer] First decoded frame: display=${frame.displayWidth}x${frame.displayHeight} coded=${frame.codedWidth}x${frame.codedHeight} canvas=${this.tag.width}x${this.tag.height}`);
+                    this.loggedFrameSize = true;
+                }
+                this.onFrameDecoded(frame.displayWidth, frame.displayHeight, frame);
             },
             error: (error: DOMException) => {
                 console.error('[WebCodecsPlayer]', error, `code: ${error.code}`);
@@ -113,6 +118,8 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
                 }
                 this.decoder.configure({
                     codec: result.codec,
+                    codedWidth: w,
+                    codedHeight: h,
                     optimizeForLatency: true,
                 } as VideoDecoderConfig);
             }
@@ -293,7 +300,15 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             const data = this.decodedFrames.shift();
             if (data) {
                 const frame: VideoFrame = data.frame;
-                this.context.drawImage(frame, 0, 0);
+                const cw = this.tag.width;
+                const ch = this.tag.height;
+                // Edge H.265: displayWidth differs from codedWidth. Use full coded
+                // rect as source to draw the complete frame, not just the visible rect.
+                if (frame.displayWidth !== frame.codedWidth || frame.displayHeight !== frame.codedHeight) {
+                    this.context.drawImage(frame, 0, 0, frame.codedWidth, frame.codedHeight, 0, 0, cw, ch);
+                } else {
+                    this.context.drawImage(frame, 0, 0);
+                }
                 frame.close();
             }
         }
