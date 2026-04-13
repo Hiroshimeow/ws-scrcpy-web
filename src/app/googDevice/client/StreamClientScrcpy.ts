@@ -42,6 +42,31 @@ type StartParams = {
 
 const TAG = '[StreamClientScrcpy]';
 
+const CODEC_PREFERENCE = ['h265', 'av1', 'h264'] as const;
+const CODEC_WEBCODEC_MAP: Record<string, string> = {
+    h264: 'avc1.42E01E',
+    h265: 'hev1.1.6.L93.B0',
+    av1: 'av01.0.04M.08',
+};
+
+async function detectBestCodec(): Promise<string> {
+    if (typeof VideoDecoder === 'undefined' || typeof VideoDecoder.isConfigSupported !== 'function') {
+        return 'h264';
+    }
+    for (const codec of CODEC_PREFERENCE) {
+        try {
+            const result = await VideoDecoder.isConfigSupported({ codec: CODEC_WEBCODEC_MAP[codec] });
+            if (result.supported) {
+                console.log(TAG, `Auto-detected best codec: ${codec}`);
+                return codec;
+            }
+        } catch {
+            // not supported
+        }
+    }
+    return 'h264';
+}
+
 export class StreamClientScrcpy
     extends BaseClient<ParamsStreamScrcpy, never>
     implements KeyEventListener, InteractionHandlerListener
@@ -225,7 +250,7 @@ export class StreamClientScrcpy
         this.touchHandler = undefined;
     };
 
-    public startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): void {
+    public async startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): Promise<void> {
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
         }
@@ -300,6 +325,11 @@ export class StreamClientScrcpy
         };
         document.addEventListener('click', resumeAudio, { once: true });
         document.addEventListener('keydown', resumeAudio, { once: true });
+
+        // Auto-detect best codec if not specified (direct link without ConfigureScrcpy)
+        if (!this.params.videoCodec) {
+            this.params.videoCodec = await detectBestCodec();
+        }
 
         // Connect via ScrcpyDemuxer
         const streamUrl = this.buildStreamUrl();

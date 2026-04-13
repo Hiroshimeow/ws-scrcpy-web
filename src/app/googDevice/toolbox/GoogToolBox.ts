@@ -105,6 +105,16 @@ export class GoogToolBox extends ToolBox {
         });
         elements.push(uhid);
 
+        const stats = new ToolBoxCheckbox(
+            'Display quality stats',
+            SvgImage.Icon.SETTINGS,
+            `quality_stats_${udid}_${playerName}`,
+        );
+        stats.addEventListener('click', (_, el) => {
+            player.setShowQualityStats(el.getElement().checked);
+        });
+        elements.push(stats);
+
         if (moreBox) {
             const displayId = player.getVideoSettings().displayId;
             const id = `show_more_${udid}_${playerName}_${displayId}`;
