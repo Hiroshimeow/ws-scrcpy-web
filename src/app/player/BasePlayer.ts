@@ -389,14 +389,8 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
         this.touchableCanvas.width = width;
         this.touchableCanvas.height = height;
         if (this.parentElement) {
-            // Scale to fit viewport if video exceeds available space
-            const maxH = window.innerHeight;
-            const maxW = window.innerWidth - 60; // account for toolbar
-            const scale = Math.min(1, maxH / height, maxW / width);
-            const displayW = Math.round(width * scale);
-            const displayH = Math.round(height * scale);
-            this.parentElement.style.width = `${displayW}px`;
-            this.parentElement.style.height = `${displayH}px`;
+            this.parentElement.style.height = `${height}px`;
+            this.parentElement.style.width = `${width}px`;
         }
         const size = new Size(width, height);
         this.emit('video-view-resize', size);

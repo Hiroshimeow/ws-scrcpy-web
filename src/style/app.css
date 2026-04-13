@@ -109,17 +109,21 @@ body.stream {
 .video-layer {
     position: absolute;
     z-index: 0;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
 }
 
 .touch-layer {
     position: absolute;
     z-index: 1;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
 }
 
 .video {
     float: right;
-    max-height: 100%;
-    max-width: 100%;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
     background-color: #000000;
 }
 

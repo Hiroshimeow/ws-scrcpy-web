@@ -157,16 +157,22 @@ export abstract class BaseCanvasBasedPlayer extends BasePlayer {
     }
 
     protected initCanvas(width: number, height: number): void {
-        if (!this.canvas) {
-            this.tag.onerror = (event: Event | string): void => {
-                console.error(`[${this.name}]`, event);
-            };
-            this.tag.oncontextmenu = (event: MouseEvent): void => {
-                event.preventDefault();
-            };
+        if (this.canvas) {
+            const parent = this.tag.parentNode;
+            if (parent) {
+                const tag = BaseCanvasBasedPlayer.createElement(this.tag.id);
+                tag.className = this.tag.className;
+                parent.replaceChild(tag, this.tag);
+                parent.appendChild(this.touchableCanvas);
+                this.tag = tag;
+            }
         }
-        // Resize existing canvas instead of replacing the DOM element
-        // (replacing breaks Edge — the 2d context becomes stale)
+        this.tag.onerror = (event: Event | string): void => {
+            console.error(`[${this.name}]`, event);
+        };
+        this.tag.oncontextmenu = (event: MouseEvent): void => {
+            event.preventDefault();
+        };
         this.tag.width = Math.round(width);
         this.tag.height = Math.round(height);
     }
