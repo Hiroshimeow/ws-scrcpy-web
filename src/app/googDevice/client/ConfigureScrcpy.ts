@@ -85,7 +85,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         }
     }
 
-    private onProbeResult(result: ProbeResult): void {
+    private async onProbeResult(result: ProbeResult): Promise<void> {
         // Populate encoder dropdown (video encoders)
         const encoderSelect = this.encoderSelectElement || document.createElement('select');
         let child;
@@ -106,7 +106,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             while ((child = this.videoCodecSelect.firstChild)) {
                 this.videoCodecSelect.removeChild(child);
             }
-            const videoCodecs = this.detectVideoCodecs(result.videoEncoders);
+            const videoCodecs = await this.filterSupportedCodecs(this.detectVideoCodecs(result.videoEncoders));
             videoCodecs.forEach((codec) => {
                 const opt = document.createElement('option');
                 opt.value = codec;
@@ -196,6 +196,36 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         if (joined.includes('.av1.')) codecs.push('av1');
         if (codecs.length === 0) codecs.push('h264');
         return codecs;
+    }
+
+    private async filterSupportedCodecs(codecs: string[]): Promise<string[]> {
+        if (typeof VideoDecoder === 'undefined' || typeof VideoDecoder.isConfigSupported !== 'function') {
+            return codecs;
+        }
+        const codecMap: Record<string, string> = {
+            'h264': 'avc1.42E01E',
+            'h265': 'hev1.1.6.L93.B0',
+            'av1': 'av01.0.04M.08',
+        };
+        const supported: string[] = [];
+        for (const codec of codecs) {
+            const webCodecStr = codecMap[codec];
+            if (!webCodecStr) {
+                supported.push(codec);
+                continue;
+            }
+            try {
+                const result = await VideoDecoder.isConfigSupported({ codec: webCodecStr });
+                if (result.supported) {
+                    supported.push(codec);
+                } else {
+                    console.log(this.TAG, `Browser does not support decoding ${codec} (${webCodecStr})`);
+                }
+            } catch {
+                console.log(this.TAG, `Browser does not support decoding ${codec} (${webCodecStr})`);
+            }
+        }
+        return supported.length > 0 ? supported : codecs;
     }
 
     private detectAudioCodecs(encoders: string[]): string[] {
