@@ -198,6 +198,11 @@ export class StreamClientScrcpy
             (this.player as any).setMetadataSize(meta.screenWidth, meta.screenHeight);
         }
 
+        // Pass session info for quality stats overlay
+        if (this.player) {
+            this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, this.player.getVideoSettings().encoderName);
+        }
+
         if (meta.audioCodec !== 'disabled' && meta.audioCodec !== 'error') {
             this.audioPlayer = new AudioPlayer(meta.audioCodec);
             this.audioPlayer.start().catch((err) => {

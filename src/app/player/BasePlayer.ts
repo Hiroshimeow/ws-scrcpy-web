@@ -67,6 +67,9 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
     protected perSecondQualityStats?: FramesPerSecondStats;
     protected momentumQualityStats?: PlaybackQuality;
     protected bounds: Size | null = null;
+    protected sessionVideoCodec?: string;
+    protected sessionAudioCodec?: string;
+    protected sessionEncoder?: string;
     private totalStats: PlaybackQuality = {
         decodedFrames: 0,
         droppedFrames: 0,
@@ -456,6 +459,21 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
             return;
         }
         const newStats = [];
+        // Session info: resolution, codec, encoder, bitrate
+        if (this.screenInfo) {
+            const { width, height } = this.screenInfo.videoSize;
+            newStats.push(`Resolution:  ${width}x${height}`);
+        }
+        if (this.sessionVideoCodec) {
+            newStats.push(`Video codec: ${this.sessionVideoCodec.toUpperCase()}`);
+        }
+        if (this.sessionEncoder) {
+            newStats.push(`Encoder:     ${this.sessionEncoder}`);
+        }
+        if (this.videoSettings.bitrate) {
+            newStats.push(`Bitrate:     ${Util.prettyBytes(this.videoSettings.bitrate)}/s`);
+        }
+        // Per-frame stats
         if (this.perSecondQualityStats && this.momentumQualityStats) {
             const { decodedFrames, droppedFrames, inputBytes, inputFrames } = this.momentumQualityStats;
             const { avgDecoded, avgDropped, avgSize, avgInput } = this.perSecondQualityStats;
@@ -495,7 +513,8 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
             return;
         }
 
-        const height = BasePlayer.STATS_HEIGHT;
+        // Scale font relative to canvas height so stats are readable at any resolution
+        const height = Math.max(BasePlayer.STATS_HEIGHT, Math.round(this.touchableCanvas.height / 40));
         const lines = this.statLines.length;
         const p = height / 2;
         const d = p * 2;
@@ -534,6 +553,12 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
 
     public getShowQualityStats(): boolean {
         return this.showQualityStats;
+    }
+
+    public setSessionInfo(videoCodec: string, audioCodec: string, encoder?: string): void {
+        this.sessionVideoCodec = videoCodec;
+        this.sessionAudioCodec = audioCodec;
+        this.sessionEncoder = encoder;
     }
 
     public setBounds(bounds: Size): void {
