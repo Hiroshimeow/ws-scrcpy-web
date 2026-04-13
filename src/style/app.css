@@ -104,12 +104,6 @@ body.stream {
     z-index: 1;
     float: right;
     display: inline-block;
-    max-height: 100vh;
-}
-
-.device-view .video {
-    max-height: 100vh;
-    overflow: hidden;
 }
 
 .video-layer {
