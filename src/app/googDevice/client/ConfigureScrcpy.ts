@@ -99,11 +99,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             optionElement.innerText = value;
             encoderSelect.appendChild(optionElement);
         });
-        // Default to hardware HEVC encoder if available, matching codec preference
-        const hevcHwIndex = allEncoders.findIndex((e) => /\.mtk\.hevc\.|\.qcom\.hevc\.|\.exynos\.hevc\./i.test(e));
-        if (hevcHwIndex !== -1) {
-            encoderSelect.selectedIndex = hevcHwIndex;
-        }
         this.encoderSelectElement = encoderSelect;
 
         // Populate video codec dropdown, preferring H.265 (hardware) then AV1
@@ -118,14 +113,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
                 opt.innerText = codec;
                 this.videoCodecSelect!.appendChild(opt);
             });
-            // Prefer H.265 (hardware encoder on most devices), then AV1, then H.264
-            const hevcIndex = videoCodecs.indexOf('h265');
-            const av1Index = videoCodecs.indexOf('av1');
-            if (hevcIndex !== -1) {
-                this.videoCodecSelect.selectedIndex = hevcIndex;
-            } else if (av1Index !== -1) {
-                this.videoCodecSelect.selectedIndex = av1Index;
-            }
         }
 
         // Populate audio codec dropdown
@@ -161,8 +148,33 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             );
         }
 
-        // Apply player video settings
+        // Apply player video settings (may reset dropdowns from stored prefs)
         this.updateVideoSettingsForPlayer();
+
+        // Apply preferred codec/encoder defaults if stored settings didn't set them
+        if (this.videoCodecSelect) {
+            const currentCodec = this.videoCodecSelect.value;
+            if (!currentCodec || currentCodec === 'h264') {
+                const opts = Array.from(this.videoCodecSelect.options);
+                const hevcOpt = opts.find((o) => o.value === 'h265');
+                const av1Opt = opts.find((o) => o.value === 'av1');
+                if (hevcOpt) {
+                    this.videoCodecSelect.selectedIndex = hevcOpt.index;
+                } else if (av1Opt) {
+                    this.videoCodecSelect.selectedIndex = av1Opt.index;
+                }
+            }
+        }
+        if (this.encoderSelectElement) {
+            const currentEncoder = this.encoderSelectElement.value;
+            if (!currentEncoder) {
+                const opts = Array.from(this.encoderSelectElement.options);
+                const hevcHw = opts.find((o) => /\.mtk\.hevc\.|\.qcom\.hevc\.|\.exynos\.hevc\./i.test(o.value));
+                if (hevcHw) {
+                    this.encoderSelectElement.selectedIndex = hevcHw.index;
+                }
+            }
+        }
 
         // Mark ready
         this.setStatus('Ready');
@@ -659,12 +671,14 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         player.setVideoSettings(videoSettings, fitToScreen, false);
         const videoCodec = this.videoCodecSelect?.value;
         const audioCodec = this.audioCodecSelect?.value;
+        const encoderName = this.encoderSelectElement?.value || undefined;
         const params: ParamsStreamScrcpy = {
             ...this.params,
             udid: this.udid,
             fitToScreen,
             videoCodec,
             audioCodec,
+            encoderName,
         };
         StreamClientScrcpy.start(params, player, fitToScreen, videoSettings);
     };

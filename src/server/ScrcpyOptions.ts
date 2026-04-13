@@ -13,6 +13,7 @@ export interface ScrcpyOptions {
     sendCodecMeta?: boolean;
     sendFrameMeta?: boolean;
     tunnelForward?: boolean;
+    videoEncoder?: string;
 }
 
 const DEFAULTS: Omit<Required<ScrcpyOptions>, 'scid'> = {
@@ -44,5 +45,8 @@ export function serializeOptions(options: ScrcpyOptions): string[] {
     }
     // scid is always emitted
     args.push(`scid=${options.scid}`);
+    if (options.videoEncoder) {
+        args.push(`video_encoder=${options.videoEncoder}`);
+    }
     return args;
 }

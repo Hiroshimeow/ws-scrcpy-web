@@ -92,6 +92,11 @@ export class ScrcpyConnection extends Mw {
             options.audioCodec = audioCodec;
         }
 
+        const videoEncoder = this.queryParams.get('videoEncoder');
+        if (videoEncoder) {
+            options.videoEncoder = videoEncoder;
+        }
+
         return options;
     }
 

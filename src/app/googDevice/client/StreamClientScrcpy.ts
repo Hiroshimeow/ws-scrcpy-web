@@ -163,6 +163,11 @@ export class StreamClientScrcpy
             url.searchParams.set('audioCodec', audioCodec);
         }
 
+        const encoderName = this.params.encoderName;
+        if (encoderName) {
+            url.searchParams.set('videoEncoder', encoderName);
+        }
+
         return url.toString();
     }
 
@@ -200,7 +205,7 @@ export class StreamClientScrcpy
 
         // Pass session info for quality stats overlay
         if (this.player) {
-            this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, this.player.getVideoSettings().encoderName);
+            this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, this.params.encoderName);
         }
 
         if (meta.audioCodec !== 'disabled' && meta.audioCodec !== 'error') {

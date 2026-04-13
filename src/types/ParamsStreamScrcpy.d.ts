@@ -9,4 +9,5 @@ export interface ParamsStreamScrcpy extends ParamsStream {
     videoSettings?: VideoSettings;
     videoCodec?: string;
     audioCodec?: string;
+    encoderName?: string;
 }
