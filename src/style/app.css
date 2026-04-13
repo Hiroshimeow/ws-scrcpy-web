@@ -151,7 +151,7 @@ body.stream {
 }
 
 .control-wrapper > label {
-    display: inline-block;
+    display: block;
 }
 
 .control-button > svg {
