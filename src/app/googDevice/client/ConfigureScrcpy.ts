@@ -101,7 +101,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         });
         this.encoderSelectElement = encoderSelect;
 
-        // Populate video codec dropdown, preferring AV1 if available
+        // Populate video codec dropdown, preferring H.265 (hardware) then AV1
         if (this.videoCodecSelect) {
             while ((child = this.videoCodecSelect.firstChild)) {
                 this.videoCodecSelect.removeChild(child);
@@ -113,8 +113,12 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
                 opt.innerText = codec;
                 this.videoCodecSelect!.appendChild(opt);
             });
+            // Prefer H.265 (hardware encoder on most devices), then AV1, then H.264
+            const hevcIndex = videoCodecs.indexOf('h265');
             const av1Index = videoCodecs.indexOf('av1');
-            if (av1Index !== -1) {
+            if (hevcIndex !== -1) {
+                this.videoCodecSelect.selectedIndex = hevcIndex;
+            } else if (av1Index !== -1) {
                 this.videoCodecSelect.selectedIndex = av1Index;
             }
         }
