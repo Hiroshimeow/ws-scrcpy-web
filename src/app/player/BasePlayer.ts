@@ -92,7 +92,7 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
     public static preferredVideoSettings: VideoSettings = new VideoSettings({
         lockedVideoOrientation: -1,
         bitrate: 524288,
-        maxFps: 24,
+        maxFps: 15,
         iFrameInterval: 5,
         bounds: new Size(480, 480),
         sendFrameMeta: false,
