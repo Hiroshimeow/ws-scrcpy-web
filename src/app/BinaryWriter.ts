@@ -81,6 +81,6 @@ export class BinaryWriter {
     }
 
     toUint8Array(): Uint8Array {
-        return this.buf;
+        return this.buf.subarray(0, this.pos);
     }
 }

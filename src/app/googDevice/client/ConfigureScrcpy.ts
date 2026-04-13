@@ -101,7 +101,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         });
         this.encoderSelectElement = encoderSelect;
 
-        // Populate video codec dropdown
+        // Populate video codec dropdown, preferring AV1 if available
         if (this.videoCodecSelect) {
             while ((child = this.videoCodecSelect.firstChild)) {
                 this.videoCodecSelect.removeChild(child);
@@ -113,6 +113,10 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
                 opt.innerText = codec;
                 this.videoCodecSelect!.appendChild(opt);
             });
+            const av1Index = videoCodecs.indexOf('av1');
+            if (av1Index !== -1) {
+                this.videoCodecSelect.selectedIndex = av1Index;
+            }
         }
 
         // Populate audio codec dropdown

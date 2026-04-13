@@ -87,6 +87,7 @@ export class GoogToolBox extends ToolBox {
             SvgImage.Icon.KEYBOARD,
             `capture_keyboard_${udid}_${playerName}`,
         );
+        keyboard.getElement().checked = true;
         keyboard.addEventListener('click', (_, el) => {
             const element = el.getElement();
             client.setHandleKeyboardEvents(element.checked);

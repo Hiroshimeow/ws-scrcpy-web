@@ -11,7 +11,7 @@ export interface ScrollControlMessageInterface extends ControlMessageInterface {
 }
 
 export class ScrollControlMessage extends ControlMessage {
-    public static PAYLOAD_LENGTH = 25;
+    public static PAYLOAD_LENGTH = 20;
 
     constructor(
         readonly position: Position,
@@ -32,8 +32,8 @@ export class ScrollControlMessage extends ControlMessage {
             .writeUInt32BE(this.position.point.y)
             .writeUInt16BE(this.position.screenSize.width)
             .writeUInt16BE(this.position.screenSize.height)
-            .writeInt32BE(Math.round(this.hScroll * 65535))
-            .writeInt32BE(Math.round(this.vScroll * 65535))
+            .writeInt16BE(this.hScroll)
+            .writeInt16BE(this.vScroll)
             .writeUInt32BE(this.buttons)
             .toUint8Array();
     }

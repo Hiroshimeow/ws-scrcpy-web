@@ -11,6 +11,7 @@
     "build:dev": "webpack --config webpack/ws-scrcpy-web.dev.ts --stats-error-details",
     "build": "webpack --config webpack/ws-scrcpy-web.prod.ts --stats-error-details",
     "start": "npm run build && node dist/index.js",
+    "test": "vitest run",
     "lint": "npx @biomejs/biome check src/",
     "format": "npx @biomejs/biome check --write src/"
   },
@@ -30,6 +31,7 @@
     "ts-loader": "^9.3.1",
     "ts-node": "^10.9.1",
     "typescript": "^5.5",
+    "vitest": "^4.1.4",
     "webpack": "^5.94.0",
     "webpack-cli": "^5"
   }

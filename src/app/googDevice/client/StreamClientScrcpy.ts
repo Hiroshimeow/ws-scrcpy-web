@@ -300,9 +300,11 @@ export class StreamClientScrcpy
         this.demuxer.onMetadata(this.onMetadata);
         this.demuxer.onDisconnect(this.onDisconnected);
 
-        // In embed mode, auto-enable keyboard capture and click-to-focus
+        // Always enable keyboard capture
+        this.setHandleKeyboardEvents(true);
+
+        // In embed mode, also add click-to-focus
         if (document.body.classList.contains('embed')) {
-            this.setHandleKeyboardEvents(true);
             video.addEventListener('click', () => video.focus(), { once: true });
         }
 
