@@ -90,7 +90,7 @@ async function detectBestCodecAndEncoder(
     } catch (err) {
         console.warn(TAG, `Device probe failed, falling back to browser-only detection:`, (err as Error).message);
         // Fall back to browser-only detection without device info
-        for (const codec of ['h265', 'av1', 'h264']) {
+        for (const codec of ['h265', 'h264', 'av1']) {
             if (await browserSupportsCodec(codec)) {
                 console.log(TAG, `Auto-detected best codec (no probe): ${codec}`);
                 return { videoCodec: codec };

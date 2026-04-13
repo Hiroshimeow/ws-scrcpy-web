@@ -157,12 +157,10 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
             if (!currentCodec || currentCodec === 'h264') {
                 const opts = Array.from(this.videoCodecSelect.options);
                 const hevcOpt = opts.find((o) => o.value === 'h265');
-                const av1Opt = opts.find((o) => o.value === 'av1');
                 if (hevcOpt) {
                     this.videoCodecSelect.selectedIndex = hevcOpt.index;
-                } else if (av1Opt) {
-                    this.videoCodecSelect.selectedIndex = av1Opt.index;
                 }
+                // H.264 stays as default if H.265 unavailable; AV1 is software-only and slow
             }
         }
         if (this.encoderSelectElement) {
