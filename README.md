@@ -24,7 +24,9 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - **UHID keyboard/mouse** -- hardware-level input via USB HID reports (pointer lock for mouse)
 - Touch and keyboard input forwarding (classic scrcpy keycode mode)
 - Configure stream dialog with codec/encoder selection and device probe
+- **Redesigned toolbar** -- compact controls with quick stats (FPS, resolution, codec), stream refresh button, and consistent alignment
 - **Quality stats overlay** -- real-time FPS, bitrate, resolution, codec, and encoder info
+- **Viewport scaling** -- video scales to fill available space with correct aspect ratio
 - Remote ADB shell terminal
 - File manager (browse, upload, download)
 - **Embed mode** -- streamlined iframe integration for embedding in other apps (hides toolbar, auto-scales video, used by [Control Menu](https://github.com/bilbospocketses/control-menu))
