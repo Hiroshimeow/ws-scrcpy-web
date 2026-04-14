@@ -271,19 +271,18 @@ export abstract class InteractionHandler {
         const { action, pointerId } = message;
         const previous = storage.get(pointerId);
         if (action === MotionEvent.ACTION_UP) {
-            if (!previous) {
-                console.warn(logPrefix, 'Received ACTION_UP while there are no DOWN stored');
-            } else {
-                storage.delete(pointerId);
-                messages.push(message);
-            }
+            storage.delete(pointerId);
+            messages.push(message);
         } else if (action === MotionEvent.ACTION_DOWN) {
             if (previous) {
-                console.warn(logPrefix, 'Received ACTION_DOWN while already has one stored');
-            } else {
-                storage.set(pointerId, message);
-                messages.push(message);
+                // Stale DOWN (mouseup was lost during reconnection/focus change).
+                // Send a synthetic UP to clean the device state, then accept the new DOWN.
+                const syntheticUp = InteractionHandler.createEmulatedMessage(MotionEvent.ACTION_UP, previous);
+                messages.push(syntheticUp);
+                storage.delete(pointerId);
             }
+            storage.set(pointerId, message);
+            messages.push(message);
         } else if (action === MotionEvent.ACTION_MOVE) {
             if (!previous) {
                 if (
