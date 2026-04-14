@@ -440,14 +440,17 @@ export class StreamClientScrcpy
     private checkForDegradation(): void {
         if (this.baselineFrameSize === 0) return;
         const now = Date.now();
-        // Don't check within 10s of a refresh
-        if (now - this.lastRefreshTime < 10000) return;
+        // Don't check within 30s of a refresh (was 10s — too aggressive)
+        if (now - this.lastRefreshTime < 30000) return;
+        // Need at least 10 samples for a reliable average
+        if (this.frameSizes.length < 10) return;
 
         const avg = this.frameSizes.reduce((a, b) => a + b, 0) / this.frameSizes.length;
-        // If average frame size drops below 25% of baseline for sustained period
-        if (avg < this.baselineFrameSize * 0.25) {
+        // If average frame size drops below 10% of baseline for sustained period
+        // (was 25% — too sensitive for static content like screensavers)
+        if (avg < this.baselineFrameSize * 0.10) {
             this.degradationCount++;
-            if (this.degradationCount >= 3) {
+            if (this.degradationCount >= 5) {
                 console.log(TAG, `Quality degradation detected (avg=${Math.round(avg)} vs baseline=${Math.round(this.baselineFrameSize)}), refreshing stream`);
                 this.degradationCount = 0;
                 this.frameSizes = [];
