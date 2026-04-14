@@ -1,0 +1,707 @@
+# ws-scrcpy-web Technical Guide
+
+This document covers the internal architecture of ws-scrcpy-web -- a browser-based Android screen mirroring tool that bridges scrcpy-server's TCP sockets to a multiplexed WebSocket for real-time video, audio, and input control in the browser.
+
+**Target audience:** Developers who need to understand, modify, or debug the codebase without re-discovering its internals.
+
+**scrcpy-server version:** 3.3.4 (vanilla Genymobile binary, no modifications)
+
+---
+
+## Table of Contents
+
+1. [Directory Structure](#1-directory-structure)
+2. [Communication Protocol](#2-communication-protocol)
+3. [Video Pipeline](#3-video-pipeline)
+4. [Audio Pipeline](#4-audio-pipeline)
+5. [Input Pipeline](#5-input-pipeline)
+6. [Embed Mode](#6-embed-mode)
+7. [Quality Protection System](#7-quality-protection-system)
+8. [Device Probe and Codec Selection](#8-device-probe-and-codec-selection)
+9. [Server Architecture](#9-server-architecture)
+10. [Build and Development](#10-build-and-development)
+11. [Known Issues and Fixes](#11-known-issues-and-fixes)
+
+---
+
+## 1. Directory Structure
+
+```
+src/
+├── app/                              # Browser-side code (webpack bundle)
+│   ├── player/
+│   │   ├── WebCodecsPlayer.ts        # WebCodecs VideoDecoder, codec detection, canvas rendering
+│   │   ├── BasePlayer.ts             # State machine, stats tracking, TypedEmitter base
+│   │   ├── BaseCanvasBasedPlayer.ts  # Canvas/layer management, frame queue, rAF loop
+│   │   ├── h264-utils.ts             # H.264 SPS parser (profile, level, dimensions, SAR)
+│   │   ├── h265-utils.ts             # H.265 SPS/VPS parser, NALU type detection
+│   │   └── av1-utils.ts              # AV1 OBU parser, Sequence Header, AV1CodecConfigurationRecord
+│   ├── audio/
+│   │   ├── AudioPlayer.ts            # WebCodecs AudioDecoder, multi-codec, worklet orchestration
+│   │   └── PcmWorklet.ts             # AudioWorklet source (ring buffer, inline as string literal)
+│   ├── interactionHandler/
+│   │   ├── InteractionHandler.ts     # Base: static document.body listeners, touch coordinate math
+│   │   ├── FeaturedInteractionHandler.ts  # Mouse-to-touch mapping, right-click=BACK, scroll
+│   │   └── SimpleInteractionHandler.ts    # Minimal touch handler
+│   ├── googDevice/
+│   │   ├── client/
+│   │   │   ├── StreamClientScrcpy.ts # Main client: connects demuxer, player, touch, audio, UHID
+│   │   │   ├── ConfigureScrcpy.ts    # Stream configuration dialog UI
+│   │   │   └── DeviceTracker.ts      # Device list UI
+│   │   ├── UhidManager.ts            # Creates/destroys UHID keyboard+mouse devices
+│   │   ├── UhidKeyboardHandler.ts    # Keyboard events -> USB HID key reports
+│   │   ├── UhidMouseHandler.ts       # Pointer lock mouse -> USB HID mouse reports
+│   │   ├── KeyInputHandler.ts        # Legacy scrcpy keycode input (Android keycodes)
+│   │   ├── hid-usage-tables.ts       # Browser code -> USB HID keycode mapping tables
+│   │   └── toolbox/                  # Toolbar UI (GoogToolBox, GoogMoreBox)
+│   ├── controlMessage/
+│   │   ├── ControlMessage.ts         # Base class, type constants (0-17, 101-102)
+│   │   ├── TouchControlMessage.ts    # 32-byte binary touch event
+│   │   ├── KeyCodeControlMessage.ts  # Android keycode event
+│   │   ├── ScrollControlMessage.ts   # Scroll event with position
+│   │   ├── UhidCreateMessage.ts      # UHID device creation with HID descriptors
+│   │   ├── UhidInputMessage.ts       # UHID input reports (keyboard 8-byte, mouse 4-byte)
+│   │   └── UhidDestroyMessage.ts     # UHID device teardown
+│   ├── client/
+│   │   ├── BaseClient.ts             # URL parameter parsing, session setup
+│   │   ├── DeviceProbeClient.ts      # Browser-side probe: WebSocket to server DeviceProbe
+│   │   └── HostTracker.ts            # Multi-host device discovery
+│   ├── ScrcpyDemuxer.ts              # WebSocket channel demultiplexer (browser-side)
+│   └── index.ts                      # Browser entry point
+├── server/                            # Node.js server
+│   ├── ScrcpyConnection.ts           # TCP-to-WebSocket bridge (the core server middleware)
+│   ├── FrameReader.ts                # Parses scrcpy frame format from TCP stream
+│   ├── ScrcpyOptions.ts              # Builds scrcpy-server CLI arguments
+│   ├── DeviceProbe.ts                # Probes device for available encoders via ADB
+│   ├── AdbClient.ts                  # ADB command wrapper (push, shell, reverse)
+│   ├── Config.ts                     # Configuration loader (env vars + config.json)
+│   ├── index.ts                      # Server entry point, service/middleware registration
+│   ├── mw/
+│   │   ├── Mw.ts                     # Middleware base class
+│   │   ├── WebsocketMultiplexer.ts   # Multiplexes sub-protocols over a single WS
+│   │   └── HostTracker.ts            # Server-side device tracker broadcast
+│   └── services/
+│       ├── HttpServer.ts             # Static file server
+│       └── WebSocketServer.ts        # WS upgrade handler, routes to middleware
+├── common/                            # Shared between server and browser
+│   ├── ChannelId.ts                  # Channel enum: VIDEO=0, AUDIO=1, CONTROL=2, DEVICE_MSG=3, METADATA=4
+│   ├── ScrcpyCodec.ts               # Codec ID constants (4-byte magic values) and name lookup
+│   ├── Constants.ts                  # Server version, package name, device paths
+│   ├── Action.ts                     # WebSocket action identifiers (STREAM_SCRCPY, PROBE_DEVICE, etc.)
+│   ├── ProbeResult.ts                # Probe response interface
+│   └── TypedEmitter.ts              # Type-safe event emitter
+└── style/app.css                      # All CSS including embed mode rules
+```
+
+---
+
+## 2. Communication Protocol
+
+### 2.1 WebSocket Multiplexing
+
+All communication between browser and server flows through a single WebSocket connection. Every message is prefixed with a 1-byte channel identifier:
+
+| Channel | ID | Direction | Purpose |
+|---------|-----|-----------|---------|
+| `VIDEO` | `0` | Server -> Browser | Encoded video frames |
+| `AUDIO` | `1` | Server -> Browser | Encoded audio frames |
+| `CONTROL` | `2` | Browser -> Server | Touch, key, scroll, UHID commands |
+| `DEVICE_MSG` | `3` | Server -> Browser | Clipboard, ACK from device |
+| `METADATA` | `4` | Server -> Browser | Session metadata (sent once at start) |
+
+Wire format for every WebSocket message:
+
+```
+[1 byte: channel ID] [N bytes: payload]
+```
+
+The channel byte is prepended by `ScrcpyConnection.sendChannel()` on the server and stripped by `ScrcpyDemuxer.onMessage()` in the browser.
+
+### 2.2 Session Metadata
+
+Sent once on channel 4 immediately after the TCP sockets are established. The payload is a UTF-8 JSON string:
+
+```json
+{
+    "deviceName": "Pixel 7",
+    "videoCodec": "h265",
+    "screenWidth": 1080,
+    "screenHeight": 2400,
+    "audioCodec": "opus",
+    "videoEncoder": "c2.qcom.hevc.encoder"
+}
+```
+
+The browser uses this to initialize the player canvas dimensions, configure the audio decoder, and populate the quality stats overlay.
+
+### 2.3 Media Frame Format
+
+Video (channel 0) and audio (channel 1) frames share an identical wire format:
+
+```
+[8 bytes: PTS (uint64 big-endian)] [4 bytes: size (uint32 big-endian)] [size bytes: encoded data]
+```
+
+The 12-byte header is defined in both `FrameReader.ts` (server) and `ScrcpyDemuxer.ts` (browser) as `FRAME_HEADER_SIZE = 12`.
+
+### 2.4 PTS Flag Bits
+
+The top two bits of the 64-bit PTS field carry frame type information:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 63 (MSB) | `0x8000000000000000` | Config packet (SPS/PPS, AudioSpecificConfig, etc.) |
+| 62 | `0x4000000000000000` | Keyframe (IDR for H.264/H.265, key OBU for AV1) |
+
+The actual presentation timestamp is extracted by masking with `0x3FFFFFFFFFFFFFFF`:
+
+```typescript
+const isConfig = (rawPts & PTS_FLAG_CONFIG) !== 0n;
+const isKeyframe = (rawPts & PTS_FLAG_KEYFRAME) !== 0n;
+const pts = rawPts & PTS_CLEAR_FLAGS;
+```
+
+These flags are set by scrcpy-server on the TCP stream, parsed by `FrameReader` on the server, then re-encoded into the WebSocket frame headers by `ScrcpyConnection.startForwarding()`. The browser's `ScrcpyDemuxer.handleMediaFrame()` parses them again.
+
+### 2.5 Control Messages (Browser -> Server)
+
+Control messages are sent on channel 2. The browser prepends the channel byte, and the server's `ScrcpyConnection.onSocketMessage()` strips it before forwarding the raw payload to the scrcpy-server control socket.
+
+Each control message type is identified by its first byte:
+
+| Type | ID | Description |
+|------|----|-------------|
+| `TYPE_KEYCODE` | `0` | Android keycode press/release |
+| `TYPE_TEXT` | `1` | Text injection |
+| `TYPE_TOUCH` | `2` | Touch event (32 bytes payload) |
+| `TYPE_SCROLL` | `3` | Scroll event with position |
+| `TYPE_BACK_OR_SCREEN_ON` | `4` | Back button or wake screen |
+| `TYPE_GET_CLIPBOARD` | `8` | Request clipboard content |
+| `TYPE_SET_CLIPBOARD` | `9` | Set clipboard content |
+| `TYPE_UHID_CREATE` | `12` | Create UHID virtual device |
+| `TYPE_UHID_INPUT` | `13` | Send HID input report |
+| `TYPE_UHID_DESTROY` | `14` | Destroy UHID virtual device |
+
+---
+
+## 3. Video Pipeline
+
+### 3.1 Server Side: TCP to WebSocket Bridge
+
+The connection lifecycle in `ScrcpyConnection.start()`:
+
+1. **Push binary:** ADB-push `scrcpy-server.jar` to `/data/local/tmp/scrcpy-server.jar`
+2. **TCP server:** Create an ephemeral-port TCP server on `127.0.0.1`
+3. **ADB reverse tunnel:** `adb reverse localabstract:scrcpy_<scid> tcp:<port>` so scrcpy-server can connect back
+4. **Launch scrcpy-server:** Via `adb shell` with `CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server 3.3.4 <options>`
+5. **Accept 3 TCP sockets:** Video, audio, and control, in that order (10-second timeout)
+6. **Parse metadata:** 76 bytes from the video socket:
+   - Bytes 0-63: Device name (null-terminated UTF-8, padded to 64 bytes)
+   - Bytes 64-67: Video codec ID (uint32 BE, e.g., `0x68323635` = "h265")
+   - Bytes 68-71: Screen width (uint32 BE)
+   - Bytes 72-75: Screen height (uint32 BE)
+   - Audio socket: 4 bytes for audio codec ID (or `0x00000000` disabled / `0x00000001` error)
+7. **Send metadata:** JSON on channel 4 to the browser
+8. **Start forwarding:** `FrameReader` instances on video and audio TCP sockets parse the frame-header format and forward via `sendChannel()`
+
+The `FrameReader` accumulates TCP chunks into an internal buffer and drains complete frames (12-byte header + payload). It emits typed `ScrcpyFrame` objects with `type: 'config' | 'keyframe' | 'frame'`.
+
+### 3.2 Browser Side: Demuxer to Player
+
+`ScrcpyDemuxer` receives binary WebSocket messages, strips the channel byte, and dispatches:
+
+```
+WebSocket -> ScrcpyDemuxer.onMessage()
+    -> channel 0 -> handleMediaFrame() -> videoCallback(data, pts, isConfig, isKeyframe)
+    -> channel 1 -> handleMediaFrame() -> audioCallback(data, pts, isConfig)
+    -> channel 3 -> deviceMsgCallback(payload)
+    -> channel 4 -> handleMetadata() -> metadataCallback(parsed JSON)
+```
+
+`StreamClientScrcpy` wires the callbacks:
+- `onVideoFrame` -> `WebCodecsPlayer.pushVideoFrame()`
+- `onAudioFrame` -> `AudioPlayer.pushFrame()`
+- `onMetadata` -> Initialize audio player, set canvas dimensions
+
+### 3.3 Codec Detection and Configuration
+
+`WebCodecsPlayer.parseConfig()` receives config packets (PTS bit 63 set) and auto-detects the codec by inspecting the bitstream:
+
+**H.264 detection:** Looks for Annex B start codes (`00 00 00 01` or `00 00 01`), then checks if the first NALU type is 7 (SPS). Parses the SPS via `parseSPS()` from `h264-utils.ts` to extract profile, level, and dimensions. Generates a WebCodecs codec string like `avc1.42E01E`.
+
+**H.265 detection:** Same start code scan, but checks for HEVC NALU types VPS (32) or SPS (33) using `hevcNalType()`. Parses via `parseHevcSPS()` from `h265-utils.ts`. Generates codec strings like `hev1.1.6.L93.B0`.
+
+**AV1 detection:** No Annex B start codes present. First tries `parseAv1ConfigRecord()` (4-byte AV1CodecConfigurationRecord with marker bit = 1), then falls back to raw OBU Sequence Header parsing via `parseAv1SequenceHeader()`. Generates codec strings like `av01.0.04M.08`.
+
+### 3.4 Config Prepending
+
+A critical difference between codecs:
+
+- **H.264 and H.265:** The `configData` (SPS/PPS or VPS/SPS/PPS) must be prepended to every keyframe before passing to `VideoDecoder.decode()`. Without this, the decoder cannot decode the keyframe independently.
+- **AV1:** Config prepending is not needed. Keyframes are self-contained.
+
+```typescript
+if (this.detectedCodec === 'av1') {
+    // AV1: decode keyframe directly
+    this.decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: Number(pts), data }));
+} else {
+    // H.264/H.265: prepend config data
+    const fullData = new Uint8Array(this.configData.length + data.length);
+    fullData.set(this.configData);
+    fullData.set(data, this.configData.length);
+    this.decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: Number(pts), data: fullData }));
+}
+```
+
+### 3.5 Decoder Configuration
+
+When a config packet arrives, `WebCodecsPlayer` calls `VideoDecoder.configure()` with:
+
+```typescript
+this.decoder.configure({
+    codec: result.codec,       // e.g., "hev1.1.6.L93.B0"
+    codedWidth: codedW,        // From SPS parse (may include alignment padding)
+    codedHeight: codedH,       // e.g., 1088 for a 1080p stream
+    optimizeForLatency: true,
+});
+```
+
+The canvas is sized to the **display dimensions** (from scrcpy metadata), not the coded dimensions. This distinction matters; see [Known Issues](#111-h265-coded-vs-display-dimensions).
+
+### 3.6 Canvas Rendering
+
+`drawDecoded()` pulls decoded `VideoFrame` objects from a queue and renders them to a 2D canvas:
+
+```typescript
+protected drawDecoded = (): void => {
+    const frame: VideoFrame = this.decodedFrames.shift().frame;
+    if (frame.displayWidth !== frame.codedWidth || frame.displayHeight !== frame.codedHeight) {
+        // Edge H.265 fix: use 8-arg drawImage with full coded rect as source
+        this.context.drawImage(frame, 0, 0, frame.codedWidth, frame.codedHeight, 0, 0, cw, ch);
+    } else {
+        this.context.drawImage(frame, 0, 0);
+    }
+    frame.close();
+};
+```
+
+The frame queue is drained via `requestAnimationFrame`. When the queue is empty, the rAF loop stops and restarts when new frames arrive.
+
+---
+
+## 4. Audio Pipeline
+
+### 4.1 Codec Support
+
+| Codec | WebCodecs String | Config Handling | Notes |
+|-------|-----------------|-----------------|-------|
+| Opus | `opus` | No config packet needed; configure immediately | Default codec, most reliable |
+| AAC | `mp4a.40.2` | Config packet = AudioSpecificConfig; reconfigure decoder on receipt | |
+| FLAC | `flac` | Config packet = STREAMINFO block; reconfigure decoder on receipt | |
+| Raw PCM | N/A | Bypasses AudioDecoder entirely | S16LE interleaved stereo, converted to Float32 |
+
+### 4.2 AudioPlayer Architecture
+
+```
+ScrcpyDemuxer (channel 1)
+    -> AudioPlayer.pushFrame(data, pts, isConfig)
+        -> isConfig? Store configData, (re)configure decoder
+        -> raw? pushRawPcm() -> convert S16LE -> Float32 -> worklet
+        -> else: AudioDecoder.decode() -> postDecodedAudio() -> worklet
+```
+
+The `AudioContext` is created with `latencyHint: 'interactive'` and `sampleRate: 48000`. A `GainNode` between the worklet and destination provides volume control.
+
+### 4.3 PcmWorklet Ring Buffer
+
+The `PcmWorklet` is loaded via Blob URL (the source code is an inline string in `PcmWorklet.ts`). It implements a simple ring buffer:
+
+- Decoded audio frames arrive as `Float32Array[]` channel data via `port.postMessage()`
+- The `process()` callback reads from the queue, filling the 128-sample output buffer
+- On underrun, remaining samples are filled with silence (zeros)
+- Transferable arrays are used for zero-copy message passing
+
+### 4.4 Autoplay Policy
+
+Browsers block audio playback until a user gesture. `StreamClientScrcpy` registers one-shot `click` and `keydown` listeners on `document` to call `AudioPlayer.resume()` (which resumes a suspended `AudioContext`).
+
+---
+
+## 5. Input Pipeline
+
+### 5.1 Touch and Mouse Input
+
+**InteractionHandler** (base class) registers static `document.body` event listeners shared across all handler instances. Events are filtered by checking `event.target === this.tag` (the touchable canvas element). This design means only one set of body-level listeners exists regardless of how many device streams are active.
+
+**FeaturedInteractionHandler** extends the base with:
+
+- **Mouse-to-touch mapping:** Left-click mouse events are converted to `TouchControlMessage` with screen coordinate translation
+- **Right-click -> BACK:** `event.button === 2` sends `KeyCodeControlMessage` with Android keycode 4 (AKEYCODE_BACK)
+- **Middle-click -> HOME:** `event.button === 1` sends Android keycode 3 (AKEYCODE_HOME)
+- **Scroll:** `WheelEvent` -> `ScrollControlMessage` with 30ms throttling
+- **Multi-touch simulation:** Ctrl+click creates a second mirrored touch point (Ctrl+Shift allows custom center)
+
+**Coordinate translation** in `buildTouchOnClient()`:
+
+1. Get canvas bounding rect
+2. Translate client coordinates to canvas-relative coordinates
+3. Handle aspect ratio letterboxing (adjust for black bars)
+4. Scale to device screen dimensions
+5. Create `Position(Point(x, y), Size(screenWidth, screenHeight))`
+
+### 5.2 TouchControlMessage Wire Format
+
+Total size: 32 bytes (1 type + 31 payload)
+
+```
+Offset  Size  Field
+0       1     type (0x02 = TYPE_TOUCH)
+1       1     action (DOWN=0, UP=1, MOVE=2)
+2       4     pointerId high 32 bits (always 0)
+6       4     pointerId low 32 bits
+10      4     x position (uint32 BE)
+14      4     y position (uint32 BE)
+18      2     screen width (uint16 BE)
+20      2     screen height (uint16 BE)
+22      2     pressure (uint16 BE, 0x0000-0xFFFF)
+24      4     actionButton (uint32 BE)
+28      4     buttons (uint32 BE)
+```
+
+Pressure is normalized: browser `TouchEvent.force` (0.0-1.0) is multiplied by `0xFFFF`.
+
+### 5.3 Touch State Validation
+
+`InteractionHandler.validateMessage()` maintains a `Map<pointerId, TouchControlMessage>` to track active pointers. It handles edge cases:
+
+- **Stale DOWN:** If a new DOWN arrives for a pointer that already has an active DOWN (e.g., mouseup was lost during a reconnection), a synthetic UP is injected first
+- **Orphan MOVE:** If a MOVE arrives with no preceding DOWN, a synthetic DOWN is emitted
+- **Mouse leave:** When the cursor leaves the canvas, all active pointers are released with synthetic UPs
+
+### 5.4 UHID Hardware Input
+
+UHID (User-space HID) creates virtual USB devices on the Android device via scrcpy-server's UHID control message types. This provides hardware-level input that works with any app, including those that ignore injected events.
+
+**UhidManager** orchestrates the lifecycle:
+- On enable: sends `UhidCreateMessage` for keyboard (ID=1) and mouse (ID=2)
+- On disable: sends `UhidDestroyMessage` for both
+- When active, disables the regular touch handler and keyboard handler
+
+**UhidKeyboardHandler:**
+- Listens to `document` keydown/keyup events
+- Maps browser `event.code` (e.g., `"KeyA"`) to USB HID usage codes via `CODE_TO_HID` table
+- Tracks modifier state (Ctrl, Shift, Alt, Meta) as a bitmask
+- Sends 8-byte keyboard reports: `[modifier, reserved, key1, key2, key3, key4, key5, key6]`
+- Maximum 6 simultaneous keys (USB HID boot protocol limit)
+- On detach, sends an empty report to release all keys
+
+**UhidMouseHandler:**
+- Uses Pointer Lock API (`canvas.requestPointerLock()`) for relative mouse movement
+- Maps `event.movementX/Y` to signed 8-bit deltas (clamped to -127..127)
+- Sends 4-byte mouse reports: `[buttons, dx, dy, wheel]`
+- Button state tracked as bitmask: bit 0 = left, bit 1 = right, bit 2 = middle
+- On pointer lock release, sends a zero report to release all buttons
+
+**HID Descriptors** (in `UhidCreateMessage.ts`):
+- Keyboard: Standard boot protocol descriptor (Usage Page 0x07, 8-byte reports)
+- Mouse: Standard 3-axis relative device (5 buttons, X/Y movement, scroll wheel)
+
+---
+
+## 6. Embed Mode
+
+Embed mode provides a streamlined UI for iframe integration, used by the Control Menu project's `ScrcpyMirror.razor` component.
+
+### 6.1 Activation
+
+URL parameter `embed=true` triggers embed mode in `StreamClientScrcpy.parseParameters()`, which sets `fitToScreen: true`. The `body.embed` CSS class is applied.
+
+### 6.2 CSS Rules
+
+```css
+body.embed {
+    background: transparent;        /* Blends with parent page */
+}
+body.embed .more-box {
+    display: none !important;       /* Hides settings/info panel */
+}
+body.embed .device-view {
+    float: none;
+    display: flex;
+    width: 100%;
+    height: 100%;                   /* Fills iframe */
+}
+body.embed .video {
+    float: none;
+    flex: 1;
+    max-height: 100vh;
+    max-width: 100vw;
+    background: transparent;
+}
+```
+
+### 6.3 Click-to-Focus
+
+In embed mode, a one-time `click` listener on the video container calls `video.focus()`, ensuring keyboard events are captured by the iframe.
+
+---
+
+## 7. Quality Protection System
+
+The quality protection system in `StreamClientScrcpy` detects when the video encoder's output quality has degraded (typically due to scrcpy-server's internal rate control) and automatically refreshes the stream to request a fresh keyframe.
+
+### 7.1 Frame Size Monitoring
+
+```
+frameSizes[]: rolling window of 30 non-config frame sizes (in bytes)
+baselineFrameSize: average of the first 30 frames (established once)
+degradationCount: consecutive windows that fail the threshold check
+```
+
+Every non-config video frame's byte size is appended to `frameSizes[]`. After the first 30 frames establish the baseline, the window shifts (oldest frame removed) and `checkForDegradation()` runs.
+
+### 7.2 Degradation Detection
+
+```typescript
+const avg = frameSizes.reduce((a, b) => a + b, 0) / frameSizes.length;
+if (avg < baselineFrameSize * 0.10) {
+    degradationCount++;
+    if (degradationCount >= 5) {
+        // 5 consecutive bad windows -> refresh
+    }
+} else {
+    degradationCount = 0;  // Reset on recovery
+}
+```
+
+The threshold is 10% of baseline. The 10% value was tuned after 25% proved too sensitive for static content (screensavers, idle screens produce legitimately small delta frames).
+
+### 7.3 Stream Refresh
+
+`refreshStream()` performs a full reconnection cycle:
+
+1. Set `isRefreshing = true` (protects the touch handler from being destroyed)
+2. Close the existing `ScrcpyDemuxer`
+3. Stop the `AudioPlayer`
+4. Stop and re-pause the player (clears decoded frame queue)
+5. Create a new `ScrcpyDemuxer` with the same stream URL
+6. Re-wire all callbacks
+7. Set `isRefreshing = false`
+
+This triggers a new scrcpy-server session on the server side, which starts with a fresh keyframe.
+
+### 7.4 Cooldown
+
+A 30-second cooldown (`lastRefreshTime`) prevents refresh storms. The cooldown was increased from 10 seconds after testing showed encoder quality sometimes needs time to stabilize after a refresh.
+
+---
+
+## 8. Device Probe and Codec Selection
+
+### 8.1 Probe Flow
+
+```
+Browser                          Server
+  |                                |
+  |-- WS (action=probe, udid) --> |
+  |                                |-- adb shell dumpsys media.player
+  |                                |-- adb shell wm size
+  |                                |-- adb shell wm density
+  |                                |
+  | <-- JSON ProbeResult ---------|
+  |                                |-- WS close(1000)
+```
+
+`DeviceProbeClient` opens a one-shot WebSocket to the server. `DeviceProbe` (server middleware) runs three ADB shell commands in parallel, parses the output for encoder names (matching patterns like `.avc.`, `.hevc.`, `.av1.`), screen dimensions, and density, then sends a `ProbeResult` JSON and closes.
+
+### 8.2 Auto-Selection Algorithm
+
+`detectBestCodecAndEncoder()` in `StreamClientScrcpy.ts`:
+
+1. **Probe the device** for available encoders
+2. **For each codec in preference order** (`h265` > `h264` > `av1`):
+   a. Check if the device has an encoder for this codec (pattern match in encoder names)
+   b. Check if the browser can decode it (`VideoDecoder.isConfigSupported()`)
+   c. If both pass, select this codec
+3. **Pick the best encoder** for the selected codec:
+   - Hardware encoders preferred: match against `/\.mtk\.|\.qcom\.|\.exynos\.|\.intel\.|\.nvidia\./i`
+   - Fall back to first available (typically `c2.android.*` software encoders)
+4. **Fallback:** If probe fails entirely, try browser-only detection (same codec preference order) and default to H.264
+
+### 8.3 Firefox Quirk
+
+Firefox's `VideoDecoder.isConfigSupported()` incorrectly returns `false` for some H.264 profile strings (e.g., `avc1.42E01E`) despite being able to decode them. The workaround:
+
+```typescript
+async function browserSupportsCodec(codec: string): Promise<boolean> {
+    if (codec === 'h264') return true;  // Skip the check for H.264
+    // ... normal isConfigSupported check for h265/av1
+}
+```
+
+---
+
+## 9. Server Architecture
+
+### 9.1 Entry Point
+
+`src/server/index.ts` starts the server:
+
+1. **Services:** `HttpServer` (static files) and `WebSocketServer` (WS upgrade handler) are started
+2. **Direct WebSocket middleware** (registered on `WebSocketServer`):
+   - `ScrcpyConnection` -- handles `action=stream` (video/audio/control bridging)
+   - `DeviceProbe` -- handles `action=probe` (encoder enumeration)
+   - `WebsocketMultiplexer` -- handles `action=multiplex` (sub-protocol multiplexing)
+3. **Multiplexed middleware** (registered on `WebsocketMultiplexer`):
+   - `HostTracker` -- device discovery
+   - `DeviceTracker` -- ADB device list broadcast
+   - `RemoteShell` -- terminal access via node-pty
+   - `FileListing` -- file manager operations
+
+### 9.2 Middleware Pattern
+
+All middleware extends `Mw` (base class):
+
+```typescript
+export abstract class Mw {
+    static processRequest(ws: WS, params: RequestParameters): Mw | undefined;
+    protected abstract onSocketMessage(event: WS.MessageEvent): void;
+    public release(): void;
+}
+```
+
+The `WebSocketServer` iterates registered `MwFactory` objects and calls `processRequest()` for each incoming WebSocket. The first factory that returns a non-undefined `Mw` instance claims the connection.
+
+### 9.3 ScrcpyConnection Lifecycle
+
+```
+Browser WS connect (action=stream, udid=xxx, videoCodec=h265, ...)
+    -> ScrcpyConnection created
+    -> ADB push scrcpy-server
+    -> Create TCP server (ephemeral port)
+    -> ADB reverse tunnel
+    -> Launch scrcpy-server process
+    -> Accept 3 TCP sockets (video, audio, control)
+    -> Parse 76-byte video metadata + 4-byte audio metadata
+    -> Send metadata JSON to browser (channel 4)
+    -> Start FrameReader on video + audio sockets
+    -> Forward: TCP frames -> channel prefix -> WS send
+    -> Forward: WS channel 2 -> control TCP socket
+    -> On disconnect: kill process, remove reverse, close sockets
+```
+
+### 9.4 Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `PORT` | `8000` | HTTP/WS server port |
+| `ADB_PATH` | `adb` | Path to ADB executable |
+| `CONFIG_PATH` | `config.json` | Path to config file |
+
+---
+
+## 10. Build and Development
+
+### 10.1 Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run build` | Production webpack build (output to `dist/`) |
+| `npm run build:dev` | Development build with source maps |
+| `npm start` | Build + run (`node dist/index.js`) |
+| `npm test` | Run tests with Vitest |
+| `npm run lint` | Check code style with Biome |
+| `npm run format` | Auto-fix code style |
+
+### 10.2 Stack
+
+- **Runtime:** Node.js 18+
+- **Language:** TypeScript 5.5
+- **Bundler:** Webpack 5 (separate configs for dev/prod in `webpack/`)
+- **Linter/Formatter:** Biome (replaces ESLint + Prettier)
+- **Tests:** Vitest 4.x
+- **Runtime dependencies:** `ws` (WebSocket server), `node-pty` (terminal emulation)
+- **Browser APIs:** WebCodecs (`VideoDecoder`, `AudioDecoder`), AudioWorklet, Pointer Lock, Canvas 2D
+
+### 10.3 Webpack Configuration
+
+Two separate webpack configs:
+- `webpack/ws-scrcpy-web.prod.ts` -- production (minified, no source maps)
+- `webpack/ws-scrcpy-web.dev.ts` -- development (source maps, faster builds)
+
+The build produces a server bundle (`dist/index.js`) and a browser bundle (served as static files). Node.js built-ins (`net`, `crypto`, `path`, etc.) are externalized from the server bundle. The browser bundle avoids any Node.js polyfills.
+
+---
+
+## 11. Known Issues and Fixes
+
+### 11.1 H.265 Coded vs Display Dimensions
+
+**Problem:** H.265 encoders commonly align coded dimensions to multiples of 8 or 16. A 1920x1080 display produces coded dimensions of 1920x1088 (1080 rounded up to nearest multiple of 8). When the canvas was sized to coded dimensions, two issues appeared:
+
+1. Touch coordinates sent to scrcpy-server used 1088 as the screen height, but scrcpy-server expects the actual display height (1080). Touches were rejected or offset.
+2. The video had an 8-pixel black bar at the bottom.
+
+**Fix (WebCodecsPlayer):** The canvas is always sized to **display dimensions** from scrcpy metadata (`metadataWidth`, `metadataHeight`), while `VideoDecoder.configure()` receives the **coded dimensions** from the SPS parser. This ensures touch coordinates match what scrcpy-server expects, while the decoder can handle alignment padding internally.
+
+```typescript
+const codedW = result.width || this.metadataWidth;     // From SPS (e.g., 1088)
+const codedH = result.height || this.metadataHeight;
+const displayW = this.metadataWidth || result.width;    // From metadata (e.g., 1080)
+const displayH = this.metadataHeight || result.height;
+this.scaleCanvas(displayW, displayH);                   // Canvas = display dims
+this.decoder.configure({ codec, codedWidth: codedW, codedHeight: codedH, ... });
+```
+
+### 11.2 Edge H.265 Canvas Rendering
+
+**Problem:** Microsoft Edge reports `VideoFrame.displayWidth !== VideoFrame.codedWidth` for H.265 content (e.g., displayWidth=1920, codedWidth=1920 but displayHeight=1080, codedHeight=1088). The default `drawImage(frame, 0, 0)` call would only render the display rect, leaving artifacts or stretching.
+
+**Fix:** When display and coded dimensions differ, use the 8-argument form of `drawImage` to explicitly source from the full coded rect and scale to the canvas:
+
+```typescript
+if (frame.displayWidth !== frame.codedWidth || frame.displayHeight !== frame.codedHeight) {
+    this.context.drawImage(frame, 0, 0, frame.codedWidth, frame.codedHeight, 0, 0, cw, ch);
+} else {
+    this.context.drawImage(frame, 0, 0);
+}
+```
+
+### 11.3 Touch Handler Destroyed During Stream Refresh
+
+**Problem:** When `refreshStream()` closed the demuxer, the WebSocket `onclose` event triggered `onDisconnected()`, which destroyed the `FeaturedInteractionHandler`. After the refresh completed and a new demuxer was connected, touch input no longer worked because the handler had been released.
+
+**Fix:** An `isRefreshing` flag prevents `onDisconnected()` from releasing the touch handler during a refresh cycle:
+
+```typescript
+public onDisconnected = (): void => {
+    this.audioPlayer?.stop();
+    // Don't destroy touch handler during refresh
+    if (!this.isRefreshing) {
+        this.touchHandler?.release();
+        this.touchHandler = undefined;
+    }
+};
+
+public refreshStream(): void {
+    this.isRefreshing = true;
+    this.demuxer?.close();
+    // ... reconnect ...
+    this.isRefreshing = false;
+}
+```
+
+### 11.4 Firefox H.264 isConfigSupported False Rejection
+
+**Problem:** Firefox's `VideoDecoder.isConfigSupported()` returns `{ supported: false }` for the H.264 profile string `avc1.42E01E`, despite being fully capable of decoding H.264 content. This caused the auto-detection algorithm to skip H.264 and fall back to worse options on Firefox.
+
+**Fix:** The `browserSupportsCodec()` function unconditionally returns `true` for H.264, bypassing the `isConfigSupported` check:
+
+```typescript
+async function browserSupportsCodec(codec: string): Promise<boolean> {
+    if (codec === 'h264') return true;
+    // ...
+}
+```
+
+This is safe because H.264 baseline profile support is universal across all browsers that implement WebCodecs.
