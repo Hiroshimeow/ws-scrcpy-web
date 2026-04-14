@@ -315,13 +315,18 @@ export class StreamClientScrcpy
         }
     };
 
+    private isRefreshing = false;
+
     public onDisconnected = (): void => {
         this.audioPlayer?.stop();
         this.uhidKeyboard?.detach();
         this.uhidMouse?.detach();
         this.uhidManager?.stop();
-        this.touchHandler?.release();
-        this.touchHandler = undefined;
+        // Don't destroy touch handler during refresh — refreshStream manages it
+        if (!this.isRefreshing) {
+            this.touchHandler?.release();
+            this.touchHandler = undefined;
+        }
     };
 
     public async startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): Promise<void> {
@@ -469,6 +474,9 @@ export class StreamClientScrcpy
         this.baselineFrameSize = 0;
         this.degradationCount = 0;
 
+        // Prevent onDisconnected from destroying touch handler during refresh
+        this.isRefreshing = true;
+
         // Close existing demuxer
         this.demuxer?.close();
         this.audioPlayer?.stop();
@@ -488,6 +496,8 @@ export class StreamClientScrcpy
         this.demuxer.onDeviceMessage(this.OnDeviceMessage);
         this.demuxer.onMetadata(this.onMetadata);
         this.demuxer.onDisconnect(this.onDisconnected);
+
+        this.isRefreshing = false;
     }
 
     public getDeviceName(): string {
