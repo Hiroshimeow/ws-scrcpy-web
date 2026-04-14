@@ -108,18 +108,24 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
                 console.error('[WebCodecsPlayer] parseConfig error:', e);
             }
             if (result) {
-                const w = result.width || this.metadataWidth;
-                const h = result.height || this.metadataHeight;
-                if (w > 0 && h > 0) {
-                    this.scaleCanvas(w, h);
+                // Coded dimensions from codec SPS (may include alignment padding, e.g. 1088 for 1080)
+                const codedW = result.width || this.metadataWidth;
+                const codedH = result.height || this.metadataHeight;
+                // Display dimensions from scrcpy metadata (actual device screen size).
+                // scrcpy-server rejects touch events whose screenSize doesn't match its video size,
+                // so we must use display dimensions for canvas/touch sizing, not coded dimensions.
+                const displayW = this.metadataWidth || result.width;
+                const displayH = this.metadataHeight || result.height;
+                if (displayW && displayH && displayW > 0 && displayH > 0) {
+                    this.scaleCanvas(displayW, displayH);
                 }
                 if (this.decoder.state === 'configured') {
                     this.decoder.flush().catch(() => {});
                 }
                 this.decoder.configure({
                     codec: result.codec,
-                    codedWidth: w,
-                    codedHeight: h,
+                    codedWidth: codedW,
+                    codedHeight: codedH,
                     optimizeForLatency: true,
                 } as VideoDecoderConfig);
             }

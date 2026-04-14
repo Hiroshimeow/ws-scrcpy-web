@@ -1,6 +1,7 @@
 import MotionEvent from '../MotionEvent';
 import type ScreenInfo from '../ScreenInfo';
 import type { ControlMessage } from '../controlMessage/ControlMessage';
+import { KeyCodeControlMessage } from '../controlMessage/KeyCodeControlMessage';
 import { ScrollControlMessage } from '../controlMessage/ScrollControlMessage';
 import type { TouchControlMessage } from '../controlMessage/TouchControlMessage';
 import type { BasePlayer } from '../player/BasePlayer';
@@ -58,6 +59,12 @@ export class FeaturedInteractionHandler extends InteractionHandler {
         return messages;
     }
 
+    // Mouse button → Android keycode mapping (matches scrcpy desktop client defaults)
+    private static readonly BUTTON_KEYCODE_MAP: Record<number, number> = {
+        2: 4,   // right-click → AKEYCODE_BACK
+        1: 3,   // middle-click → AKEYCODE_HOME
+    };
+
     protected onInteraction(event: MouseEvent | TouchEvent): void {
         const screenInfo = this.player.getScreenInfo();
         if (!screenInfo) {
@@ -67,6 +74,15 @@ export class FeaturedInteractionHandler extends InteractionHandler {
         let storage: Map<number, TouchControlMessage>;
         if (event instanceof MouseEvent) {
             if (event.target !== this.tag) {
+                return;
+            }
+            // Right-click → back, middle-click → home (like scrcpy desktop client)
+            const keycode = FeaturedInteractionHandler.BUTTON_KEYCODE_MAP[event.button];
+            if (keycode !== undefined && (event.type === 'mousedown' || event.type === 'mouseup')) {
+                const action = event.type === 'mousedown' ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP;
+                this.listener.sendMessage(new KeyCodeControlMessage(action, keycode, 0, 0));
+                event.preventDefault();
+                event.stopPropagation();
                 return;
             }
             if (window['WheelEvent'] && event instanceof WheelEvent) {
