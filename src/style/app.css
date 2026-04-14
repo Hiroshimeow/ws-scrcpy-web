@@ -186,6 +186,10 @@ body.stream {
 }
 
 /* Embed mode — minimal UI for iframe embedding */
+body.embed {
+    background: transparent;
+}
+
 body.embed .more-box {
     display: none !important;
 }
@@ -202,4 +206,5 @@ body.embed .video {
     flex: 1;
     max-height: 100vh;
     max-width: 100vw;
+    background: transparent;
 }
