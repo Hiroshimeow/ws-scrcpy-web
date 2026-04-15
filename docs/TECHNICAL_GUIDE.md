@@ -726,32 +726,48 @@ This is safe because H.264 baseline profile support is universal across all brow
 
 Before building a new version of ws-scrcpy-web, check the following:
 
-### Dependencies to check for updates
+### Build-time dependencies (require recompile)
 
-**Bundled into the build (require recompile):**
+Run `npm outdated` to check all at once. Update one at a time, build + test after each.
 
-| Package | Check | Notes |
-|---------|-------|-------|
-| `ws` | `npm outdated ws` | Stable, rarely updates. Bundled into webpack output -- not independently updatable by users. Check before every release. |
-| `@xterm/xterm` + addons | `npm outdated` | Major versions may have API changes in `ShellClient.ts` |
-| `typescript` | `npm outdated typescript` | Major versions may need `tsconfig.json` changes |
-| `@biomejs/biome` | `npm outdated @biomejs/biome` | Major versions may need `biome.json` migration (`npx @biomejs/biome migrate`) |
-| `webpack`, `webpack-cli`, `css-loader` | `npm outdated` | Build tooling, usually safe to update |
-| `@types/node` | `npm outdated @types/node` | Must match target Node.js LTS major version (even numbers only) |
+| # | Package | Current | Purpose | Update notes |
+|---|---------|---------|---------|--------------|
+| 1 | `typescript` | 6.0.2 | Compiles TypeScript source to JavaScript | Major versions may need `tsconfig.json` changes |
+| 2 | `webpack` | 5.106.2 | Bundles source into server and browser output | Patch updates are safe |
+| 3 | `webpack-cli` | 7.0.2 | Command-line interface for webpack | Major versions usually just drop old Node support |
+| 4 | `css-loader` | 7.1.4 | Processes CSS imports for webpack bundling | Major versions may need webpack config changes |
+| 5 | `mini-css-extract-plugin` | 2.10.2 | Extracts CSS into separate .css files | Tied to webpack version |
+| 6 | `ts-loader` | 9.5.7 | Lets webpack process TypeScript files | Must be compatible with TypeScript version |
+| 7 | `ts-node` | 10.9.2 | Runs webpack config files written in TypeScript | Must be compatible with TypeScript version |
+| 8 | `@biomejs/biome` | 2.4.12 | Linter and code formatter (replaces ESLint + Prettier) | Major versions need config migration (`npx @biomejs/biome migrate`) |
+| 9 | `@types/node` | 24.12.2 | TypeScript type definitions for Node.js APIs | Must match target Node.js LTS major version (even numbers only, never odd) |
+| 10 | `@types/ws` | 8.18.1 | TypeScript type definitions for ws library | Must match `ws` major version |
+| 11 | `vitest` | 4.1.4 | Test runner for unit and integration tests | Usually safe to update |
+| 12 | `@xterm/xterm` | 6.0.0 | Terminal emulator rendered in the browser (Microsoft) | Major versions may have API changes affecting `ShellClient.ts` |
+| 13 | `@xterm/addon-attach` | 0.12.0 | Connects xterm to a WebSocket for remote shell | Must match `@xterm/xterm` major version |
+| 14 | `@xterm/addon-fit` | 0.11.0 | Auto-resizes terminal to fit its container | Must match `@xterm/xterm` major version |
 
-**Managed by the in-app updater (user-updatable at runtime):**
+### Runtime dependency bundled into build
 
-| Dependency | Update source | Notes |
-|------------|---------------|-------|
-| Node.js | nodejs.org LTS | Paired with node-pty -- must update together |
-| node-pty | npm prebuilt binaries | Native DLL is ABI-locked to Node.js version |
-| ADB (platform-tools) | Google SDK | Standalone zip download |
-| scrcpy-server | Genymobile/scrcpy releases | Update `SERVER_VERSION` in `src/common/Constants.ts` to match |
+| # | Package | Current | Purpose | Update notes |
+|---|---------|---------|---------|--------------|
+| 15 | `ws` | 8.20.0 | WebSocket server powering all browser-to-server communication | Bundled into webpack output; not user-updatable. Stable, rarely updates. Check before every release. |
 
-### Quick check command
+### Runtime dependencies managed by in-app updater
+
+These are not npm packages in the build -- they are external binaries bundled in the `dependencies/` folder and updatable by users through the app UI.
+
+| # | Dependency | Current | Purpose | Update source | Update notes |
+|---|------------|---------|---------|---------------|--------------|
+| 16 | `node-pty` | 1.1.0 | Provides pseudo-terminal for ADB shell sessions in the browser | npm prebuilt binaries | Native DLL (conpty.dll + OpenConsole.exe) is ABI-locked to Node.js version. Must update together with Node.js. |
+| 17 | Node.js | 24.14.1 LTS | JavaScript runtime that runs the ws-scrcpy-web server | nodejs.org | Paired with node-pty (#16). Only use LTS (even-numbered) releases. |
+| 18 | ADB (platform-tools) | latest | Communicates with Android devices (push, shell, tunnel) | Google SDK | Standalone zip download and extract |
+| 19 | scrcpy-server | 3.3.4 | Runs on Android device to capture screen, audio, and accept input | Genymobile/scrcpy releases | Single binary replace. Update `SERVER_VERSION` in `src/common/Constants.ts` to match. |
+
+### Quick check
 
 ```bash
 npm outdated
 ```
 
-This shows all packages with available updates. Only update to even-numbered `@types/node` majors (matching Node.js LTS).
+Shows all npm packages (1-15) with available updates. For runtime dependencies (16-19), check their respective release pages.
