@@ -30,7 +30,7 @@
     "mini-css-extract-plugin": "^2.6.1",
     "ts-loader": "^9.3.1",
     "ts-node": "^10.9.1",
-    "typescript": "^5.5",
+    "typescript": "^6.0.2",
     "vitest": "^4.1.4",
     "webpack": "^5.94.0",
     "webpack-cli": "^5"

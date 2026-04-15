@@ -22,7 +22,8 @@
     "ts-node": {
         "compilerOptions": {
             "module": "CommonJS",
-            "moduleResolution": "node"
+            "moduleResolution": "node",
+            "types": ["node"]
         }
     }
 }
