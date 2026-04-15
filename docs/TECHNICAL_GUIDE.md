@@ -21,6 +21,7 @@ This document covers the internal architecture of ws-scrcpy-web -- a browser-bas
 9. [Server Architecture](#9-server-architecture)
 10. [Build and Development](#10-build-and-development)
 11. [Known Issues and Fixes](#11-known-issues-and-fixes)
+12. [Release Checklist](#12-release-checklist)
 
 ---
 
@@ -615,12 +616,12 @@ Browser WS connect (action=stream, udid=xxx, videoCodec=h265, ...)
 
 ### 10.2 Stack
 
-- **Runtime:** Node.js 18+
-- **Language:** TypeScript 5.5
+- **Runtime:** Node.js 24 LTS
+- **Language:** TypeScript 6.x
 - **Bundler:** Webpack 5 (separate configs for dev/prod in `webpack/`)
-- **Linter/Formatter:** Biome (replaces ESLint + Prettier)
+- **Linter/Formatter:** Biome 2.x (replaces ESLint + Prettier)
 - **Tests:** Vitest 4.x
-- **Runtime dependencies:** `ws` (WebSocket server), `node-pty` (terminal emulation)
+- **Runtime dependencies:** `ws` (WebSocket server, bundled into webpack output), `node-pty` (terminal emulation, native addon)
 - **Browser APIs:** WebCodecs (`VideoDecoder`, `AudioDecoder`), AudioWorklet, Pointer Lock, Canvas 2D
 
 ### 10.3 Webpack Configuration
@@ -718,3 +719,39 @@ async function browserSupportsCodec(codec: string): Promise<boolean> {
 ```
 
 This is safe because H.264 baseline profile support is universal across all browsers that implement WebCodecs.
+
+---
+
+## 12. Release Checklist
+
+Before building a new version of ws-scrcpy-web, check the following:
+
+### Dependencies to check for updates
+
+**Bundled into the build (require recompile):**
+
+| Package | Check | Notes |
+|---------|-------|-------|
+| `ws` | `npm outdated ws` | Stable, rarely updates. Bundled into webpack output -- not independently updatable by users. Check before every release. |
+| `@xterm/xterm` + addons | `npm outdated` | Major versions may have API changes in `ShellClient.ts` |
+| `typescript` | `npm outdated typescript` | Major versions may need `tsconfig.json` changes |
+| `@biomejs/biome` | `npm outdated @biomejs/biome` | Major versions may need `biome.json` migration (`npx @biomejs/biome migrate`) |
+| `webpack`, `webpack-cli`, `css-loader` | `npm outdated` | Build tooling, usually safe to update |
+| `@types/node` | `npm outdated @types/node` | Must match target Node.js LTS major version (even numbers only) |
+
+**Managed by the in-app updater (user-updatable at runtime):**
+
+| Dependency | Update source | Notes |
+|------------|---------------|-------|
+| Node.js | nodejs.org LTS | Paired with node-pty -- must update together |
+| node-pty | npm prebuilt binaries | Native DLL is ABI-locked to Node.js version |
+| ADB (platform-tools) | Google SDK | Standalone zip download |
+| scrcpy-server | Genymobile/scrcpy releases | Update `SERVER_VERSION` in `src/common/Constants.ts` to match |
+
+### Quick check command
+
+```bash
+npm outdated
+```
+
+This shows all packages with available updates. Only update to even-numbered `@types/node` majors (matching Node.js LTS).
