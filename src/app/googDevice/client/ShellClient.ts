@@ -100,16 +100,6 @@ export class ShellClient extends ManagerClient<ParamsShell, never> {
     }
 
     private updateTerminalSize(): void {
-        const term: any = this.term;
-        const terminalContainer: HTMLElement = ShellClient.getOrCreateContainer(this.escapedUdid);
-        const { rows, cols } = this.fitAddon.proposeDimensions();
-        const width =
-            (cols * term._core._renderService.dimensions.actualCellWidth + term._core.viewport.scrollBarWidth).toFixed(
-                2,
-            ) + 'px';
-        const height = (rows * term._core._renderService.dimensions.actualCellHeight).toFixed(2) + 'px';
-        terminalContainer.style.width = width;
-        terminalContainer.style.height = height;
         this.fitAddon.fit();
     }
 
