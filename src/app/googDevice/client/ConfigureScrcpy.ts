@@ -10,6 +10,7 @@ import Util from '../../Util';
 import VideoSettings from '../../VideoSettings';
 import { Modal } from '../../ui/Modal';
 import type { DeviceTracker } from './DeviceTracker';
+import { ConnectModal } from './ConnectModal';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 type Range = {
@@ -649,6 +650,10 @@ export class ConfigureScrcpy extends Modal {
         const audioCodec = this.audioCodecSelect?.value;
         const encoderName = this.encoderSelectElement?.value || undefined;
 
+        // Get the device label from the modal header before closing (close() removes dialog from DOM)
+        const titleEl = this.dialog.querySelector('.modal-title');
+        const deviceLabel = titleEl?.textContent || udid;
+
         this.close(true);
 
         const player = StreamClientScrcpy.createPlayer(playerName, udid, displayInfo);
@@ -664,6 +669,6 @@ export class ConfigureScrcpy extends Modal {
             audioCodec,
             encoderName,
         };
-        StreamClientScrcpy.start(params, player, fitToScreen, videoSettings);
+        new ConnectModal(params, player, fitToScreen, videoSettings, deviceLabel);
     };
 }
