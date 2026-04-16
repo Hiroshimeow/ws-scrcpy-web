@@ -7,3 +7,8 @@ build/
 dependencies/node/
 dependencies/adb/
 .restart
+
+# User data
+device-labels.json
+ws-scrcpy-web.log
+ws-scrcpy-web.log.1
