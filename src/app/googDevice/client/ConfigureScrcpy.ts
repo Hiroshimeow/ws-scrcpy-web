@@ -37,7 +37,6 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
     private audioCodecSelect?: HTMLSelectElement;
     private displayInfo?: DisplayInfo;
     private background: HTMLElement;
-    private dialogBody?: HTMLElement;
     private connectButton?: HTMLButtonElement;
     private fitToScreenCheckbox?: HTMLInputElement;
     private resetSettingsButton?: HTMLButtonElement;
@@ -243,11 +242,11 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         }
         this.statusElement.textContent = this.statusText;
         this.statusElement.className = 'status-text';
-        if (this.statusText.toLowerCase().startsWith('probing')) {
+        if (this.statusText.startsWith('probing')) {
             this.statusElement.classList.add('status-probing');
-        } else if (this.statusText.toLowerCase() === 'ready') {
+        } else if (this.statusText === 'ready') {
             this.statusElement.classList.add('status-ready');
-        } else if (this.statusText.toLowerCase().startsWith('probe failed')) {
+        } else if (this.statusText.startsWith('probe failed')) {
             this.statusElement.classList.add('status-error');
         }
     }
@@ -486,7 +485,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         dialogHeader.appendChild(closeButton);
 
         // Body (scrollable)
-        const dialogBody = (this.dialogBody = document.createElement('div'));
+        const dialogBody = document.createElement('div');
         dialogBody.classList.add('dialog-body');
 
         // Stream settings grid
@@ -588,7 +587,7 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         const advancedText = document.createTextNode('advanced ');
         advancedToggle.appendChild(advancedText);
         const advancedChevron = (this.advancedChevron = document.createElement('span'));
-        advancedChevron.classList.add('advanced-chevron');
+        advancedChevron.classList.add('chevron');
         advancedChevron.innerHTML = '\u25bc';
         advancedToggle.appendChild(advancedChevron);
         advancedToggle.addEventListener('click', this.toggleAdvanced);
