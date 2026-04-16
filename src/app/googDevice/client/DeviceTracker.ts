@@ -115,6 +115,8 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             ? device['ro.product.model']
             : `${device['ro.product.manufacturer']} ${device['ro.product.model']}`;
 
+        const overlayId = `device_overlay_${fullName}`;
+        const newtabId = `device_newtab_${fullName}`;
         const row = html`<div class="device ${isActive ? 'active' : 'not-active'}">
             <table class="device-info">
                 <tr><td class="device-label">Model:</td><td>${deviceName}</td></tr>
@@ -122,12 +124,16 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 <tr><td class="device-label">Android:</td><td>${device['ro.build.version.release']}</td></tr>
                 <tr><td class="device-label">SDK:</td><td>${device['ro.build.version.sdk']}</td></tr>
             </table>
-            <div id="${servicesId}" class="services">
-                <div class="services-label">Opens in new tab</div>
+            <div id="${overlayId}" class="services">
+                <div class="services-label">opens in overlay</div>
+            </div>
+            <div id="${newtabId}" class="services">
+                <div class="services-label">opens in new tab</div>
             </div>
         </div>`.content;
-        const services = row.getElementById(servicesId);
-        if (!services) {
+        const overlaySection = row.getElementById(overlayId);
+        const newtabSection = row.getElementById(newtabId);
+        if (!overlaySection || !newtabSection) {
             return;
         }
 
@@ -154,7 +160,11 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             }
         }
 
-        // Add Connect button (replaces WebCodecs link) — opens stream in new tab
+        // Overlay section: configure stream
+        const streamEntry = StreamClientScrcpy.createEntryForDeviceList(device, 'desc-block', fullName, this.params);
+        streamEntry && overlaySection.appendChild(streamEntry);
+
+        // New tab section: connect, shell, files
         if (isActive && DeviceTracker.CREATE_DIRECT_LINKS) {
             const name = `${DeviceTracker.AttributePrefixPlayerFor}${fullName}`;
             StreamClientScrcpy.getPlayers().forEach((playerClass) => {
@@ -164,24 +174,19 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 connectBtn.setAttribute('name', encodeURIComponent(name));
                 connectBtn.setAttribute(DeviceTracker.AttributePlayerFullName, encodeURIComponent(playerFullName));
                 connectBtn.setAttribute(DeviceTracker.AttributePlayerCodeName, encodeURIComponent(playerCodeName));
-                services.appendChild(connectBtn);
+                newtabSection.appendChild(connectBtn);
             });
         }
 
-        // Add Configure Stream button
-        const streamEntry = StreamClientScrcpy.createEntryForDeviceList(device, 'desc-block', fullName, this.params);
-        streamEntry && services.appendChild(streamEntry);
-
-        // Add Shell and Files buttons (from registered tools)
         DeviceTracker.tools.forEach((tool) => {
             const entry = tool.createEntryForDeviceList(device, 'desc-block', this.params);
             if (entry) {
                 if (Array.isArray(entry)) {
                     entry.forEach((item) => {
-                        item && services.appendChild(item);
+                        item && newtabSection.appendChild(item);
                     });
                 } else {
-                    services.appendChild(entry);
+                    newtabSection.appendChild(entry);
                 }
             }
         });

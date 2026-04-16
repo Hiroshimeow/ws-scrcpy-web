@@ -15,7 +15,7 @@ function toHex(value: number) {
 
 export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     public static readonly storageKeyPrefix = 'WebCodecsPlayer';
-    public static readonly playerFullName = 'Connect';
+    public static readonly playerFullName = 'connect';
     public static readonly playerCodeName = 'webcodecs';
 
     public static readonly preferredVideoSettings: VideoSettings = new VideoSettings({
