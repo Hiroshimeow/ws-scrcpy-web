@@ -857,7 +857,7 @@ The home page (`http://localhost:8000`) is a single-page view with three section
 
 ### 14.1 Connected Devices
 
-Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The server polls `adb devices` every 2 seconds. Devices appear automatically when ADB detects them.
+Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The server polls `adb devices` every 5 seconds (`ControlCenter.POLL_INTERVAL`). Devices appear automatically when ADB detects them.
 
 **Card layout:** CSS grid with `auto-fill` columns (minimum 340px). Active devices have a green left border accent; offline devices have red with reduced opacity. Tracker header shows "Connected Devices [hostname]".
 
@@ -877,7 +877,7 @@ Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The serv
    - `shell` -- opens an ADB shell terminal (xterm.js + node-pty)
    - `list files` -- opens the file manager
 
-**Disconnect button:** Shown only for network-connected devices (serial contains `:`). Calls `POST /api/devices/disconnect`, then the device disappears naturally via ControlCenter polling. Built via DOM manipulation (not the `html` template tag) because the template's XSS protection escapes raw HTML strings.
+**Disconnect button:** Shown only for network-connected devices (serial contains `:`). Calls `POST /api/devices/disconnect`. On the next poll cycle (5s), `ControlCenter` detects the device is gone, broadcasts a disconnect state update via WebSocket, and removes the device from its maps. The client-side `BaseDeviceTracker.updateDescriptor()` splices disconnected devices from the descriptors array, and `buildDeviceTable()` re-renders without them -- the card disappears. Built via DOM manipulation (not the `html` template tag) because the template's XSS protection escapes raw HTML strings.
 
 **Interface auto-selection:** The interface dropdown was removed. The best connection path is selected automatically: WiFi interface (direct IP) is preferred, falls back to the first available interface, then to ADB proxy as a last resort.
 
