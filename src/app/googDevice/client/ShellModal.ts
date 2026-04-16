@@ -52,6 +52,11 @@ export class ShellModal {
         header.appendChild(title);
         header.appendChild(closeBtn);
 
+        // Resize warning
+        const warning = document.createElement('div');
+        warning.className = 'shell-warning';
+        warning.textContent = 'resizing the browser window after starting a session may cause display issues';
+
         // Body
         const body = document.createElement('div');
         body.className = 'dialog-body';
@@ -61,6 +66,7 @@ export class ShellModal {
         body.appendChild(terminalContainer);
 
         container.appendChild(header);
+        container.appendChild(warning);
         container.appendChild(body);
         this.background.appendChild(container);
 
