@@ -146,6 +146,7 @@ export class StreamClientScrcpy
     private baselineFrameSize = 0;
     private degradationCount = 0;
     private lastRefreshTime = 0;
+    private stopFn?: () => void;
 
     public static registerPlayer(playerClass: PlayerClass): void {
         if (playerClass.isSupported()) {
@@ -183,9 +184,12 @@ export class StreamClientScrcpy
         player?: BasePlayer,
         fitToScreen?: boolean,
         videoSettings?: VideoSettings,
-    ): StreamClientScrcpy {
+        container?: HTMLElement,
+        onDisconnect?: () => void,
+    ): { instance: StreamClientScrcpy; stop: () => void } {
         const params = query instanceof URLSearchParams ? StreamClientScrcpy.parseParameters(query) : query;
-        return new StreamClientScrcpy(params, player, fitToScreen, videoSettings);
+        const instance = new StreamClientScrcpy(params, player, fitToScreen, videoSettings, container, onDisconnect);
+        return { instance, stop: () => instance.stopStream() };
     }
 
     protected constructor(
@@ -193,11 +197,15 @@ export class StreamClientScrcpy
         player?: BasePlayer,
         fitToScreen?: boolean,
         videoSettings?: VideoSettings,
+        private readonly container?: HTMLElement,
+        private readonly onDisconnectCallback?: () => void,
     ) {
         super(params);
         const { udid, player: playerName } = this.params;
         this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings });
-        this.setBodyClass('stream');
+        if (!container) {
+            this.setBodyClass('stream');
+        }
     }
 
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {
@@ -330,6 +338,7 @@ export class StreamClientScrcpy
         if (!this.isRefreshing) {
             this.touchHandler?.release();
             this.touchHandler = undefined;
+            this.onDisconnectCallback?.();
         }
     };
 
@@ -375,6 +384,8 @@ export class StreamClientScrcpy
             if (this.player) this.player.stop();
         };
 
+        this.stopFn = () => stop();
+
         const googMoreBox = (this.moreBox = new GoogMoreBox(udid, player, this));
         const moreBox = googMoreBox.getHolderElement();
         googMoreBox.setOnStop(stop);
@@ -388,7 +399,8 @@ export class StreamClientScrcpy
         player.setParent(video);
         player.pause();
 
-        document.body.appendChild(deviceView);
+        const target = this.container ?? document.body;
+        target.appendChild(deviceView);
         if (fitToScreen) {
             const newBounds = this.getMaxSize();
             if (newBounds) {
@@ -440,6 +452,13 @@ export class StreamClientScrcpy
         }
 
         console.log(TAG, player.getName(), udid);
+    }
+
+    public stopStream(): void {
+        if (this.stopFn) {
+            this.stopFn();
+            this.stopFn = undefined;
+        }
     }
 
     public sendMessage(message: ControlMessage): void {
