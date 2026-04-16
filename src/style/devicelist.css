@@ -96,7 +96,7 @@ body.list #device_list_menu {
 
 #devices .device-info td.device-label {
     color: var(--text-color-light, #888);
-    padding-right: 12px;
+    padding-right: 27px;
     white-space: nowrap;
 }
 
