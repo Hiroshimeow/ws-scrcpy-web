@@ -1,4 +1,3 @@
-import '../../../style/filelisting.css';
 import { ACTION } from '../../../common/Action';
 import Protocol from '../../../common/AdbProtocol';
 import { ChannelCode } from '../../../common/ChannelCode';
