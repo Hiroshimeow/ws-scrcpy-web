@@ -801,8 +801,6 @@ The dependency updater manages runtime dependencies (Node.js + node-pty, ADB, sc
 | POST | `/api/dependencies/check` | Check all dependencies for updates |
 | POST | `/api/dependencies/:name/update` | Download and install update for named dependency |
 | POST | `/api/dependencies/restart` | Restart the server (via launcher script) |
-| POST | `/api/devices/scan` | Discover ADB devices on local network via mDNS |
-| POST | `/api/devices/connect` | Connect to a discovered device by address |
 
 ### 13.3 Restart Flow
 
@@ -845,23 +843,58 @@ To add a new dependency to the updater:
 
 ## 14. Home Page Architecture
 
-The home page (`http://localhost:8000`) is a single-page view with three sections, no navigation required.
+The home page (`http://localhost:8000`) is a single-page view with three sections on one scrollable page. No navigation system -- everything is visible at a glance.
+
+Page structure is created in `src/app/index.ts` in fixed order before `HostTracker.start()` to prevent race conditions across browsers.
 
 ### 14.1 Connected Devices
 
-Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. Each device is a card in a responsive CSS grid showing device name, serial, state indicator (green/red dot), and action buttons (stream, shell, file manager).
+Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The server polls `adb devices` every 2 seconds. Devices appear automatically when ADB detects them.
 
-Devices appear automatically when ADB detects them. The server polls `adb devices` every 2 seconds.
+**Card layout:** CSS grid with `auto-fill` columns (minimum 340px). Active devices have a green left border accent; offline devices have red with reduced opacity. Tracker header shows "Connected Devices [hostname]".
 
-**Card layout:** CSS grid with `auto-fill` columns (minimum 340px). Active devices have a green left border accent; offline devices have red with reduced opacity.
+**Card structure:** Each device card contains three sections separated by subtle divider lines:
+
+1. **Info table** -- two-column layout with aligned labels:
+   - Model (smart dedup: skips manufacturer if model already starts with it)
+   - Device ID (the ADB serial/IP:port)
+   - Android version
+   - SDK version
+
+2. **"opens in overlay" section** -- buttons that open UI overlays on the current page:
+   - `configure stream` -- codec/encoder selection dialog
+
+3. **"opens in new tab" section** -- buttons that open in a new browser tab:
+   - `connect` -- opens a mirroring session using WebCodecs
+   - `shell` -- opens an ADB shell terminal (xterm.js + node-pty)
+   - `list files` -- opens the file manager
+
+**Interface auto-selection:** The interface dropdown was removed. The best connection path is selected automatically: WiFi interface (direct IP) is preferred, falls back to the first available interface, then to ADB proxy as a last resort.
+
+**Removed legacy features:**
+- Interface dropdown (replaced by auto-selection)
+- Server PID button (was a no-op -- server lifecycle is managed by `ScrcpyConnection`)
+- "WebCodecs" link label (renamed to "connect")
 
 ### 14.2 Network Discovery
 
-The "Scan Network" button calls `POST /api/devices/scan` which runs `adb mdns services` to discover ADB-enabled devices advertising via mDNS on the local network. Results are filtered to exclude already-connected devices and displayed as cards with "Connect" buttons.
+**API Endpoints:**
 
-Connecting calls `POST /api/devices/connect` with the device address. On success, the device appears in the Connected Devices section via the normal WebSocket update flow from `ControlCenter`.
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/devices/scan` | Discover ADB devices on local network via mDNS |
+| POST | `/api/devices/connect` | Connect to a discovered device by address (JSON body: `{ "address": "ip:port" }`) |
+
+The "Scan Network" button calls `POST /api/devices/scan` which runs `adb mdns services` to discover ADB-enabled devices advertising via mDNS on the local network. Results are filtered to only `_adb-tls-connect` services and exclude already-connected devices. Discovered devices are displayed as cards with "Connect" buttons.
+
+Connecting calls `POST /api/devices/connect` with the device address. On success, the card shows "Connected" briefly and then disappears. The device appears in the Connected Devices section via the normal WebSocket update flow from `ControlCenter`.
 
 **Requirement:** Devices must have wireless debugging enabled and be on the same local network. mDNS discovery works on standard home networks.
+
+**Components:**
+- `src/server/api/DeviceDiscoveryApi.ts` -- HTTP endpoint handler
+- `src/server/AdbClient.ts` -- `mdnsServices()`, `connect()`, `disconnect()` methods + `parseMdnsOutput()` parser
+- `src/app/client/NetworkDiscoveryPanel.ts` -- browser-side scan UI
 
 ### 14.3 Dependencies
 
