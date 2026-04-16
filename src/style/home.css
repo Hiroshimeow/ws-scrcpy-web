@@ -18,3 +18,63 @@
     border-top: 1px solid var(--device-border-color, #444);
     margin: 0;
 }
+
+/* Network Discovery */
+.discovery-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.discovery-header h2 {
+    margin: 0;
+}
+
+.discovery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+}
+
+.discovery-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 8px;
+    background: var(--device-list-default-color, #1e1e1e);
+}
+
+.discovery-card-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color, #eee);
+}
+
+.discovery-card-address {
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--text-color-secondary, #888);
+    margin-top: 2px;
+}
+
+.discovery-scanning,
+.discovery-empty {
+    color: var(--text-color-secondary, #888);
+    font-size: 14px;
+    padding: 12px 0;
+}
+
+.discovery-error {
+    color: #f87171;
+    font-size: 14px;
+    padding: 12px 0;
+}
+
+.dep-ok-btn {
+    background: #1a3a1a !important;
+    border-color: #2a5a2a !important;
+    color: #4ade80 !important;
+}

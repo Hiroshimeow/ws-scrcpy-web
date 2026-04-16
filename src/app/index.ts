@@ -3,6 +3,7 @@ import '../style/home.css';
 import '../style/dependencies.css';
 import { HostTracker } from './client/HostTracker';
 import { DependencyPanel } from './client/DependencyPanel';
+import { NetworkDiscoveryPanel } from './client/NetworkDiscoveryPanel';
 import type { Tool } from './client/Tool';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 
@@ -47,12 +48,16 @@ window.onload = async (): Promise<void> => {
     }
     HostTracker.start();
 
-    DependencyPanel.create().then((panel) => {
+    const discoveryPanel = new NetworkDiscoveryPanel();
+
+    DependencyPanel.create().then((depPanel) => {
         const devices = document.getElementById('devices');
         if (devices) {
-            devices.parentElement!.insertBefore(panel.getElement(), devices);
+            devices.after(discoveryPanel.getElement());
+            discoveryPanel.getElement().after(depPanel.getElement());
         } else {
-            document.body.prepend(panel.getElement());
+            document.body.append(discoveryPanel.getElement());
+            document.body.append(depPanel.getElement());
         }
     });
 };
