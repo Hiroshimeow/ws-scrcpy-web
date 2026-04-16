@@ -135,6 +135,29 @@ export class DeviceDiscoveryApi {
                 return true;
             }
 
+            if (req.method === 'POST' && url === '/api/devices/files/delete') {
+                const body = await readBody(req);
+                const { udid, paths } = JSON.parse(body);
+                if (!udid || !Array.isArray(paths) || paths.length === 0) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ error: 'udid and paths[] are required' }));
+                    return true;
+                }
+                const errors: { path: string; error: string }[] = [];
+                for (const filePath of paths) {
+                    try {
+                        const escaped = filePath.replace(/'/g, "'\\''");
+                        await this.adbClient.shell(udid, `rm -rf '${escaped}'`);
+                    } catch (err) {
+                        errors.push({ path: filePath, error: (err as Error).message });
+                    }
+                }
+                const success = errors.length === 0;
+                res.writeHead(success ? 200 : 207);
+                res.end(JSON.stringify({ success, errors: errors.length > 0 ? errors : undefined }));
+                return true;
+            }
+
             res.writeHead(404);
             res.end(JSON.stringify({ error: 'Not found' }));
             return true;
