@@ -39,14 +39,14 @@ export class NetworkDiscoveryPanel {
         const btn = this.container.querySelector('.discovery-scan-btn') as HTMLButtonElement;
         btn.disabled = true;
         btn.textContent = 'Scanning...';
-        this.resultsContainer.innerHTML = '<p class="discovery-scanning">Scanning local network for ADB devices...</p>';
+        this.resultsContainer.innerHTML = '<div class="empty-state-card">Scanning local network for ADB devices...</div>';
 
         try {
             const res = await fetch('/api/devices/scan', { method: 'POST' });
             const devices: MdnsDevice[] = await res.json();
             this.renderResults(devices);
         } catch {
-            this.resultsContainer.innerHTML = '<p class="discovery-error">Scan failed. Is ADB available?</p>';
+            this.resultsContainer.innerHTML = '<div class="empty-state-card" style="color: #f87171;">Scan failed. Is ADB available?</div>';
         } finally {
             btn.disabled = false;
             btn.textContent = 'Scan Network';
@@ -56,7 +56,7 @@ export class NetworkDiscoveryPanel {
     private renderResults(devices: MdnsDevice[]): void {
         if (devices.length === 0) {
             this.resultsContainer.innerHTML =
-                '<p class="discovery-empty">No new devices found on the network. Make sure wireless debugging is enabled on your devices.</p>';
+                '<div class="empty-state-card">No new devices found on the network. Make sure wireless debugging is enabled on your devices.</div>';
             return;
         }
 

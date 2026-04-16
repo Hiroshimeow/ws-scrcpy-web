@@ -19,6 +19,25 @@
     margin: 0;
 }
 
+/* Subtle outline card for section content */
+.section-card {
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--device-list-default-color, #1e1e1e);
+}
+
+/* Empty state card — used when no results to show */
+.empty-state-card {
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--device-list-default-color, #1e1e1e);
+    color: var(--text-color-secondary, #888);
+    font-size: 14px;
+    text-align: center;
+}
+
 /* Network Discovery */
 .discovery-header {
     display: flex;
@@ -60,18 +79,6 @@
     margin-top: 2px;
 }
 
-.discovery-scanning,
-.discovery-empty {
-    color: var(--text-color-secondary, #888);
-    font-size: 14px;
-    padding: 12px 0;
-}
-
-.discovery-error {
-    color: #f87171;
-    font-size: 14px;
-    padding: 12px 0;
-}
 
 .dep-ok-btn {
     background: #1a3a1a !important;

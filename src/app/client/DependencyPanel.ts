@@ -13,18 +13,20 @@ export class DependencyPanel {
                 <h2>Dependencies</h2>
                 <button class="dep-btn dep-check-all">Check for Updates</button>
             </div>
-            <table class="dep-table">
-                <thead>
-                    <tr>
-                        <th>Dependency</th>
-                        <th>Installed</th>
-                        <th>Latest</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+            <div class="section-card">
+                <table class="dep-table">
+                    <thead>
+                        <tr>
+                            <th>Dependency</th>
+                            <th>Installed</th>
+                            <th>Latest</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         `;
         this.tableBody = this.container.querySelector('tbody');
         this.container.querySelector('.dep-check-all')!.addEventListener('click', () => this.checkAll());
