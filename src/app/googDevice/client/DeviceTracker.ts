@@ -10,6 +10,7 @@ import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
 import type { Tool } from '../../client/Tool';
 import Util from '../../Util';
 import { html } from '../../ui/HtmlTag';
+import { ShellModal } from './ShellModal';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 
@@ -264,6 +265,16 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 }
             }
         });
+
+        // Intercept shell links — open modal instead of navigating to new tab
+        const shellLink = overlaySection.querySelector('.shell a') as HTMLAnchorElement | null;
+        if (shellLink) {
+            shellLink.removeAttribute('target');
+            shellLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                new ShellModal(device.udid, device['ro.product.model'] || device.udid, this.params);
+            });
+        }
 
         // Connect button (last)
         if (isActive && DeviceTracker.CREATE_DIRECT_LINKS) {
