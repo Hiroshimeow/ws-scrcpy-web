@@ -422,3 +422,42 @@ dialog.modal .terminal-container {
     inset: 0;
     overflow: hidden;
 }
+
+/* ── Connect modal overrides ── */
+dialog.connect-modal .modal-frame {
+    max-height: 90vh;
+    width: auto;
+    max-width: 95vw;
+}
+
+dialog.connect-modal .modal-body {
+    padding: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    background: #000;
+}
+
+dialog.connect-modal .device-view {
+    display: flex;
+    float: none;
+}
+
+dialog.connect-modal .video {
+    flex: 1;
+    float: none;
+    max-height: calc(90vh - 2.5rem);
+    background: #000;
+    position: relative;
+}
+
+dialog.connect-modal .video-layer,
+dialog.connect-modal .touch-layer {
+    max-height: calc(90vh - 2.5rem);
+    max-width: none;
+}
+
+dialog.connect-modal .control-buttons-list {
+    float: none;
+    flex-shrink: 0;
+}
