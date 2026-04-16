@@ -234,11 +234,7 @@ export class GoogMoreBox {
             }
         };
 
-        const stopBtn = document.createElement('button') as HTMLButtonElement;
-        stopBtn.innerText = 'Disconnect';
-        stopBtn.onclick = stop;
-
-        GoogMoreBox.wrap('p', [stopBtn], moreBox);
+        // Disconnect button removed — X close button on the modal header is disconnect
         player.on('video-view-resize', this.onViewVideoResize);
         player.on('video-settings', this.onVideoSettings);
         this.holder = moreBox;
