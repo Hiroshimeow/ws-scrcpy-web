@@ -7,6 +7,7 @@ export class DependencyPanel {
     constructor() {
         this.container = document.createElement('div');
         this.container.id = 'dependency-panel';
+        this.container.className = 'home-section';
         this.container.innerHTML = `
             <div class="dep-header">
                 <h2>Dependencies</h2>
