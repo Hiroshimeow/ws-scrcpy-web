@@ -17,6 +17,7 @@ const DEFAULT_ADB_PATH = 'adb';
 interface FlatConfig {
     port?: number;
     adbPath?: string;
+    dependenciesPath?: string;
     server?: ServerItem[];
 }
 
@@ -87,7 +88,10 @@ export class Config {
             // ADB_PATH env var overrides file config, which overrides default
             const adbPath = process.env['ADB_PATH'] ?? fileConfig.adbPath ?? DEFAULT_ADB_PATH;
 
-            this.instance = new Config(servers, adbPath);
+            const dependenciesPath = process.env['DEPS_PATH'] ?? fileConfig.dependenciesPath
+                ?? path.resolve(path.dirname(process.argv[1] || '.'), '..', 'dependencies');
+
+            this.instance = new Config(servers, adbPath, dependenciesPath);
         }
         return this.instance;
     }
@@ -95,6 +99,7 @@ export class Config {
     constructor(
         private readonly _servers: ServerItem[],
         private readonly _adbPath: string,
+        private readonly _dependenciesPath: string,
     ) {}
 
     public get servers(): ServerItem[] {
@@ -103,6 +108,10 @@ export class Config {
 
     public get adbPath(): string {
         return this._adbPath;
+    }
+
+    public get dependenciesPath(): string {
+        return this._dependenciesPath;
     }
 
     /** Always true in the simplified config — local goog tracker always runs. */
