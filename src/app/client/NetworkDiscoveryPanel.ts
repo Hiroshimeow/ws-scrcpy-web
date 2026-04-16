@@ -25,7 +25,7 @@ export class NetworkDiscoveryPanel {
                 <h2>Network Devices</h2>
                 <button class="dep-btn discovery-scan-btn">Scan Network</button>
             </div>
-            <div class="discovery-results"></div>
+            <div class="discovery-results"><div class="empty-state-card">Click Scan Network to find devices. Make sure wireless debugging is enabled on the devices you wish to connect with.</div></div>
         `;
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
