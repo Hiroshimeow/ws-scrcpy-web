@@ -52,7 +52,7 @@ src/
 │   ├── googDevice/
 │   │   ├── client/
 │   │   │   ├── StreamClientScrcpy.ts # Main client: connects demuxer, player, touch, audio, UHID
-│   │   │   ├── ConfigureScrcpy.ts    # Stream configuration dialog UI
+│   │   │   ├── ConfigureScrcpy.ts    # Stream configuration modal (glassmorphism overlay)
 │   │   │   └── DeviceTracker.ts      # Device list UI
 │   │   ├── UhidManager.ts            # Creates/destroys UHID keyboard+mouse devices
 │   │   ├── UhidKeyboardHandler.ts    # Keyboard events -> USB HID key reports
@@ -878,7 +878,7 @@ Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The serv
    - SDK version
 
 2. **"opens in overlay" section** -- all action buttons in a single section:
-   - `configure stream` -- codec/encoder selection dialog (own line)
+   - `configure stream` -- codec/encoder selection modal overlay (own line)
    - `shell` -- opens an ADB shell terminal (xterm.js + node-pty)
    - `list files` -- opens the file manager
    - `connect` -- opens a mirroring session using WebCodecs
