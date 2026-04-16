@@ -1,15 +1,16 @@
-:root {
-    --device-border-color: hsl(0, 0%, 82%);
-    --device-list-default-color: hsl(0, 0%, 100%);
-    --device-list-hover-color: hsl(218, 67%, 95%);
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+    --device-border-color: #444444;
+    --device-list-default-color: #252525;
+    --device-list-hover-color: hsl(218, 17%, 18%);
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --device-border-color: hsl(0, 0%, 32%);
-        --device-list-default-color: hsl(0, 0%, 14%);
-        --device-list-hover-color: hsl(218, 17%, 18%);
-    }
+/* Light theme */
+[data-theme="light"] {
+    --device-border-color: #dee2e6;
+    --device-list-default-color: #ffffff;
+    --device-list-hover-color: hsl(218, 67%, 95%);
 }
 
 body.list {
@@ -140,7 +141,7 @@ body.list #device_list_menu {
     margin: 0;
     display: inline-flex;
     align-items: center;
-    border: 0.5px solid #fff;
+    border: 0.5px solid var(--text-color);
     border-radius: 6px;
     overflow: hidden;
     white-space: nowrap;

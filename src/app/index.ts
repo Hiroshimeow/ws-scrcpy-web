@@ -4,8 +4,12 @@ import '../style/dependencies.css';
 import { HostTracker } from './client/HostTracker';
 import { DependencyPanel } from './client/DependencyPanel';
 import { NetworkDiscoveryPanel } from './client/NetworkDiscoveryPanel';
+import { initTheme, createThemeToggle } from './client/ThemeToggle';
 import type { Tool } from './client/Tool';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
+
+// Initialize theme immediately to prevent flash of wrong colors
+initTheme();
 
 window.onload = async (): Promise<void> => {
     const hash = location.hash.replace(/^#!/, '');
@@ -46,6 +50,9 @@ window.onload = async (): Promise<void> => {
             DeviceTracker.registerTool(tool);
         });
     }
+    // Theme toggle button
+    document.body.appendChild(createThemeToggle());
+
     // Create page structure in fixed order BEFORE anything renders
     // BaseDeviceTracker will find #devices and use it instead of creating its own
     const devicesDiv = document.createElement('div');
