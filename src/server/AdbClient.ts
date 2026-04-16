@@ -8,6 +8,29 @@ export interface AdbDevice {
     state: string;
 }
 
+export interface MdnsDevice {
+    name: string;
+    service: string;
+    address: string;
+    port: number;
+}
+
+export function parseMdnsOutput(output: string): MdnsDevice[] {
+    const results: MdnsDevice[] = [];
+    for (const line of output.split('\n')) {
+        const parts = line.split('\t');
+        if (parts.length < 3) continue;
+        const [name, service, addressPort] = parts;
+        const colonIdx = addressPort.lastIndexOf(':');
+        if (colonIdx === -1) continue;
+        const address = addressPort.substring(0, colonIdx);
+        const port = parseInt(addressPort.substring(colonIdx + 1), 10);
+        if (isNaN(port)) continue;
+        results.push({ name: name.trim(), service: service.trim(), address, port });
+    }
+    return results;
+}
+
 export class AdbClient {
     constructor(private adbPath = 'adb') {}
 
@@ -86,5 +109,22 @@ export class AdbClient {
         return spawn(this.adbPath, ['-s', serial, 'shell', command], {
             stdio: ['ignore', 'pipe', 'pipe'],
         });
+    }
+
+    async mdnsServices(): Promise<MdnsDevice[]> {
+        try {
+            const output = await this.exec(['mdns', 'services']);
+            return parseMdnsOutput(output);
+        } catch {
+            return [];
+        }
+    }
+
+    async connect(address: string): Promise<string> {
+        return this.exec(['connect', address]);
+    }
+
+    async disconnect(address: string): Promise<string> {
+        return this.exec(['disconnect', address]);
     }
 }
