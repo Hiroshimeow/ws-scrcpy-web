@@ -53,6 +53,7 @@ src/
 │   │   ├── client/
 │   │   │   ├── StreamClientScrcpy.ts # Main client: connects demuxer, player, touch, audio, UHID
 │   │   │   ├── ConfigureScrcpy.ts    # Stream configuration modal (extends Modal)
+│   │   │   ├── ConnectModal.ts      # Stream experience modal (extends Modal)
 │   │   │   ├── ShellModal.ts         # ADB shell terminal modal (extends Modal)
 │   │   │   └── DeviceTracker.ts      # Device list UI
 │   ├── ui/
@@ -885,7 +886,7 @@ Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The serv
    - `configure stream` -- codec/encoder selection modal (own line). Escape, backdrop click, and X all dismiss.
    - `shell` -- ADB shell terminal modal (xterm.js + node-pty). Escape and backdrop click blocked (both are valid terminal actions). X button shows "End the shell session?" confirmation when a session is active. Wider sizing (`clamp(500px, 90vw, 1600px)`) and taller (`min-height: 600px`). Red resize warning between header and terminal. Server supports `resize` message type for PTY dimension updates via `ResizeObserver`.
    - `list files` -- opens the file manager
-   - `connect` -- opens a mirroring session using WebCodecs
+   - `connect` -- opens ConnectModal: full stream experience (video + toolbar + audio + UHID + touch) inside a native `<dialog>`. Auto-detects best codec/encoder. Escape and backdrop blocked (UHID keyboard capture). X button disconnects. Home page stays visible behind dimmed backdrop. `StreamClientScrcpy` renders into the modal body via a `container` parameter instead of `document.body`. Two entry paths: "configure stream" → pick settings → "connect" opens ConnectModal; or "connect" directly with auto-detected settings.
 
 **Action buttons:** The Android/SDK rows share a rowspan cell containing a flexbox wrapper with up to two buttons:
 
@@ -902,7 +903,7 @@ Both buttons are built via DOM manipulation (not the `html` template tag) becaus
 - "WebCodecs" link label (renamed to "connect")
 - "opens in new tab" section (all buttons unified into single "opens in overlay" section)
 
-**Modal system:** All modals use native HTML `<dialog>` element with `.showModal()`, inheriting from the abstract `Modal` base class (`src/app/ui/Modal.ts`). This provides: top-layer rendering (no z-index conflicts), automatic focus trapping, built-in `::backdrop` for dimming, pointer event blocking on the underlying page (no manual scroll lock needed), and the `cancel` event for Escape key handling. Styling is in `src/style/modal.css` with glassmorphism effects and `@starting-style` CSS transitions for both open and close animations (pure CSS, no JS timing). Each modal controls its dismiss behavior via overridable hooks (`onEscapeKey`, `onBackdropClick`, `onCloseButtonClick`).
+**Modal system:** All modals use native HTML `<dialog>` element with `.showModal()`, inheriting from the abstract `Modal` base class (`src/app/ui/Modal.ts`). This provides: top-layer rendering (no z-index conflicts), automatic focus trapping, built-in `::backdrop` for dimming, pointer event blocking on the underlying page (no manual scroll lock needed), and the `cancel` event for Escape key handling. Styling is in `src/style/modal.css` with glassmorphism effects and `@starting-style` CSS transitions for both open and close animations (pure CSS, no JS timing). Each modal controls its dismiss behavior via overridable hooks (`onEscapeKey`, `onBackdropClick`, `onCloseButtonClick`). Current modals: `ConfigureScrcpy` (settings, all dismiss vectors), `ConnectModal` (stream experience, escape/backdrop blocked), `ShellModal` (terminal, escape/backdrop blocked, close confirmation). `StreamClientScrcpy.start()` accepts an optional `container` parameter — when provided, the stream renders into that container instead of `document.body`, and `setBodyClass('stream')` is skipped. ConnectModal passes `this.bodyEl` as the container. The `start()` method returns a `{ instance, stop }` object; ConnectModal stores the `stop` function and calls it in `onBeforeClose()`. Server disconnect triggers an `onDisconnect` callback that auto-closes the modal.
 
 ### 14.2 Available Network Devices
 

@@ -28,6 +28,7 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - **Configure stream modal** -- native `<dialog>` overlay with codec/encoder selection, device probe, and advanced settings
 - **Redesigned toolbar** -- compact controls with quick stats (FPS, resolution, codec), stream refresh button, and consistent alignment
 - **Quality stats overlay** -- real-time FPS, bitrate, resolution, codec, and encoder info
+- **Stream modal** -- native `<dialog>` overlay for the full mirroring experience (video, toolbar, audio, UHID input). Home page stays visible behind the backdrop — close the stream and you're right back at the device list
 - **Viewport scaling** -- video scales to fill available space with correct aspect ratio
 - **Remote ADB shell** -- native `<dialog>` terminal modal with xterm.js, close confirmation for active sessions, Escape/backdrop blocked (terminal needs both)
 - File manager (browse, upload, download)
