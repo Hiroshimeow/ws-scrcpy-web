@@ -569,7 +569,7 @@ async function browserSupportsCodec(codec: string): Promise<boolean> {
 3. **Multiplexed middleware** (registered on `WebsocketMultiplexer`):
    - `HostTracker` -- device discovery
    - `DeviceTracker` -- ADB device list broadcast
-   - `RemoteShell` -- terminal access via node-pty
+   - `RemoteShell` -- terminal access via node-pty (messages: `start`, `resize`, `stop`)
    - `FileListing` -- file manager operations
 
 ### 9.2 Middleware Pattern
@@ -756,7 +756,7 @@ Run `npm outdated` to check all at once. Update one at a time, build + test afte
 | 9 | `@types/node` | 24.12.2 | TypeScript type definitions for Node.js APIs | Must match target Node.js LTS major version (even numbers only, never odd) |
 | 10 | `@types/ws` | 8.18.1 | TypeScript type definitions for ws library | Must match `ws` major version |
 | 11 | `vitest` | 4.1.4 | Test runner for unit and integration tests | Usually safe to update |
-| 12 | `@xterm/xterm` | 6.0.0 | Terminal emulator rendered in the browser (Microsoft) | Major versions may have API changes affecting `ShellClient.ts` |
+| 12 | `@xterm/xterm` | 6.0.0 | Terminal emulator rendered in the browser (Microsoft) | Major versions may have API changes affecting `ShellClient.ts` and `ShellModal.ts` |
 | 13 | `@xterm/addon-attach` | 0.12.0 | Connects xterm to a WebSocket for remote shell | Must match `@xterm/xterm` major version |
 | 14 | `@xterm/addon-fit` | 0.11.0 | Auto-resizes terminal to fit its container | Must match `@xterm/xterm` major version |
 
@@ -880,7 +880,7 @@ Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The serv
 
 2. **"opens in overlay" section** -- all action buttons in a single section:
    - `configure stream` -- codec/encoder selection modal overlay (own line)
-   - `shell` -- ADB shell terminal modal overlay (xterm.js + node-pty, X-only dismiss)
+   - `shell` -- ADB shell terminal modal overlay (xterm.js + node-pty, X-only dismiss, no backdrop click or Escape key dismiss). Wider sizing (`clamp(500px, 90vw, 1600px)`) and taller (`min-height: 600px`). Red resize warning between header and terminal. Page scroll locked while open. Server supports `resize` message type for PTY dimension updates via `ResizeObserver`.
    - `list files` -- opens the file manager
    - `connect` -- opens a mirroring session using WebCodecs
 
@@ -898,6 +898,8 @@ Both buttons are built via DOM manipulation (not the `html` template tag) becaus
 - Server PID button (was a no-op -- server lifecycle is managed by `ScrcpyConnection`)
 - "WebCodecs" link label (renamed to "connect")
 - "opens in new tab" section (all buttons unified into single "opens in overlay" section)
+
+**Modal behavior (all modals):** Page scroll is locked (`document.body.style.overflow = 'hidden'`) when any modal opens and restored on close. This prevents the home page from scrolling behind the modal backdrop.
 
 ### 14.2 Available Network Devices
 
