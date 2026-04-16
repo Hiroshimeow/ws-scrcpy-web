@@ -71,6 +71,7 @@ export class ShellModal {
         this.background.appendChild(container);
 
         document.body.appendChild(this.background);
+        document.body.style.overflow = 'hidden';
 
         // Start connection
         this.connect(terminalContainer);
@@ -221,6 +222,7 @@ export class ShellModal {
         // Remove modal from DOM
         if (this.background.parentElement) {
             this.background.parentElement.removeChild(this.background);
+            document.body.style.overflow = '';
         }
     }
 }

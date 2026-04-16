@@ -618,11 +618,13 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         background.addEventListener('click', this.onBackgroundClick);
         document.addEventListener('keydown', this.onEscapeKey);
         document.body.appendChild(background);
+        document.body.style.overflow = 'hidden';
         return background;
     }
 
     private removeUI(): void {
         document.body.removeChild(this.background);
+        document.body.style.overflow = '';
         this.connectButton?.removeEventListener('click', this.openStream);
         this.resetSettingsButton?.removeEventListener('click', this.resetSettings);
         this.loadSettingsButton?.removeEventListener('click', this.loadSettings);
