@@ -272,7 +272,9 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             shellLink.removeAttribute('target');
             shellLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                new ShellModal(device.udid, device['ro.product.model'] || device.udid, this.params);
+                const nameEl = shellLink.closest('.device')?.querySelector('.device-name-text');
+                const label = nameEl?.textContent || device['ro.product.model'] || device.udid;
+                new ShellModal(device.udid, label, this.params);
             });
         }
 
