@@ -115,7 +115,7 @@ export class ShellModal {
 
         this.ws.addEventListener('open', () => {
             this.initTerminal(terminalContainer);
-            this.startShell();
+            // startShell is called after fit() inside initTerminal's rAF callback
         });
 
         this.ws.addEventListener('close', (event: CloseEvent) => {
@@ -136,8 +136,15 @@ export class ShellModal {
         this.fitAddon = new FitAddon();
         this.term.loadAddon(this.fitAddon);
         this.term.open(container);
-        this.fitAddon.fit();
-        this.term.focus();
+
+        // Delay fit until browser completes layout pass — without this,
+        // FitAddon calculates wrong column count (wider than visible),
+        // causing text not to wrap and a cosmetic scrollbar to appear
+        requestAnimationFrame(() => {
+            this.fitAddon?.fit();
+            this.term?.focus();
+            this.startShell();
+        });
 
         window.addEventListener('resize', this.resizeHandler);
     }
