@@ -51,6 +51,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             'ro.product.manufacturer': '',
             'ro.product.model': '',
             'ro.product.cpu.abi': '',
+            'ro.serialno': '',
             'last.update.timestamp': 0,
         };
         this.adbClient = new AdbClient();

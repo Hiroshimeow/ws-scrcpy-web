@@ -6,5 +6,6 @@ export const Properties: ReadonlyArray<keyof GoogDeviceDescriptor> = [
     'ro.product.model',
     'ro.build.version.release',
     'ro.build.version.sdk',
+    'ro.serialno',
     'wifi.interface',
 ];
