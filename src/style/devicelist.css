@@ -13,6 +13,7 @@
 }
 
 body.list {
+    position: static;
     height: auto;
     width: auto;
     overflow: auto;
@@ -20,7 +21,8 @@ body.list {
 
 #devices {
     padding: 20px;
-    width: auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 body.stream #devices {
