@@ -22,6 +22,8 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - **Multi-codec video** -- H.264, H.265 (HEVC), AV1 with automatic detection and smart encoder selection
 - **Multi-codec audio** -- Opus, AAC, FLAC, raw PCM via WebCodecs AudioDecoder
 - **UHID keyboard/mouse** -- hardware-level input via USB HID reports (pointer lock for mouse)
+- **D-pad / Touch input modes** -- toolbar toggle between D-pad mode (default, for TV apps like Peacock/Netflix) and Touch mode (for touch-aware apps). D-pad mode maps left-click to OK, scroll wheel to up/down, Shift+scroll to left/right
+- **Scroll wheel support** -- mouse wheel scrolling on the mirrored device, tuned for latent streams
 - Touch and keyboard input forwarding (classic scrcpy keycode mode)
 - Configure stream dialog with codec/encoder selection and device probe
 - **Redesigned toolbar** -- compact controls with quick stats (FPS, resolution, codec), stream refresh button, and consistent alignment
