@@ -88,6 +88,7 @@
 
 .discovery-card {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
@@ -109,6 +110,32 @@
     margin-top: 2px;
 }
 
+.discovery-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.discovery-name-input {
+    flex: 1;
+    background: var(--stream-bg-color, #333);
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 6px;
+    color: var(--text-color, #eee);
+    font-size: 13px;
+    padding: 6px 10px;
+}
+
+.discovery-name-input:focus {
+    outline: none;
+    border-color: var(--accent-color, #5b9aff);
+}
+
+.discovery-name-input::placeholder {
+    color: var(--text-color-secondary, #888);
+}
 
 .dep-ok-btn {
     background: #1a3a1a !important;

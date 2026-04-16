@@ -5,6 +5,8 @@ interface MdnsDevice {
     service: string;
     address: string;
     port: number;
+    serial: string;
+    label: string;
 }
 
 interface ConnectResult {
@@ -73,16 +75,24 @@ export class NetworkDiscoveryPanel {
                     <div class="discovery-card-name">${device.name}</div>
                     <div class="discovery-card-address">${addr}</div>
                 </div>
-                <button class="dep-btn dep-update discovery-connect-btn" data-address="${addr}">Connect</button>
+                <div class="discovery-card-actions">
+                    <input type="text" class="discovery-name-input" placeholder="Name this device..." value="${device.label || ''}" />
+                    <button class="dep-btn dep-update discovery-connect-btn" data-address="${addr}" data-serial="${device.serial}">Connect</button>
+                </div>
             `;
-            card.querySelector('.discovery-connect-btn')!.addEventListener('click', () => this.connectDevice(addr, card));
+            card.querySelector('.discovery-connect-btn')!.addEventListener('click', () =>
+                this.connectDevice(addr, device.serial, card),
+            );
             grid.appendChild(card);
         }
         this.resultsContainer.appendChild(grid);
     }
 
-    private async connectDevice(address: string, card: HTMLElement): Promise<void> {
+    private async connectDevice(address: string, serial: string, card: HTMLElement): Promise<void> {
         const btn = card.querySelector('.discovery-connect-btn') as HTMLButtonElement;
+        const nameInput = card.querySelector('.discovery-name-input') as HTMLInputElement;
+        const label = nameInput.value.trim();
+
         btn.disabled = true;
         btn.textContent = 'Connecting...';
 
@@ -90,7 +100,7 @@ export class NetworkDiscoveryPanel {
             const res = await fetch('/api/devices/connect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address }),
+                body: JSON.stringify({ address, serial, label: label || undefined }),
             });
             const result: ConnectResult = await res.json();
             if (result.success) {
