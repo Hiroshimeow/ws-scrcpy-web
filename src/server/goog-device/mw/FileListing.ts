@@ -13,15 +13,18 @@ export class FileListing extends Mw {
     protected name = 'FileListing';
 
     public static processChannel(ws: Multiplexer, code: string, data: ArrayBuffer): Mw | undefined {
+        FileListing.log.info(`processChannel: code="${code}", dataLen=${data?.byteLength ?? 0}`);
         if (code !== ChannelCode.FSLS) {
             return;
         }
         if (!data || data.byteLength < 4) {
+            FileListing.log.error('processChannel: data too short');
             return;
         }
         const buffer = Buffer.from(data);
         const length = buffer.readInt32LE(0);
         const serial = Util.utf8ByteArrayToString(buffer.slice(4, 4 + length));
+        FileListing.log.info(`processChannel: accepted for serial="${serial}"`);
         return new FileListing(ws, serial);
     }
 

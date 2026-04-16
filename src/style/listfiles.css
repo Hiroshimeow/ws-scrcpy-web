@@ -108,6 +108,12 @@
     color: rgba(0, 0, 0, 0.4);
 }
 
+.list-files-header-icon-spacer {
+    /* Matches the file icon width so columns align with row data */
+    width: var(--file-icon-size, 24px);
+    flex-shrink: 0;
+}
+
 .list-files-header-name {
     flex: 1;
     cursor: pointer;
@@ -120,6 +126,12 @@
     text-align: right;
     cursor: pointer;
     user-select: none;
+}
+
+/* Spacer for hover actions column so size/date align even when actions are hidden */
+.list-files-header-actions-spacer {
+    width: 52px;
+    flex-shrink: 0;
 }
 
 .list-files-header-check {
@@ -215,8 +227,9 @@
     border: none;
     cursor: pointer;
     padding: 2px 4px;
-    font-size: 14px;
+    font-size: var(--file-icon-size, 24px);
     border-radius: 3px;
+    line-height: 1;
 }
 
 .list-files-action-download {

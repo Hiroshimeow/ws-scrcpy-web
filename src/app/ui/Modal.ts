@@ -1,4 +1,5 @@
 import '../../style/modal.css';
+import { createThemeToggle } from '../client/ThemeToggle';
 
 export interface ModalOptions {
     title: string;
@@ -31,11 +32,23 @@ export abstract class Modal {
         title.textContent = options.title;
         header.appendChild(title);
 
+        // Header right-side controls: theme toggle + close button
+        const headerControls = document.createElement('div');
+        headerControls.style.display = 'flex';
+        headerControls.style.alignItems = 'center';
+        headerControls.style.gap = '8px';
+
+        const themeBtn = createThemeToggle();
+        themeBtn.classList.add('modal-close'); // reuse close button sizing
+        headerControls.appendChild(themeBtn);
+
         const closeBtn = document.createElement('button');
         closeBtn.classList.add('modal-close');
         closeBtn.textContent = '\u00d7';
         closeBtn.addEventListener('click', () => this.onCloseButtonClick());
-        header.appendChild(closeBtn);
+        headerControls.appendChild(closeBtn);
+
+        header.appendChild(headerControls);
 
         // Body
         this.bodyEl = document.createElement('div');

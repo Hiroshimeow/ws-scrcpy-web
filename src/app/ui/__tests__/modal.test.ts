@@ -95,7 +95,9 @@ describe('Modal base class', () => {
 
     it('has a close button in the header', () => {
         const modal = new TestModal({ title: 'test' });
-        const closeBtn = modal['dialog'].querySelector('.modal-close');
+        // Close button is the last .modal-close element (theme toggle is first)
+        const closeBtns = modal['dialog'].querySelectorAll('.modal-close');
+        const closeBtn = closeBtns[closeBtns.length - 1];
         expect(closeBtn).not.toBeNull();
         expect(closeBtn?.textContent).toBe('\u00d7');
         modal.close();
@@ -214,7 +216,9 @@ describe('Modal dismiss behavior — overrides', () => {
 
     it('subclass can override X button behavior', () => {
         const modal = new StickyModal({ title: 'test' });
-        const closeBtn = modal['dialog'].querySelector('.modal-close') as HTMLElement;
+        // Close button is the last .modal-close (theme toggle is first)
+        const closeBtns = modal['dialog'].querySelectorAll('.modal-close');
+        const closeBtn = closeBtns[closeBtns.length - 1] as HTMLElement;
         closeBtn.click();
         expect(modal.closeButtonCalled).toBe(true);
     });

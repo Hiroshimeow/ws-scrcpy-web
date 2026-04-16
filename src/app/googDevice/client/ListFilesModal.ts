@@ -23,6 +23,7 @@ type SortField = 'name' | 'size' | 'date';
 type SortDir = 'asc' | 'desc';
 
 type Download = {
+    cmd: string;
     receivedBytes: number;
     entry?: Entry;
     progressEl?: HTMLElement;
@@ -47,7 +48,9 @@ function formatSize(bytes: number): string {
 
 function formatDate(date: Date): string {
     const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-    return `${months[date.getMonth()]} ${date.getDate()}`;
+    const year = String(date.getFullYear()).slice(2);
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${months[date.getMonth()]} ${day} ${year}`;
 }
 
 export class ListFilesModal extends Modal implements DragAndPushListener {
@@ -76,6 +79,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     private uploads: Map<string, Upload> = new Map();
     private activeDownloads = 0;
     private activeUploads = 0;
+    private reloadTimeout?: number;
 
     // Upload infrastructure
     private filePushHandler?: FilePushHandler;
@@ -86,12 +90,10 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     private filterInput?: HTMLInputElement;
     private headerCheck?: HTMLInputElement;
     private fileListBody?: HTMLElement;
-    private footerUploadBtn?: HTMLButtonElement;
-    private footerDeleteBtn?: HTMLButtonElement;
-    private footerDownloadBtn?: HTMLButtonElement;
-    private footerInfo?: HTMLElement;
+    // Footer elements are NOT stored during buildFooter() — ES2022 field initializers
+    // clobber values set during super(). Query from DOM instead via getFooterEl().
     private dropZone?: HTMLElement;
-    private uploadInput?: HTMLInputElement;
+    // uploadInput also queried from DOM (same ES2022 reason)
 
     constructor(
         udid: string,
@@ -146,40 +148,40 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         const actions = document.createElement('div');
         actions.className = 'list-files-footer-actions';
 
-        this.footerUploadBtn = document.createElement('button');
-        this.footerUploadBtn.className = 'list-files-footer-btn';
-        this.footerUploadBtn.textContent = 'upload';
-        this.footerUploadBtn.addEventListener('click', () => this.triggerUpload());
-        actions.appendChild(this.footerUploadBtn);
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = 'list-files-footer-btn lf-upload-btn';
+        uploadBtn.textContent = 'upload';
+        uploadBtn.addEventListener('click', () => this.triggerUpload());
+        actions.appendChild(uploadBtn);
 
-        this.footerDeleteBtn = document.createElement('button');
-        this.footerDeleteBtn.className = 'list-files-footer-btn delete';
-        this.footerDeleteBtn.textContent = 'delete';
-        this.footerDeleteBtn.disabled = true;
-        this.footerDeleteBtn.addEventListener('click', () => this.deleteSelected());
-        actions.appendChild(this.footerDeleteBtn);
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'list-files-footer-btn delete lf-delete-btn';
+        deleteBtn.textContent = 'delete';
+        deleteBtn.disabled = true;
+        deleteBtn.addEventListener('click', () => this.deleteSelected());
+        actions.appendChild(deleteBtn);
 
-        this.footerDownloadBtn = document.createElement('button');
-        this.footerDownloadBtn.className = 'list-files-footer-btn';
-        this.footerDownloadBtn.textContent = 'download';
-        this.footerDownloadBtn.disabled = true;
-        this.footerDownloadBtn.addEventListener('click', () => this.downloadSelected());
-        actions.appendChild(this.footerDownloadBtn);
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'list-files-footer-btn lf-download-btn';
+        downloadBtn.textContent = 'download';
+        downloadBtn.disabled = true;
+        downloadBtn.addEventListener('click', () => this.downloadSelected());
+        actions.appendChild(downloadBtn);
 
         footer.appendChild(actions);
 
         // Right: info
-        this.footerInfo = document.createElement('span');
-        this.footerInfo.className = 'list-files-footer-info';
-        footer.appendChild(this.footerInfo);
+        const info = document.createElement('span');
+        info.className = 'list-files-footer-info lf-footer-info';
+        footer.appendChild(info);
 
         // Hidden file input for upload button
-        this.uploadInput = document.createElement('input');
-        this.uploadInput.type = 'file';
-        this.uploadInput.multiple = true;
-        this.uploadInput.style.display = 'none';
-        this.uploadInput.addEventListener('change', () => this.handleUploadInput());
-        footer.appendChild(this.uploadInput);
+        const uploadInput = document.createElement('input');
+        uploadInput.type = 'file';
+        uploadInput.multiple = true;
+        uploadInput.style.display = 'none';
+        uploadInput.addEventListener('change', () => this.handleUploadInput());
+        footer.appendChild(uploadInput);
 
         return footer;
     }
@@ -212,6 +214,12 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         this.channels.clear();
         this.downloads.clear();
         this.uploads.clear();
+
+        // Close the FSLS channel
+        if (this.fsChannel && (this.fsChannel.readyState === this.fsChannel.OPEN || this.fsChannel.readyState === this.fsChannel.CONNECTING)) {
+            this.fsChannel.close();
+        }
+        this.fsChannel = undefined;
     }
 
     // ── Transfer confirmation ──
@@ -280,10 +288,21 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         const saveLabel = document.createElement('label');
         const saveCheck = document.createElement('input');
         saveCheck.type = 'checkbox';
-        saveCheck.checked = true;
+        const hasSavedPref = localStorage.getItem(ICON_SIZE_KEY) !== null;
+        saveCheck.checked = hasSavedPref;
         saveLabel.appendChild(saveCheck);
-        saveLabel.appendChild(document.createTextNode(' save preference'));
+        saveLabel.appendChild(document.createTextNode(' save preference (skip this dialog next time)'));
         controls.appendChild(saveLabel);
+
+        const note = document.createElement('div');
+        note.className = 'list-files-size-picker-note';
+        const updateNote = (): void => {
+            note.textContent = saveCheck.checked
+                ? 'uncheck and click ok to clear saved preference'
+                : '';
+        };
+        saveCheck.addEventListener('change', updateNote);
+        updateNote();
 
         const okBtn = document.createElement('button');
         okBtn.className = 'list-files-footer-btn';
@@ -293,16 +312,14 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             this.dialog.style.setProperty('--file-icon-size', `${this.iconSize}px`);
             if (saveCheck.checked) {
                 localStorage.setItem(ICON_SIZE_KEY, String(this.iconSize));
+            } else {
+                localStorage.removeItem(ICON_SIZE_KEY);
             }
             this.initFileBrowser();
         });
         controls.appendChild(okBtn);
 
         picker.appendChild(controls);
-
-        const note = document.createElement('div');
-        note.className = 'list-files-size-picker-note';
-        note.textContent = 'clear browser storage to reset';
         picker.appendChild(note);
 
         this.bodyEl.appendChild(picker);
@@ -328,10 +345,9 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         this.headerCheck.addEventListener('change', () => this.toggleSelectAll());
         headerRow.appendChild(this.headerCheck);
 
-        // Spacer for icon column
+        // Spacer for icon column — matches file icon width so columns align
         const iconSpacer = document.createElement('span');
-        iconSpacer.style.width = 'var(--file-icon-size, 24px)';
-        iconSpacer.style.flexShrink = '0';
+        iconSpacer.className = 'list-files-header-icon-spacer';
         headerRow.appendChild(iconSpacer);
 
         const nameHeader = document.createElement('span');
@@ -352,10 +368,9 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         dateHeader.addEventListener('click', () => this.toggleSort('date'));
         headerRow.appendChild(dateHeader);
 
-        // Spacer for actions column
+        // Spacer for actions column — matches hover action buttons width
         const actionsSpacer = document.createElement('span');
-        actionsSpacer.style.width = '56px';
-        actionsSpacer.style.flexShrink = '0';
+        actionsSpacer.className = 'list-files-header-actions-spacer';
         headerRow.appendChild(actionsSpacer);
 
         this.bodyEl.appendChild(headerRow);
@@ -396,10 +411,15 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         return url.toString();
     }
 
+    // The FSLS channel — a sub-multiplexer on the shared WebSocket multiplexer.
+    // ManagerClient creates this via createChannel(getChannelInitData()).
+    // loadDirectory creates command sub-channels on THIS channel, not on the root multiplexer.
+    private fsChannel?: Multiplexer;
+
     private connectAndLoad(): void {
         this.wsUrl = this.buildWebSocketUrl();
 
-        // Get or create a multiplexer
+        // Get or create the shared root multiplexer (same pattern as ManagerClient/ShellModal)
         let mux = ManagerClient.sockets.get(this.wsUrl);
         if (!mux) {
             const ws = new WebSocket(this.wsUrl);
@@ -415,24 +435,47 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         }
         this.multiplexer = mux;
 
-        // Set up upload handler (needs the multiplexer for AdbkitFilePushStream)
-        // AdbkitFilePushStream expects a FileListingClient-like object with getPath()
-        // We pass `this` which implements the required interface
-        const pushStream = new AdbkitFilePushStream(this.multiplexer, this as any);
-        this.filePushHandler = new FilePushHandler(this.bodyEl, pushStream);
-        this.filePushHandler.addEventListener(this);
+        // Create the FSLS channel on the root multiplexer (like ManagerClient does for FileListingClient).
+        // This gives us a sub-multiplexer that the server routes to the FileListing handler.
+        // Command sub-channels (STAT/LIST/RECV) are created on THIS channel.
+        const initChannel = (): void => {
+            const initData = this.getChannelInitData();
+            console.log(TAG, 'wsUrl:', this.wsUrl, 'mux readyState:', this.multiplexer?.readyState, 'sockets:', [...ManagerClient.sockets.keys()]);
+            this.fsChannel = this.multiplexer!.createChannel(initData);
 
-        // Show loading, then load directory
+            console.log(TAG, 'FSLS channel created, readyState:', this.fsChannel.readyState);
+
+            this.fsChannel.addEventListener('open', () => {
+                console.log(TAG, 'FSLS channel opened, readyState:', this.fsChannel?.readyState);
+                // Set up upload handler (needs the FSLS channel for AdbkitFilePushStream)
+                const pushStream = new AdbkitFilePushStream(this.fsChannel!, this as any);
+                this.filePushHandler = new FilePushHandler(this.bodyEl, pushStream);
+                this.filePushHandler.addEventListener(this);
+
+                this.loadDirectory(this.currentPath);
+            });
+
+            // Prevent the FSLS channel from being cleaned up by the root multiplexer's
+            // 'empty' handler when it temporarily has no sub-channels (e.g., between STAT
+            // finishing and LIST starting). We control the lifecycle via onBeforeClose.
+            this.fsChannel.on('empty', () => {
+                // no-op: keep the FSLS channel alive
+            });
+
+            this.fsChannel.addEventListener('close', (ev) => {
+                const ce = ev as CloseEvent;
+                console.log(TAG, 'FSLS channel closed, code:', ce.code, 'reason:', ce.reason);
+            });
+        };
+
         this.showLoading();
 
-        // If multiplexer is already open, load immediately
         if (this.multiplexer.readyState === this.multiplexer.OPEN) {
-            this.loadDirectory(this.currentPath);
+            initChannel();
         } else {
-            // Wait for the underlying WebSocket to open
             const onOpen = (): void => {
                 this.multiplexer?.removeEventListener('open', onOpen);
-                this.loadDirectory(this.currentPath);
+                initChannel();
             };
             this.multiplexer.addEventListener('open', onOpen);
         }
@@ -441,6 +484,21 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     // Required by AdbkitFilePushStream (duck-typed as FileListingClient)
     public getPath(): string {
         return this.currentPath;
+    }
+
+    // ── Footer element accessors (query from DOM to avoid ES2022 field clobbering) ──
+
+    private getDeleteBtn(): HTMLButtonElement | null {
+        return this.frameEl.querySelector('.lf-delete-btn') as HTMLButtonElement | null;
+    }
+    private getDownloadBtn(): HTMLButtonElement | null {
+        return this.frameEl.querySelector('.lf-download-btn') as HTMLButtonElement | null;
+    }
+    private getFooterInfo(): HTMLElement | null {
+        return this.frameEl.querySelector('.lf-footer-info');
+    }
+    private getUploadInput(): HTMLInputElement | null {
+        return this.frameEl.querySelector('input[type="file"]') as HTMLInputElement | null;
     }
 
     // ── Directory listing protocol ──
@@ -455,7 +513,9 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private loadDirectory(path: string): void {
-        if (!this.multiplexer || this.multiplexer.readyState !== this.multiplexer.OPEN) {
+        console.log(TAG, 'loadDirectory:', path, 'fsChannel:', !!this.fsChannel, 'readyState:', this.fsChannel?.readyState);
+        if (!this.fsChannel || this.fsChannel.readyState !== this.fsChannel.OPEN) {
+            console.log(TAG, 'loadDirectory BAILED — fsChannel not ready');
             return;
         }
         this.showLoading();
@@ -469,7 +529,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private downloadFile(path: string, entry: Entry): void {
-        if (!this.multiplexer || this.multiplexer.readyState !== this.multiplexer.OPEN) {
+        if (!this.fsChannel || this.fsChannel.readyState !== this.fsChannel.OPEN) {
             return;
         }
         this.activeDownloads++;
@@ -477,14 +537,13 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private sendCommand(cmd: string, path: string, entry?: Entry, pathToLoadAfter = ''): void {
-        if (!this.multiplexer) return;
+        console.log(TAG, 'sendCommand:', cmd, path, 'fsChannel:', !!this.fsChannel, 'readyState:', this.fsChannel?.readyState);
+        if (!this.fsChannel) {
+            console.log(TAG, 'sendCommand BAILED — no fsChannel');
+            return;
+        }
 
-        // Create channel with FSLS init data
-        const initData = this.getChannelInitData();
-        const channel = this.multiplexer.createChannel(initData);
-        this.channels.add(channel);
-
-        // Build command payload
+        // Build command payload (STAT/LIST/RECV + path length + path)
         const pathBytes = new TextEncoder().encode(path);
         const cmdBytes = new TextEncoder().encode(cmd);
         const payload = new BinaryWriter(cmdBytes.length + 4 + pathBytes.length)
@@ -493,7 +552,15 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             .writeBytes(pathBytes)
             .toUint8Array();
 
+        // Create a sub-channel on the FSLS channel with the command as channel init data
+        // (same pattern as FileListingClient.loadContent — this.ws.createChannel(payload))
+        try {
+            const channel = this.fsChannel.createChannel(payload);
+            console.log(TAG, 'Sub-channel created for', cmd, 'readyState:', channel.readyState);
+            this.channels.add(channel);
+
         const download: Download = {
+            cmd,
             receivedBytes: 0,
             path,
             entry,
@@ -506,16 +573,31 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             this.handleReply(channel, event);
         };
         const onClose = (): void => {
+            const dl = this.downloads.get(channel);
             this.channels.delete(channel);
             this.downloads.delete(channel);
             channel.removeEventListener('message', onMessage);
             channel.removeEventListener('close', onClose);
+
+            // For directory listings (LIST command), the server closes the channel after
+            // all DENT entries (no DONE message). Render the listing — even if empty.
+            // Only trigger for LIST, not STAT (STAT close is just a transition step).
+            if (dl?.cmd === Protocol.LIST) {
+                this.entries = this.pendingEntries.slice();
+                this.pendingEntries = [];
+                this.currentPath = dl?.path ?? this.currentPath;
+                console.log(TAG, 'Channel closed: directory listing complete,', this.entries.length, 'entries for path:', this.currentPath);
+                this.applyFilterAndSort();
+                this.renderBreadcrumbs();
+                this.renderFileList();
+                this.updateFooterInfo();
+            }
         };
         channel.addEventListener('message', onMessage);
         channel.addEventListener('close', onClose);
-
-        // Send the command on the channel
-        channel.send(payload);
+        } catch (err) {
+            console.error(TAG, 'Failed to create sub-channel:', err);
+        }
     }
 
     private requireClean = false;
@@ -525,6 +607,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     private handleReply(channel: Multiplexer, e: MessageEvent): void {
         const data = new Uint8Array(e.data);
         const reply = new TextDecoder('ascii').decode(data.subarray(0, 4));
+        console.log(TAG, 'handleReply:', reply, 'dataLen:', data.length);
 
         switch (reply) {
             case Protocol.DENT: {
@@ -551,6 +634,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
                     // Directory listing complete
                     this.entries = this.pendingEntries.slice();
                     this.pendingEntries = [];
+                    console.log(TAG, 'DONE: directory listing complete,', this.entries.length, 'entries for path:', download?.path);
                     this.currentPath = download?.path ?? this.currentPath;
                     this.applyFilterAndSort();
                     this.renderBreadcrumbs();
@@ -942,26 +1026,29 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
 
     private updateFooterState(): void {
         const hasSelection = this.selectedPaths.size > 0;
-        const hasFileSelection = this.filteredEntries.some(
-            (e) => e.isFile() && this.selectedPaths.has(resolve(this.currentPath, e.name)),
+        const hasDirSelection = this.filteredEntries.some(
+            (e) => e.isDirectory() && this.selectedPaths.has(resolve(this.currentPath, e.name)),
         );
+        // Download disabled when ANY directory is selected (can't download dirs over ADB)
+        const canDownload = hasSelection && !hasDirSelection;
 
-        if (this.footerDeleteBtn) this.footerDeleteBtn.disabled = !hasSelection;
-        if (this.footerDownloadBtn) this.footerDownloadBtn.disabled = !hasFileSelection;
+        const delBtn = this.getDeleteBtn(); if (delBtn) delBtn.disabled = !hasSelection;
+        const dlBtn = this.getDownloadBtn(); if (dlBtn) dlBtn.disabled = !canDownload;
 
         this.updateFooterInfo();
     }
 
     private updateFooterInfo(): void {
-        if (!this.footerInfo) return;
+        const info = this.getFooterInfo();
+        if (!info) return;
 
         const selectedCount = this.selectedPaths.size;
         const totalCount = this.filteredEntries.length;
 
         if (selectedCount > 0) {
-            this.footerInfo.textContent = `${selectedCount} selected / ${totalCount} items`;
+            info.textContent = `${selectedCount} selected / ${totalCount} items`;
         } else {
-            this.footerInfo.textContent = `${totalCount} items`;
+            info.textContent = `${totalCount} items`;
         }
     }
 
@@ -981,12 +1068,13 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     // ── Upload ──
 
     private triggerUpload(): void {
-        this.uploadInput?.click();
+        this.getUploadInput()?.click();
     }
 
     private handleUploadInput(): void {
-        if (!this.uploadInput?.files) return;
-        const files = Array.from(this.uploadInput.files);
+        const input = this.getUploadInput();
+        if (!input?.files) return;
+        const files = Array.from(input.files);
         if (files.length === 0) return;
 
         // Use the FilePushHandler directly
@@ -995,7 +1083,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         }
 
         // Reset input so the same file can be uploaded again
-        this.uploadInput.value = '';
+        if (input) input.value = '';
     }
 
     // DragAndPushListener interface
@@ -1083,8 +1171,12 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         if (finished && !error) {
             this.uploads.delete(fileName);
             this.activeUploads--;
-            // Reload directory to show the new file
-            this.loadDirectory(this.currentPath);
+            // Debounce reload — multiple files finishing rapidly should trigger one reload
+            if (this.reloadTimeout) clearTimeout(this.reloadTimeout);
+            this.reloadTimeout = window.setTimeout(() => {
+                this.reloadTimeout = undefined;
+                this.loadDirectory(this.currentPath);
+            }, 500);
         }
     }
 
@@ -1114,15 +1206,17 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
                 const errorMsg = result.errors.join('\n');
                 console.error(TAG, 'delete errors:', errorMsg);
                 // Show error briefly in footer
-                if (this.footerInfo) {
-                    this.footerInfo.textContent = `delete failed: ${result.errors[0]}`;
+                const infoEl = this.getFooterInfo();
+                if (infoEl) {
+                    infoEl.textContent = `delete failed: ${result.errors[0]}`;
                     setTimeout(() => this.updateFooterInfo(), 10000);
                 }
             }
         } catch (err) {
             console.error(TAG, 'delete request failed:', err);
-            if (this.footerInfo) {
-                this.footerInfo.textContent = 'delete request failed';
+            const infoEl2 = this.getFooterInfo();
+            if (infoEl2) {
+                infoEl2.textContent = 'delete request failed';
                 setTimeout(() => this.updateFooterInfo(), 10000);
             }
         }
