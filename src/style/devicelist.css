@@ -248,6 +248,13 @@ body.list #device_list_menu {
     background-color: var(--device-list-hover-color);
 }
 
+/* Tracker block — inherits grid layout so device cards flow correctly */
+#devices .device-list > div {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+}
+
 /* Tracker name header */
 #devices .tracker-name {
     padding: 0 0 8px 0;
