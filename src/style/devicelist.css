@@ -117,7 +117,7 @@ body.list #device_list_menu {
     gap: 6px;
     align-items: center;
     border-top: 1px solid var(--device-border-color);
-    padding-top: 8px;
+    padding-top: 4px;
     padding-bottom: 8px;
 }
 
