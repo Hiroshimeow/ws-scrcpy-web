@@ -30,6 +30,7 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - Remote ADB shell terminal
 - File manager (browse, upload, download)
 - **Embed mode** -- streamlined iframe integration for embedding in other apps (hides toolbar, auto-scales video, used by [Control Menu](https://github.com/bilbospocketses/control-menu))
+- **Network device discovery** -- scan local network for ADB devices via mDNS and connect with one click
 - Docker support (Dockerfile included)
 
 ## Requirements

@@ -23,6 +23,7 @@ This document covers the internal architecture of ws-scrcpy-web -- a browser-bas
 11. [Known Issues and Fixes](#11-known-issues-and-fixes)
 12. [Release Checklist](#12-release-checklist)
 13. [Dependency Updater](#13-dependency-updater)
+14. [Home Page Architecture](#14-home-page-architecture)
 
 ---
 
@@ -800,6 +801,8 @@ The dependency updater manages runtime dependencies (Node.js + node-pty, ADB, sc
 | POST | `/api/dependencies/check` | Check all dependencies for updates |
 | POST | `/api/dependencies/:name/update` | Download and install update for named dependency |
 | POST | `/api/dependencies/restart` | Restart the server (via launcher script) |
+| POST | `/api/devices/scan` | Discover ADB devices on local network via mDNS |
+| POST | `/api/devices/connect` | Connect to a discovered device by address |
 
 ### 13.3 Restart Flow
 
@@ -837,3 +840,29 @@ To add a new dependency to the updater:
    - `getDownloadUrl()` -- platform-aware download URL
 2. Add an install handler in `DependencyManager.ts` for the new dependency
 3. The UI and API automatically pick up new definitions -- no frontend changes needed
+
+---
+
+## 14. Home Page Architecture
+
+The home page (`http://localhost:8000`) is a single-page view with three sections, no navigation required.
+
+### 14.1 Connected Devices
+
+Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. Each device is a card in a responsive CSS grid showing device name, serial, state indicator (green/red dot), and action buttons (stream, shell, file manager).
+
+Devices appear automatically when ADB detects them. The server polls `adb devices` every 2 seconds.
+
+**Card layout:** CSS grid with `auto-fill` columns (minimum 340px). Active devices have a green left border accent; offline devices have red with reduced opacity.
+
+### 14.2 Network Discovery
+
+The "Scan Network" button calls `POST /api/devices/scan` which runs `adb mdns services` to discover ADB-enabled devices advertising via mDNS on the local network. Results are filtered to exclude already-connected devices and displayed as cards with "Connect" buttons.
+
+Connecting calls `POST /api/devices/connect` with the device address. On success, the device appears in the Connected Devices section via the normal WebSocket update flow from `ControlCenter`.
+
+**Requirement:** Devices must have wireless debugging enabled and be on the same local network. mDNS discovery works on standard home networks.
+
+### 14.3 Dependencies
+
+The dependency updater panel (section 13) shows installed vs. latest versions for Node.js + node-pty, ADB, and scrcpy-server with update controls. See section 13 for full details.
