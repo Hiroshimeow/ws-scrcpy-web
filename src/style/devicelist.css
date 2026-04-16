@@ -116,7 +116,7 @@ body.list #device_list_menu {
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    border-top: 1px solid color-mix(in srgb, var(--device-border-color) 50%, transparent);
+    border-top: 1px solid var(--device-border-color);
     padding-top: 12px;
     padding-bottom: 12px;
 }
@@ -136,7 +136,7 @@ body.list #device_list_menu {
     margin: 0;
     display: inline-flex;
     align-items: center;
-    border: 1px solid #fff;
+    border: 0.5px solid #fff;
     border-radius: 6px;
     overflow: hidden;
     white-space: nowrap;
