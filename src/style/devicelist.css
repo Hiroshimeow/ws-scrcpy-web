@@ -63,7 +63,7 @@ body.list #device_list_menu {
 #devices .device-list div.device {
     border: 1px solid var(--device-border-color);
     border-radius: 8px;
-    padding: 16px;
+    padding: 8px;
     background: var(--device-list-default-color);
     transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -84,7 +84,7 @@ body.list #device_list_menu {
 
 /* Device info table */
 #devices table.device-info {
-    margin-bottom: 12px;
+    margin-bottom: 6px;
     border-collapse: collapse;
     font-size: 13px;
 }
@@ -117,8 +117,8 @@ body.list #device_list_menu {
     gap: 6px;
     align-items: center;
     border-top: 1px solid var(--device-border-color);
-    padding-top: 12px;
-    padding-bottom: 12px;
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 
 #devices .device-list div.device .services:last-child {
