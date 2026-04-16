@@ -1,5 +1,4 @@
 import '@xterm/xterm/css/xterm.css';
-import '../../../style/dialog.css';
 import { AttachAddon } from '@xterm/addon-attach';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -8,73 +7,107 @@ import { ChannelCode } from '../../../common/ChannelCode';
 import type { MessageXtermClient } from '../../../types/MessageXtermClient';
 import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import { ManagerClient } from '../../client/ManagerClient';
+import { Modal } from '../../ui/Modal';
 
 const TAG = '[ShellModal]';
 
-export class ShellModal {
-    private readonly background: HTMLDivElement;
+export class ShellModal extends Modal {
     private term?: Terminal;
     private fitAddon?: FitAddon;
     private ws?: Multiplexer;
     private resizeObserver?: ResizeObserver;
     private shellStarted = false;
+    private readonly udid: string;
+    private readonly params: {
+        hostname?: string;
+        port?: number;
+        secure?: boolean;
+        pathname?: string;
+    };
 
     constructor(
-        private readonly udid: string,
-        private readonly deviceName: string,
-        private readonly params: {
+        udid: string,
+        deviceName: string,
+        params: {
             hostname?: string;
             port?: number;
             secure?: boolean;
             pathname?: string;
         },
     ) {
-        // Build the modal DOM
-        this.background = document.createElement('div');
-        this.background.className = 'dialog-background';
+        super({ title: deviceName });
 
-        const container = document.createElement('div');
-        container.className = 'dialog-container shell-modal';
+        // Add shell-modal class for sizing overrides
+        this.dialog.classList.add('shell-modal');
 
-        // Header
-        const header = document.createElement('div');
-        header.className = 'dialog-header';
+        // Store instance fields after super()
+        this.udid = udid;
+        this.params = params;
 
-        const title = document.createElement('span');
-        title.className = 'dialog-title';
-        title.textContent = this.deviceName;
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'close-btn';
-        closeBtn.textContent = '\u00d7';
-        closeBtn.addEventListener('click', () => this.close());
-
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-
-        // Resize warning
+        // Insert resize warning between header and body
         const warning = document.createElement('div');
         warning.className = 'shell-warning';
         warning.textContent = 'resizing the browser window after starting a session may cause display issues';
+        this.frameEl.insertBefore(warning, this.bodyEl);
 
-        // Body
-        const body = document.createElement('div');
-        body.className = 'dialog-body';
-
-        const terminalContainer = document.createElement('div');
-        terminalContainer.className = 'terminal-container';
-        body.appendChild(terminalContainer);
-
-        container.appendChild(header);
-        container.appendChild(warning);
-        container.appendChild(body);
-        this.background.appendChild(container);
-
-        document.body.appendChild(this.background);
-        document.body.style.overflow = 'hidden';
+        // Get the terminal container created by buildBody
+        const terminalContainer = this.bodyEl.querySelector('.terminal-container') as HTMLElement;
 
         // Start connection
         this.connect(terminalContainer);
+    }
+
+    protected buildBody(container: HTMLElement): void {
+        const terminalContainer = document.createElement('div');
+        terminalContainer.className = 'terminal-container';
+        container.appendChild(terminalContainer);
+    }
+
+    protected onEscapeKey(_event: Event): void {
+        // no-op: Escape is a terminal key
+    }
+
+    protected onBackdropClick(_event: MouseEvent): void {
+        // no-op: protect session from accidental dismissal
+    }
+
+    protected onCloseButtonClick(): void {
+        if (!this.shellStarted) {
+            // Terminal hasn't connected yet — close directly
+            this.close();
+            return;
+        }
+        if (confirm('End the shell session?')) {
+            this.close();
+        }
+    }
+
+    protected onBeforeClose(): void {
+        // Send stop message
+        if (this.ws && this.ws.readyState === this.ws.OPEN) {
+            const message: MessageXtermClient = {
+                id: 1,
+                type: 'shell',
+                data: {
+                    type: 'stop',
+                    udid: this.udid,
+                },
+            };
+            this.ws.send(JSON.stringify(message));
+            this.ws.close();
+        }
+        this.ws = undefined;
+
+        // Dispose terminal
+        if (this.term) {
+            this.term.dispose();
+            this.term = undefined;
+        }
+        this.fitAddon = undefined;
+
+        // Stop observing resize
+        this.resizeObserver?.disconnect();
+        this.resizeObserver = undefined;
     }
 
     private buildWebSocketUrl(): string {
@@ -190,39 +223,5 @@ export class ShellModal {
             },
         };
         this.ws.send(JSON.stringify(message));
-    }
-
-    public close(): void {
-        // Send stop message
-        if (this.ws && this.ws.readyState === this.ws.OPEN) {
-            const message: MessageXtermClient = {
-                id: 1,
-                type: 'shell',
-                data: {
-                    type: 'stop',
-                    udid: this.udid,
-                },
-            };
-            this.ws.send(JSON.stringify(message));
-            this.ws.close();
-        }
-        this.ws = undefined;
-
-        // Dispose terminal
-        if (this.term) {
-            this.term.dispose();
-            this.term = undefined;
-        }
-        this.fitAddon = undefined;
-
-        // Stop observing resize
-        this.resizeObserver?.disconnect();
-        this.resizeObserver = undefined;
-
-        // Remove modal from DOM
-        if (this.background.parentElement) {
-            this.background.parentElement.removeChild(this.background);
-            document.body.style.overflow = '';
-        }
     }
 }
