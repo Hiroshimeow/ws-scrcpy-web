@@ -704,10 +704,9 @@ export class StreamClientScrcpy
         // Use device label (user-assigned name) for the modal title, falling back to model
         const nameEl = button.closest('.device')?.querySelector('.device-name-text');
         const deviceLabel = nameEl?.textContent || descriptor['ro.product.model'] || udid;
-        new ConfigureScrcpy(tracker, descriptor, deviceLabel, options, (result: boolean) => {
-            if (result) {
-                HostTracker.getInstance().destroy();
-            }
+        new ConfigureScrcpy(tracker, descriptor, deviceLabel, options, (_result: boolean) => {
+            // ConnectModal opens from ConfigureScrcpy.openStream() — home page stays intact
+            // HostTracker.destroy() was removed: in the modal flow, the device list must persist
         });
     };
 }

@@ -307,7 +307,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         }
 
         // Intercept connect links — open ConnectModal instead of navigating to new tab
-        const connectLinks = overlaySection.querySelectorAll('a.link-stream_scrcpy') as NodeListOf<HTMLAnchorElement>;
+        const connectLinks = overlaySection.querySelectorAll('a.link-stream') as NodeListOf<HTMLAnchorElement>;
         connectLinks.forEach((link) => {
             link.removeAttribute('target');
             link.addEventListener('click', (e) => {
