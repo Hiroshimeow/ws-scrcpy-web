@@ -10,6 +10,7 @@ import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
 import type { Tool } from '../../client/Tool';
 import Util from '../../Util';
 import { html } from '../../ui/HtmlTag';
+import { ConnectModal } from './ConnectModal';
 import { ShellModal } from './ShellModal';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
@@ -304,6 +305,39 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 store: false,
             });
         }
+
+        // Intercept connect links — open ConnectModal instead of navigating to new tab
+        const connectLinks = overlaySection.querySelectorAll('a.link-stream_scrcpy') as NodeListOf<HTMLAnchorElement>;
+        connectLinks.forEach((link) => {
+            link.removeAttribute('target');
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const href = link.getAttribute('href');
+                if (!href) return;
+
+                // Parse stream params from the URL hash
+                const url = new URL(href, location.origin);
+                const hash = url.hash.startsWith('#!') ? url.hash.slice(2) : url.hash.slice(1);
+                const query = new URLSearchParams(hash);
+                const params = StreamClientScrcpy.parseParameters(query);
+
+                // Get device label from the card
+                const nameEl = link.closest('.device')?.querySelector('.device-name-text');
+                const label = nameEl?.textContent || device['ro.product.model'] || device.udid;
+
+                // Create player and open ConnectModal with auto-detected settings
+                const playerClass = StreamClientScrcpy.getPlayers()[0];
+                if (!playerClass) return;
+                const player = StreamClientScrcpy.createPlayer(playerClass.playerFullName, device.udid);
+                if (!player) return;
+
+                const videoSettings = player.getVideoSettings();
+                const fitToScreen = playerClass.getFitToScreenStatus(device.udid);
+                player.setVideoSettings(videoSettings, fitToScreen, false);
+
+                new ConnectModal(params, player, fitToScreen, videoSettings, label);
+            });
+        });
     }
 
     protected getChannelCode(): string {
