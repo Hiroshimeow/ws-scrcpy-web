@@ -8,9 +8,7 @@ import { DeviceProbeClient } from '../../client/DeviceProbeClient';
 import { DisplayInfo } from '../../DisplayInfo';
 import type { PlayerClass } from '../../player/BasePlayer';
 import Size from '../../Size';
-import { ToolBoxCheckbox } from '../../toolbox/ToolBoxCheckbox';
 import Util from '../../Util';
-import SvgImage from '../../ui/SvgImage';
 import VideoSettings from '../../VideoSettings';
 import type { DeviceTracker } from './DeviceTracker';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
@@ -597,45 +595,29 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
         const advancedSection = (this.advancedSection = document.createElement('div'));
         advancedSection.classList.add('advanced-section');
 
-        const advancedControls = document.createElement('div');
-        advancedControls.classList.add('dialog-controls');
-
         // I-Frame interval
-        this.appendBasicInput(advancedControls, { label: 'i-frame interval', id: 'iFrameInterval' });
+        this.appendBasicInput(advancedSection, { label: 'i-frame interval', id: 'iFrameInterval' });
 
         // Fit to screen toggle
         const fitLabel = document.createElement('label');
         fitLabel.innerText = 'fit to screen';
         fitLabel.classList.add('label');
-        advancedControls.appendChild(fitLabel);
-        const fitToggle = new ToolBoxCheckbox(
-            'Fit to screen',
-            { off: SvgImage.Icon.TOGGLE_OFF, on: SvgImage.Icon.TOGGLE_ON },
-            'fit_to_screen',
-        );
-        fitToggle.getAllElements().forEach((el) => {
-            advancedControls.appendChild(el);
-            if (el instanceof HTMLLabelElement) {
-                fitLabel.htmlFor = el.htmlFor;
-                el.classList.add('input');
-            }
-            if (el instanceof HTMLInputElement) {
-                this.fitToScreenCheckbox = el;
-            }
+        advancedSection.appendChild(fitLabel);
+        const fitCheckbox = (this.fitToScreenCheckbox = document.createElement('input'));
+        fitCheckbox.type = 'checkbox';
+        fitCheckbox.id = fitLabel.htmlFor = `fit_to_screen_${this.escapedUdid}`;
+        fitCheckbox.addEventListener('change', () => {
+            this.onFitToScreenChanged(fitCheckbox.checked);
         });
-        fitToggle.addEventListener('click', (_, el) => {
-            const element = el.getElement();
-            this.onFitToScreenChanged(element.checked);
-        });
+        advancedSection.appendChild(fitCheckbox);
 
         // Max width / Max height
-        this.appendBasicInput(advancedControls, { label: 'max width', id: 'maxWidth' });
-        this.appendBasicInput(advancedControls, { label: 'max height', id: 'maxHeight' });
+        this.appendBasicInput(advancedSection, { label: 'max width', id: 'maxWidth' });
+        this.appendBasicInput(advancedSection, { label: 'max height', id: 'maxHeight' });
 
         // Codec options
-        this.appendBasicInput(advancedControls, { label: 'codec options', id: 'codecOptions' });
+        this.appendBasicInput(advancedSection, { label: 'codec options', id: 'codecOptions' });
 
-        advancedSection.appendChild(advancedControls);
         dialogBody.appendChild(advancedSection);
 
         // Settings row

@@ -2,7 +2,7 @@
 .dialog-background {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     z-index: 10;
@@ -98,9 +98,10 @@
 /* ── Controls grid ── */
 .dialog-controls {
     display: grid;
-    grid-template-columns: [labels] 35% [controls] 65%;
+    grid-template-columns: [labels] 35% [controls] 1fr;
     gap: 0.5rem 0.75rem;
     align-items: center;
+    padding-right: 0.5rem;
 }
 
 .dialog-controls .label {
@@ -134,6 +135,22 @@
     border-color: #5b9aff;
 }
 
+.dialog-controls input:disabled,
+.dialog-controls select:disabled,
+.advanced-section input:disabled,
+.advanced-section select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .dialog-controls input:disabled,
+[data-theme="light"] .dialog-controls select:disabled,
+[data-theme="light"] .advanced-section input:disabled,
+[data-theme="light"] .advanced-section select:disabled {
+    background: #eee;
+}
+
 /* ── Slider value labels ── */
 .dialog-controls .range-label {
     grid-column: labels;
@@ -145,6 +162,7 @@
     grid-column: controls;
     width: 100%;
     cursor: pointer;
+    accent-color: #5b9aff;
 }
 
 /* ── Advanced toggle ── */
@@ -192,9 +210,10 @@
 .advanced-section {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: [labels] 35% [controls] 65%;
+    grid-template-columns: [labels] 35% [controls] 1fr;
     gap: 0.5rem 0.75rem;
     align-items: center;
+    padding-right: 0.5rem;
     overflow: hidden;
     max-height: 0;
     opacity: 0;
@@ -219,6 +238,7 @@
 .advanced-section input:not([type="checkbox"]) {
     grid-column: controls;
     box-sizing: border-box;
+    width: 100%;
     background: var(--stream-bg-color, #1a1a2e);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
@@ -226,18 +246,20 @@
     padding: 4px 8px;
 }
 
+.advanced-section input[type="checkbox"] {
+    grid-column: controls;
+    justify-self: start;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #5b9aff;
+}
+
 [data-theme="light"] .advanced-section select,
 [data-theme="light"] .advanced-section input:not([type="checkbox"]) {
     background: #fff;
     border-color: rgba(0, 0, 0, 0.15);
     color: #333;
-}
-
-/* ── Fit to screen toggle ── */
-.fit-toggle-wrapper {
-    grid-column: controls;
-    display: flex;
-    align-items: center;
 }
 
 /* ── Settings buttons ── */
