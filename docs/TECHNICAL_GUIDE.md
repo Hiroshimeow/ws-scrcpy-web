@@ -52,9 +52,12 @@ src/
 │   ├── googDevice/
 │   │   ├── client/
 │   │   │   ├── StreamClientScrcpy.ts # Main client: connects demuxer, player, touch, audio, UHID
-│   │   │   ├── ConfigureScrcpy.ts    # Stream configuration modal (glassmorphism overlay)
-│   │   │   ├── ShellModal.ts         # ADB shell terminal modal (xterm.js overlay)
+│   │   │   ├── ConfigureScrcpy.ts    # Stream configuration modal (extends Modal)
+│   │   │   ├── ShellModal.ts         # ADB shell terminal modal (extends Modal)
 │   │   │   └── DeviceTracker.ts      # Device list UI
+│   ├── ui/
+│   │   ├── Modal.ts                  # Abstract base class: native <dialog> with glassmorphism
+│   │   └── __tests__/modal.test.ts   # Modal unit tests (19 tests)
 │   │   ├── UhidManager.ts            # Creates/destroys UHID keyboard+mouse devices
 │   │   ├── UhidKeyboardHandler.ts    # Keyboard events -> USB HID key reports
 │   │   ├── UhidMouseHandler.ts       # Pointer lock mouse -> USB HID mouse reports
@@ -878,9 +881,9 @@ Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The serv
    - Android version + action buttons (disconnect + sleep/wake, right-aligned via rowspan)
    - SDK version
 
-2. **"opens in overlay" section** -- all action buttons in a single section:
-   - `configure stream` -- codec/encoder selection modal overlay (own line)
-   - `shell` -- ADB shell terminal modal overlay (xterm.js + node-pty, X-only dismiss, no backdrop click or Escape key dismiss). Wider sizing (`clamp(500px, 90vw, 1600px)`) and taller (`min-height: 600px`). Red resize warning between header and terminal. Page scroll locked while open. Server supports `resize` message type for PTY dimension updates via `ResizeObserver`.
+2. **"opens in overlay" section** -- all action buttons in a single section. All modals use native `<dialog>` with `.showModal()` via the `Modal` base class (`src/app/ui/Modal.ts`):
+   - `configure stream` -- codec/encoder selection modal (own line). Escape, backdrop click, and X all dismiss.
+   - `shell` -- ADB shell terminal modal (xterm.js + node-pty). Escape and backdrop click blocked (both are valid terminal actions). X button shows "End the shell session?" confirmation when a session is active. Wider sizing (`clamp(500px, 90vw, 1600px)`) and taller (`min-height: 600px`). Red resize warning between header and terminal. Server supports `resize` message type for PTY dimension updates via `ResizeObserver`.
    - `list files` -- opens the file manager
    - `connect` -- opens a mirroring session using WebCodecs
 
@@ -899,7 +902,7 @@ Both buttons are built via DOM manipulation (not the `html` template tag) becaus
 - "WebCodecs" link label (renamed to "connect")
 - "opens in new tab" section (all buttons unified into single "opens in overlay" section)
 
-**Modal behavior (all modals):** Page scroll is locked (`document.body.style.overflow = 'hidden'`) when any modal opens and restored on close. This prevents the home page from scrolling behind the modal backdrop.
+**Modal system:** All modals use native HTML `<dialog>` element with `.showModal()`, inheriting from the abstract `Modal` base class (`src/app/ui/Modal.ts`). This provides: top-layer rendering (no z-index conflicts), automatic focus trapping, built-in `::backdrop` for dimming, pointer event blocking on the underlying page (no manual scroll lock needed), and the `cancel` event for Escape key handling. Styling is in `src/style/modal.css` with glassmorphism effects and `@starting-style` CSS transitions for both open and close animations (pure CSS, no JS timing). Each modal controls its dismiss behavior via overridable hooks (`onEscapeKey`, `onBackdropClick`, `onCloseButtonClick`).
 
 ### 14.2 Available Network Devices
 

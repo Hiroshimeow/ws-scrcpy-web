@@ -25,11 +25,11 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - **D-pad / Touch input modes** -- toolbar toggle between D-pad mode (default, for TV apps like Peacock/Netflix) and Touch mode (for touch-aware apps). D-pad mode maps left-click to OK, scroll wheel to up/down, Shift+scroll to left/right
 - **Scroll wheel support** -- mouse wheel scrolling on the mirrored device, tuned for latent streams
 - Touch and keyboard input forwarding (classic scrcpy keycode mode)
-- Configure stream dialog with codec/encoder selection and device probe
+- **Configure stream modal** -- native `<dialog>` overlay with codec/encoder selection, device probe, and advanced settings
 - **Redesigned toolbar** -- compact controls with quick stats (FPS, resolution, codec), stream refresh button, and consistent alignment
 - **Quality stats overlay** -- real-time FPS, bitrate, resolution, codec, and encoder info
 - **Viewport scaling** -- video scales to fill available space with correct aspect ratio
-- **Remote ADB shell** -- terminal modal overlay with xterm.js, X-only dismiss (no accidental close), resize warning
+- **Remote ADB shell** -- native `<dialog>` terminal modal with xterm.js, close confirmation for active sessions, Escape/backdrop blocked (terminal needs both)
 - File manager (browse, upload, download)
 - **Embed mode** -- streamlined iframe integration for embedding in other apps (hides toolbar, auto-scales video, used by [Control Menu](https://github.com/bilbospocketses/control-menu))
 - **Device labels** -- name your devices for easy identification, persisted across sessions in `device-labels.json`, inline edit from device cards or during network scan
