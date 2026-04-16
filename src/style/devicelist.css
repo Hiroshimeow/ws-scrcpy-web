@@ -131,7 +131,7 @@ body.list #device_list_menu {
 
 #devices .services-label {
     width: 100%;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-color-light, #888);
     margin-bottom: 2px;
 }
