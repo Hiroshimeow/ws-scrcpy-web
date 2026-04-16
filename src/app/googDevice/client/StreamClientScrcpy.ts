@@ -682,14 +682,10 @@ export class StreamClientScrcpy
             pathname,
             useProxy,
         };
-        const dialog = new ConfigureScrcpy(tracker, descriptor, options);
-        dialog.on('closed', StreamClientScrcpy.onConfigureDialogClosed);
-    };
-
-    private static onConfigureDialogClosed = (event: { dialog: ConfigureScrcpy; result: boolean }): void => {
-        event.dialog.off('closed', StreamClientScrcpy.onConfigureDialogClosed);
-        if (event.result) {
-            HostTracker.getInstance().destroy();
-        }
+        new ConfigureScrcpy(tracker, descriptor, options, (result: boolean) => {
+            if (result) {
+                HostTracker.getInstance().destroy();
+            }
+        });
     };
 }
