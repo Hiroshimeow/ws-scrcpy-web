@@ -1,4 +1,7 @@
 import * as os from 'os';
+import { Logger } from './Logger';
+
+const log = Logger.for('Server');
 
 export class Utils {
     public static printListeningMsg(proto: string, port: number, pathname: string): void {
@@ -36,12 +39,12 @@ export class Utils {
             encodeURI(`${proto}://${os.hostname()}:${port}${pathname}`),
             encodeURI(`${proto}://localhost:${port}${pathname}`),
         ];
-        console.log('Listening on:\n\t' + nameList.join(' '));
+        log.info('Listening on:\n\t' + nameList.join(' '));
         if (ipv4List.length) {
-            console.log('\t' + ipv4List.join(' '));
+            log.info('\t' + ipv4List.join(' '));
         }
         if (ipv6List.length) {
-            console.log('\t' + ipv6List.join(' '));
+            log.info('\t' + ipv6List.join(' '));
         }
     }
 }

@@ -2,6 +2,7 @@ import { TypedEmitter } from '../../common/TypedEmitter';
 import type GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
 import type { NetInterface } from '../../types/NetInterface';
 import { AdbClient } from '../AdbClient';
+import { Logger } from '../Logger';
 import { Properties } from './Properties';
 
 import Timeout = NodeJS.Timeout;
@@ -277,7 +278,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             return;
         }
         if (++this.updateCount > Device.MAX_UPDATES_COUNT) {
-            console.error(this.TAG, 'The maximum number of attempts to fetch device info has been reached.');
+            Logger.for(this.TAG).error('The maximum number of attempts to fetch device info has been reached.');
             return;
         }
         this.updateTimeoutId = setTimeout(this.fetchDeviceInfo, this.updateTimeout);

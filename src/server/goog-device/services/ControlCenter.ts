@@ -1,5 +1,6 @@
 import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import { AdbClient } from '../../AdbClient';
+import { Logger } from '../../Logger';
 import type { Service } from '../../services/Service';
 import { Device } from '../Device';
 
@@ -95,7 +96,7 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
                 this.handleConnected(device.serial, device.state);
             }
         } catch (e: any) {
-            console.error('Failed to list initial devices:', e.message);
+            Logger.for('ControlCenter').error('Failed to list initial devices:', e.message);
         }
         // Start polling for changes
         this.pollIntervalId = setInterval(this.pollDevices, ControlCenter.POLL_INTERVAL);
@@ -129,7 +130,7 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
 
     public start(): Promise<void> {
         return this.init().catch((e) => {
-            console.error(`Error: Failed to init "${this.getName()}". ${e.message}`);
+            Logger.for('ControlCenter').error(`Failed to init "${this.getName()}". ${e.message}`);
         });
     }
 
@@ -141,7 +142,7 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
         const udid = command.getUdid();
         const device = this.getDevice(udid);
         if (!device) {
-            console.error(`Device with udid:"${udid}" not found`);
+            Logger.for('ControlCenter').error(`Device with udid:"${udid}" not found`);
             return;
         }
         const type = command.getType();

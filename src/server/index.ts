@@ -1,6 +1,7 @@
 import * as readline from 'readline';
 import { Config } from './Config';
 import { DependencyManager } from './DependencyManager';
+import { Logger } from './Logger';
 import { DeviceProbe } from './DeviceProbe';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
@@ -83,25 +84,27 @@ loadGoogModules()
         process.on('SIGTERM', exit);
 
         // Kick off initial dependency check in background (don't block startup)
-        depManager.checkAll().catch((err: Error) => console.error('[DependencyManager] Initial check failed:', err.message));
+        depManager.checkAll().catch((err: Error) => Logger.for('DependencyManager').error('Initial check failed:', err.message));
     })
     .catch((error) => {
-        console.error(error.message);
+        Logger.for('Server').error(error.message);
         exit('1');
     });
 
+const serverLog = Logger.for('Server');
+
 let interrupted = false;
 function exit(signal: string) {
-    console.log(`\nReceived signal ${signal}`);
+    serverLog.info(`Received signal ${signal}`);
     if (interrupted) {
-        console.log('Force exit');
+        serverLog.info('Force exit');
         process.exit(0);
         return;
     }
     interrupted = true;
     runningServices.forEach((service: Service) => {
         const serviceName = service.getName();
-        console.log(`Stopping ${serviceName} ...`);
+        serverLog.info(`Stopping ${serviceName} ...`);
         service.release();
     });
 }

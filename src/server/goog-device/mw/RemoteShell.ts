@@ -7,6 +7,7 @@ import { ChannelCode } from '../../../common/ChannelCode';
 import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import type { Message } from '../../../types/Message';
 import type { XtermClientMessage, XtermServiceParameters } from '../../../types/XtermMessage';
+import { Logger } from '../../Logger';
 import { Mw, type RequestParameters } from '../../mw/Mw';
 
 const OS_WINDOWS = os.platform() === 'win32';
@@ -15,6 +16,7 @@ const EVENT_TYPE_SHELL = 'shell';
 
 export class RemoteShell extends Mw {
     public static readonly TAG = 'RemoteShell';
+    private static readonly log = Logger.for('RemoteShell');
     private term?: IPty;
     private initialized = false;
     private timeoutString: NodeJS.Timeout | null = null;
@@ -85,11 +87,11 @@ export class RemoteShell extends Mw {
         try {
             data = JSON.parse(event.data.toString());
         } catch (error: any) {
-            console.error(`[${RemoteShell.TAG}]`, error?.message);
+            RemoteShell.log.error(error?.message);
             return;
         }
         this.handleMessage(data as Message).catch((error: Error) => {
-            console.error(`[${RemoteShell.TAG}]`, error.message);
+            RemoteShell.log.error(error.message);
         });
     }
 

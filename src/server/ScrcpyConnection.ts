@@ -11,11 +11,12 @@ import { DEVICE_SERVER_PATH, SERVER_PACKAGE, SERVER_VERSION } from '../common/Co
 import { AUDIO_DISABLED, AUDIO_ERROR, codecName } from '../common/ScrcpyCodec';
 import { AdbClient } from './AdbClient';
 import { FrameReader } from './FrameReader';
+import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 import { type ScrcpyOptions, serializeOptions } from './ScrcpyOptions';
 import '../../assets/scrcpy-server';
 
-const TAG = '[ScrcpyConnection]';
+const log = Logger.for('ScrcpyConnection');
 const SERVER_FILE = path.join(__dirname, 'assets', 'scrcpy-server');
 
 interface SessionMetadata {
@@ -60,13 +61,13 @@ export class ScrcpyConnection extends Mw {
     ) {
         super(ws);
         this.start().catch((err) => {
-            console.error(TAG, `Failed to start session for ${serial}:`, err.message);
+            log.error(`Failed to start session for ${serial}:`, err.message);
             try {
                 if (ws.readyState === ws.OPEN) {
                     ws.close(4005, err.message.slice(0, 123));
                 }
             } catch (closeErr) {
-                console.error(TAG, `Failed to close WebSocket for ${serial}:`, closeErr);
+                log.error(`Failed to close WebSocket for ${serial}:`, closeErr);
             }
         });
     }
@@ -107,7 +108,7 @@ export class ScrcpyConnection extends Mw {
 
     private async start(): Promise<void> {
         const options = this.buildOptions();
-        console.log(TAG, `Starting session for ${this.serial} (scid=${options.scid})`);
+        log.info(`Starting session for ${this.serial} (scid=${options.scid})`);
 
         // 1. Push scrcpy-server binary
         await this.adbClient.push(this.serial, SERVER_FILE, DEVICE_SERVER_PATH);
@@ -125,7 +126,7 @@ export class ScrcpyConnection extends Mw {
         const cmd = `CLASSPATH=${DEVICE_SERVER_PATH} app_process / ${SERVER_PACKAGE} ${SERVER_VERSION} ${args.join(' ')}`;
         this.serverProcess = this.adbClient.shellSpawn(this.serial, cmd);
         this.serverProcess.on('exit', () => {
-            console.log(TAG, `Server process exited for ${this.serial}`);
+            log.info(`Server process exited for ${this.serial}`);
             if (!this.released) {
                 this.release();
             }
@@ -142,7 +143,7 @@ export class ScrcpyConnection extends Mw {
         if (options.videoEncoder) {
             metadata.videoEncoder = options.videoEncoder;
         }
-        console.log(TAG, `Session ready: ${metadata.deviceName} ${metadata.screenWidth}x${metadata.screenHeight}`);
+        log.info(`Session ready: ${metadata.deviceName} ${metadata.screenWidth}x${metadata.screenHeight}`);
 
         // 7. Send metadata to browser
         this.sendChannel(ChannelId.METADATA, Buffer.from(JSON.stringify(metadata)));
@@ -294,7 +295,7 @@ export class ScrcpyConnection extends Mw {
     public release(): void {
         if (this.released) return;
         this.released = true;
-        console.log(TAG, `Releasing session for ${this.serial}`);
+        log.info(`Releasing session for ${this.serial}`);
 
         this.videoReader?.destroy();
         this.audioReader?.destroy();

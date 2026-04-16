@@ -1,5 +1,6 @@
 import type WS from 'ws';
 import { Server as WSServer } from 'ws';
+import { Logger } from '../Logger';
 import type { MwFactory } from '../mw/Mw';
 import { HttpServer, type ServerAndPort } from './HttpServer';
 import type { Service } from './Service';
@@ -31,6 +32,7 @@ export class WebSocketServer implements Service {
     public attachToServer(item: ServerAndPort): WSServer {
         const { server, port } = item;
         const TAG = `WebSocket Server {tcp:${port}}`;
+        const log = Logger.for(TAG);
         const wss = new WSServer({ server });
         wss.on('connection', async (ws: WS, request) => {
             if (!request.url) {
@@ -52,7 +54,7 @@ export class WebSocketServer implements Service {
             return;
         });
         wss.on('close', () => {
-            console.log(`${TAG} stopped`);
+            log.info('stopped');
         });
         this.servers.push(wss);
         return wss;

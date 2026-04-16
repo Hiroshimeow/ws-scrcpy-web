@@ -3,9 +3,10 @@ import type WS from 'ws';
 import { ACTION } from '../common/Action';
 import type { ProbeResult } from '../common/ProbeResult';
 import { AdbClient } from './AdbClient';
+import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 
-const TAG = '[DeviceProbe]';
+const log = Logger.for('DeviceProbe');
 
 export class DeviceProbe extends Mw {
     private adbClient = new AdbClient();
@@ -29,19 +30,19 @@ export class DeviceProbe extends Mw {
     ) {
         super(ws);
         this.probe().catch((err) => {
-            console.error(TAG, `Probe failed for ${this.serial}:`, err.message);
+            log.error(`Probe failed for ${this.serial}:`, err.message);
             try {
                 if (ws.readyState === ws.OPEN) {
                     ws.close(4005, err.message.slice(0, 123));
                 }
             } catch (closeErr) {
-                console.error(TAG, `Failed to close WebSocket for ${this.serial}:`, closeErr);
+                log.error(`Failed to close WebSocket for ${this.serial}:`, closeErr);
             }
         });
     }
 
     private async probe(): Promise<void> {
-        console.log(TAG, `Probing ${this.serial}`);
+        log.info(`Probing ${this.serial}`);
 
         const [encoderOutput, sizeOutput, densityOutput] = await Promise.all([
             this.adbClient.shell(this.serial, 'dumpsys media.player'),
@@ -55,7 +56,7 @@ export class DeviceProbe extends Mw {
         const density = this.parseDensity(densityOutput);
 
         const result: ProbeResult = { width, height, density, videoEncoders, audioEncoders };
-        console.log(TAG, `Probe result for ${this.serial}:`, JSON.stringify(result));
+        log.info(`Probe result for ${this.serial}:`, JSON.stringify(result));
 
         if (this.ws.readyState === this.ws.OPEN) {
             this.ws.send(JSON.stringify(result));

@@ -2,12 +2,14 @@ import Util from '../../../app/Util';
 import Protocol from '../../../common/AdbProtocol';
 import { ChannelCode } from '../../../common/ChannelCode';
 import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
+import { Logger } from '../../Logger';
 import { Mw } from '../../mw/Mw';
 import { AdbUtils } from '../AdbUtils';
 import { FilePushReader } from '../filePush/FilePushReader';
 
 export class FileListing extends Mw {
     public static readonly TAG = 'FileListing';
+    private static readonly log = Logger.for('FileListing');
     protected name = 'FileListing';
 
     public static processChannel(ws: Multiplexer, code: string, data: ArrayBuffer): Mw | undefined {
@@ -44,7 +46,7 @@ export class FileListing extends Mw {
     private static handleNewChannel(serial: string, channel: Multiplexer, arrayBuffer: ArrayBuffer): void {
         const data = Buffer.from(arrayBuffer);
         if (data.length < 4) {
-            console.error(`[${FileListing.TAG}]`, `Invalid message. Too short (${data.length})`);
+            FileListing.log.error(`Invalid message. Too short (${data.length})`);
             return;
         }
         let offset = 0;
@@ -59,7 +61,7 @@ export class FileListing extends Mw {
                 const pathBuffer = data.slice(offset, offset + length);
                 const pathString = Util.utf8ByteArrayToString(pathBuffer);
                 FileListing.handle(cmd, serial, pathString, channel).catch((error: Error) => {
-                    console.error(`[${FileListing.TAG}]`, error.message);
+                    FileListing.log.error(error.message);
                 });
                 break;
             }
@@ -67,7 +69,7 @@ export class FileListing extends Mw {
                 FilePushReader.handle(serial, channel);
                 break;
             default:
-                console.error(`[${FileListing.TAG}]`, `Invalid message. Wrong command (${cmd})`);
+                FileListing.log.error(`Invalid message. Wrong command (${cmd})`);
                 channel.close(4001, `Invalid message. Wrong command (${cmd})`);
                 break;
         }
