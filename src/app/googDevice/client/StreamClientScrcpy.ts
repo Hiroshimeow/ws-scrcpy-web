@@ -1,4 +1,5 @@
 import { ACTION } from '../../../common/Action';
+import { SERVER_PORT } from '../../../common/Constants';
 import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
 import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import type { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
@@ -644,13 +645,28 @@ export class StreamClientScrcpy
         const descriptor = tracker.getDescriptorByUdid(udid);
         if (!descriptor) return;
         event.preventDefault();
-        const elements = document.getElementsByName(`${DeviceTracker.AttributePrefixInterfaceSelectFor}${fullName}`);
-        if (!elements || !elements.length) return;
-        const select = elements[0] as HTMLSelectElement;
-        const optionElement = select.options[select.selectedIndex];
-        const ws = optionElement.getAttribute(Attribute.URL) || '';
-        const name = optionElement.getAttribute(Attribute.NAME);
-        if (!name) return;
+
+        // Auto-select best interface (same logic as DeviceTracker.buildDeviceRow)
+        let ws = '';
+        const wifiInterface = descriptor.interfaces?.find((i) => i.name === descriptor['wifi.interface']);
+        const bestInterface = wifiInterface || descriptor.interfaces?.[0];
+        if (bestInterface) {
+            const url = DeviceTracker.buildUrl({
+                secure: false,
+                hostname: bestInterface.ipv4,
+                port: SERVER_PORT,
+                pathname,
+            });
+            ws = url.toString();
+        }
+        if (!ws) {
+            const url = DeviceTracker.buildUrl({ secure, hostname, port, pathname });
+            url.searchParams.set('action', ACTION.PROXY_ADB);
+            url.searchParams.set('remote', `tcp:${SERVER_PORT.toString(10)}`);
+            url.searchParams.set('udid', udid);
+            ws = url.toString();
+        }
+
         const options: ParamsStreamScrcpy = {
             udid,
             ws,

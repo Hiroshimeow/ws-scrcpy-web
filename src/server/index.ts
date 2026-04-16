@@ -93,6 +93,15 @@ loadGoogModules()
 
 const serverLog = Logger.for('Server');
 
+process.on('uncaughtException', (err) => {
+    serverLog.error('Uncaught exception:', err.stack || err.message);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    serverLog.error('Unhandled rejection:', reason instanceof Error ? reason.stack || reason.message : String(reason));
+});
+
 let interrupted = false;
 function exit(signal: string) {
     serverLog.info(`Received signal ${signal}`);

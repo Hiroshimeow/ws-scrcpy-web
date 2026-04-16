@@ -13,7 +13,7 @@ import { DeviceState } from '../../../common/DeviceState';
 import { BaseControlCenter } from '../../services/BaseControlCenter';
 
 export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> implements Service {
-    private static readonly POLL_INTERVAL = 2000;
+    private static readonly POLL_INTERVAL = 5000;
     private static instance?: ControlCenter;
 
     private initialized = false;
@@ -74,6 +74,16 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
     };
 
     private handleConnected(udid: string, state: string): void {
+        if (state === DeviceState.DISCONNECTED) {
+            const device = this.deviceMap.get(udid);
+            if (device) {
+                device.off('update', this.onDeviceUpdate);
+                device.setState(state);
+                this.deviceMap.delete(udid);
+                this.descriptors.delete(udid);
+            }
+            return;
+        }
         let device = this.deviceMap.get(udid);
         if (device) {
             device.setState(state);

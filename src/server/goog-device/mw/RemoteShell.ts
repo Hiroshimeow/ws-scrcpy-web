@@ -117,7 +117,9 @@ export class RemoteShell extends Mw {
             s += data;
             if (!this.timeoutString) {
                 this.timeoutString = setTimeout(() => {
-                    this.ws.send(s);
+                    if (this.ws.readyState === this.ws.OPEN) {
+                        this.ws.send(s);
+                    }
                     s = '';
                     this.timeoutString = null;
                     if (this.terminated) {
@@ -136,7 +138,9 @@ export class RemoteShell extends Mw {
             length += data.length;
             if (!this.timeoutBuffer) {
                 this.timeoutBuffer = setTimeout(() => {
-                    this.ws.send(Buffer.concat(buffer, length));
+                    if (this.ws.readyState === this.ws.OPEN) {
+                        this.ws.send(Buffer.concat(buffer, length));
+                    }
                     buffer = [];
                     this.timeoutBuffer = null;
                     length = 0;
