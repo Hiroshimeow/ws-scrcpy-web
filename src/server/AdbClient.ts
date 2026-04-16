@@ -31,6 +31,16 @@ export function parseMdnsOutput(output: string): MdnsDevice[] {
     return results;
 }
 
+export function parseSerialFromMdnsName(name: string, service: string): string {
+    // Strip 'adb-' prefix
+    let serial = name.startsWith('adb-') ? name.slice(4) : name;
+    // For TLS connect services, strip the instance suffix (last -segment, 6-8 alphanumeric chars)
+    if (service.includes('tls-connect') && serial.includes('-')) {
+        serial = serial.substring(0, serial.lastIndexOf('-'));
+    }
+    return serial;
+}
+
 export class AdbClient {
     constructor(private adbPath = 'adb') {}
 

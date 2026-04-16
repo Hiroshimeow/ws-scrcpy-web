@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AdbClient, parseMdnsOutput } from '../AdbClient';
+import { AdbClient, parseMdnsOutput, parseSerialFromMdnsName } from '../AdbClient';
 
 describe('parseMdnsOutput', () => {
     it('parses mdns services output with IPs and ports', () => {
@@ -56,5 +56,23 @@ describe('AdbClient', () => {
     it('has disconnect method', () => {
         const client = new AdbClient();
         expect(typeof client.disconnect).toBe('function');
+    });
+});
+
+describe('parseSerialFromMdnsName', () => {
+    it('parses plain ADB name', () => {
+        expect(parseSerialFromMdnsName('adb-49241HFAG07SUG', '_adb._tcp')).toBe('49241HFAG07SUG');
+    });
+
+    it('parses TLS connect name (strips suffix)', () => {
+        expect(parseSerialFromMdnsName('adb-47121FDAQ000WC-7vmR8a', '_adb-tls-connect._tcp')).toBe('47121FDAQ000WC');
+    });
+
+    it('handles name without adb- prefix', () => {
+        expect(parseSerialFromMdnsName('49241HFAG07SUG', '_adb._tcp')).toBe('49241HFAG07SUG');
+    });
+
+    it('handles empty string', () => {
+        expect(parseSerialFromMdnsName('', '_adb._tcp')).toBe('');
     });
 });
