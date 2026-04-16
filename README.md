@@ -35,11 +35,13 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 
 ## Requirements
 
-- **Node.js** 18+
-- **ADB** installed and in PATH
-- **Android device** with USB debugging enabled (or wireless ADB)
+- **Node.js** 24 LTS or later
+- **ADB** installed and in PATH (or use self-contained mode)
+- **Android device** with USB debugging or wireless debugging enabled
 
-## Quick Start
+## Quick Start (Developer Mode)
+
+For development and building from source:
 
 ```bash
 npm install
@@ -48,28 +50,66 @@ npm start
 
 Open `http://localhost:8000` in your browser.
 
-## Self-Contained Mode
+This mode requires Node.js and ADB installed on your system. See [Self-Contained Deployment](#self-contained-deployment) for a standalone installation that bundles everything.
 
-For deployment without system-wide Node.js or ADB installations:
+## Self-Contained Deployment
 
-**Windows:**
-```batch
-start.cmd
+ws-scrcpy-web can run as a fully self-contained application with no system-wide installations required. Everything lives in one folder -- no PATH changes, no global installs, no admin/root needed.
+
+### What's in the Box
+
 ```
-
-**Linux:**
-```bash
-./start.sh
+ws-scrcpy-web/
+  dist/                    -- compiled application (server + browser bundles)
+    assets/
+      scrcpy-server        -- Android-side binary, pushed to devices via ADB
+    public/                -- browser UI (HTML, JS, CSS)
+    index.js               -- server entry point
+  dependencies/
+    node/                  -- Node.js runtime + node-pty native files
+    adb/                   -- ADB platform-tools
+  start.cmd                -- Windows launcher
+  start.sh                 -- Linux launcher
 ```
-
-The launcher uses Node.js from `dependencies/node/` and ADB from `dependencies/adb/`. Use the Dependencies panel on the home page to check for updates and install them.
 
 ### Initial Setup
 
-1. Download Node.js LTS from [nodejs.org](https://nodejs.org) and extract the binary to `dependencies/node/`
-2. Download ADB platform-tools from [Google](https://developer.android.com/tools/releases/platform-tools) and extract to `dependencies/adb/`
+1. Download [Node.js LTS](https://nodejs.org) and extract the binary to `dependencies/node/`
+2. Download [ADB platform-tools](https://developer.android.com/tools/releases/platform-tools) and extract to `dependencies/adb/`
 3. Run `start.cmd` (Windows) or `./start.sh` (Linux)
-4. Open `http://localhost:8000` -- use the Dependencies panel to verify and update
+4. Open `http://localhost:8000`
+
+### What Updates Automatically (In-App Updater)
+
+The Dependencies panel on the home page lets you check for updates and install them with one click. These runtime dependencies are standalone binaries that can be safely swapped without recompiling the application:
+
+| Dependency | What it does | How it updates |
+|------------|-------------|----------------|
+| **Node.js + node-pty** | Runs the server; provides ADB shell terminal | Downloads new binary from nodejs.org. Paired update -- both must match. Requires app restart (handled automatically by the launcher script). |
+| **ADB (platform-tools)** | Communicates with Android devices | Downloads latest zip from Google, extracts, swaps files. ADB server is stopped and restarted automatically. No app restart needed. |
+| **scrcpy-server** | Runs on Android devices to capture screen and audio | Downloads new binary from Genymobile/scrcpy releases. Replaces file in `dist/assets/`. No restart needed -- new binary is pushed to devices on next connection. |
+
+### What Requires a New Release (Build-Time Dependencies)
+
+These dependencies are compiled into the `dist/` output during the build process. They cannot be updated independently -- a new version of ws-scrcpy-web must be built and deployed:
+
+| Dependency | Why it's compiled in | Update approach |
+|------------|---------------------|----------------|
+| **ws** (WebSocket library) | Bundled into `dist/index.js` by webpack. This is the core communication layer between browser and server -- too critical to hot-swap without testing. A bad ws update could silently break all connections. | Checked before each release (see `docs/TECHNICAL_GUIDE.md` section 12). Updated, tested, and shipped as part of a new ws-scrcpy-web version. |
+| **@xterm/xterm** (terminal renderer) | Bundled into `dist/public/bundle.js`. Major versions can change APIs that affect the shell feature. | Updated during release builds. |
+| **TypeScript, webpack, Biome, css-loader, etc.** | Build toolchain only -- not shipped to users at all. These compile the source into `dist/` and are never present in a deployment. | Updated by developers before building a new release. |
+
+### How the Launcher Works
+
+The launcher scripts (`start.cmd` / `start.sh`) solve a specific problem: on Windows, you cannot replace a running executable. When the in-app updater downloads a new Node.js binary:
+
+1. The server renames the running `node.exe` to `node.exe.old`
+2. The server copies the new `node.exe` into place
+3. The server writes a `.restart` marker file and exits
+4. The launcher detects the marker, cleans up the old binary, and relaunches
+5. The browser automatically reconnects when the server comes back
+
+On Linux, file locking is not an issue (running binaries can be overwritten), but the launcher still handles the restart loop for consistency.
 
 ## Configuration
 
