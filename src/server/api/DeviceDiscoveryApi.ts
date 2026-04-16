@@ -1,7 +1,8 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
-import { AdbClient } from '../AdbClient';
+import { AdbClient, parseSerialFromMdnsName } from '../AdbClient';
 import { Config } from '../Config';
+import { DeviceLabelStore } from '../DeviceLabelStore';
 
 export class DeviceDiscoveryApi {
     private adbClient: AdbClient;
@@ -19,13 +20,23 @@ export class DeviceDiscoveryApi {
         try {
             if (req.method === 'POST' && url === '/api/devices/scan') {
                 const discovered = await this.adbClient.mdnsServices();
-                const connectable = discovered.filter((d) => d.service.includes('connect'));
+                const connectable = discovered.filter((d) => d.service.includes('_adb') && !d.service.includes('pairing'));
                 const connected = await this.adbClient.devices();
                 const connectedAddresses = new Set(connected.map((d) => d.serial));
-                const available = connectable.filter((d) => {
-                    const addr = `${d.address}:${d.port}`;
-                    return !connectedAddresses.has(addr);
-                });
+                const labelStore = DeviceLabelStore.getInstance();
+                const available = connectable
+                    .filter((d) => {
+                        const addr = `${d.address}:${d.port}`;
+                        return !connectedAddresses.has(addr);
+                    })
+                    .map((d) => {
+                        const serial = parseSerialFromMdnsName(d.name, d.service);
+                        return {
+                            ...d,
+                            serial,
+                            label: labelStore.get(serial) || '',
+                        };
+                    });
                 res.writeHead(200);
                 res.end(JSON.stringify(available));
                 return true;
@@ -33,11 +44,14 @@ export class DeviceDiscoveryApi {
 
             if (req.method === 'POST' && url === '/api/devices/connect') {
                 const body = await readBody(req);
-                const { address } = JSON.parse(body);
+                const { address, serial, label } = JSON.parse(body);
                 if (!address) {
                     res.writeHead(400);
                     res.end(JSON.stringify({ error: 'address is required' }));
                     return true;
+                }
+                if (serial && label) {
+                    DeviceLabelStore.getInstance().set(serial, label);
                 }
                 const result = await this.adbClient.connect(address);
                 const success = result.includes('connected');
@@ -58,6 +72,32 @@ export class DeviceDiscoveryApi {
                 const success = result.includes('disconnected');
                 res.writeHead(success ? 200 : 500);
                 res.end(JSON.stringify({ success, message: result.trim() }));
+                return true;
+            }
+
+            if (req.method === 'GET' && url === '/api/devices/labels') {
+                const labels = DeviceLabelStore.getInstance().getAll();
+                res.writeHead(200);
+                res.end(JSON.stringify(labels));
+                return true;
+            }
+
+            if (req.method === 'PUT' && url === '/api/devices/labels') {
+                const body = await readBody(req);
+                const { serial, label } = JSON.parse(body);
+                if (!serial) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ error: 'serial is required' }));
+                    return true;
+                }
+                const store = DeviceLabelStore.getInstance();
+                if (label) {
+                    store.set(serial, label);
+                } else {
+                    store.delete(serial);
+                }
+                res.writeHead(200);
+                res.end(JSON.stringify({ success: true }));
                 return true;
             }
 
