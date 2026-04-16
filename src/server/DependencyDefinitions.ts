@@ -6,6 +6,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { promisify } from 'util';
+import { SERVER_VERSION } from '../common/Constants';
 
 const execFileAsync = promisify(execFile);
 
@@ -98,14 +99,7 @@ export function getDependencyDefinitions(): DependencyDefinition[] {
             description: 'Runs on Android device to capture screen, audio, and accept input',
             requiresRestart: false,
             checkInstalled: async (_depsPath) => {
-                // SERVER_VERSION is a compile-time constant from Constants.ts
-                // Import it dynamically to avoid circular deps in the webpack build
-                try {
-                    const constants = await import('../../common/Constants');
-                    return constants.SERVER_VERSION;
-                } catch {
-                    return null;
-                }
+                return SERVER_VERSION;
             },
             checkLatest: async () => {
                 const res = await fetch('https://api.github.com/repos/Genymobile/scrcpy/releases/latest', {
