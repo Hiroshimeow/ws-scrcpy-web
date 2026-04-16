@@ -343,7 +343,7 @@ Browsers block audio playback until a user gesture. `StreamClientScrcpy` registe
 - **Mouse-to-touch mapping:** Left-click mouse events are converted to `TouchControlMessage` with screen coordinate translation
 - **Right-click -> BACK:** `event.button === 2` sends `KeyCodeControlMessage` with Android keycode 4 (AKEYCODE_BACK)
 - **Middle-click -> HOME:** `event.button === 1` sends Android keycode 3 (AKEYCODE_HOME)
-- **Scroll:** `WheelEvent` -> `ScrollControlMessage` with 30ms throttling
+- **Scroll:** `WheelEvent` -> `ScrollControlMessage` with 30ms throttling. Scroll values use scrcpy's i16 fixed-point encoding (`sc_float_to_i16fp`): raw tick divided by 128 (tuned for latent streams; scrcpy desktop uses /16), clamped to [-1, 1], mapped to int16 range [-32768, 32767]
 - **Multi-touch simulation:** Ctrl+click creates a second mirrored touch point (Ctrl+Shift allows custom center)
 
 **Coordinate translation** in `buildTouchOnClient()`:

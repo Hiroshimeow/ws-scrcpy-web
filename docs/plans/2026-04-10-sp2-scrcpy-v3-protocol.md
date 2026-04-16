@@ -1118,22 +1118,11 @@ Update constructor to add `buttons` parameter:
     }
 ```
 
-The scroll values now use **SignedFloat** encoding: `value * 65535` stored as int32. Replace `toBuffer()`:
+The scroll values use **i16 fixed-point** encoding (matches scrcpy's `sc_float_to_i16fp`): normalize by dividing by 16, clamp to [-1, 1], then map to int16 range. Message is 21 bytes (PAYLOAD_LENGTH = 20). Replace `toBuffer()`:
 ```typescript
-    public toBuffer(): Buffer {
-        const buffer = Buffer.alloc(ScrollControlMessage.PAYLOAD_LENGTH + 1);
-        let offset = 0;
-        offset = buffer.writeUInt8(this.type, offset);
-        offset = buffer.writeUInt32BE(this.position.point.x, offset);
-        offset = buffer.writeUInt32BE(this.position.point.y, offset);
-        offset = buffer.writeUInt16BE(this.position.screenSize.width, offset);
-        offset = buffer.writeUInt16BE(this.position.screenSize.height, offset);
-        // SignedFloat encoding: value * 65535, clamped to int32
-        offset = buffer.writeInt32BE(Math.round(this.hScroll * 65535), offset);
-        offset = buffer.writeInt32BE(Math.round(this.vScroll * 65535), offset);
-        buffer.writeUInt32BE(this.buttons, offset);
-        return buffer;
-    }
+    // NOTE: This plan originally specified int32 SignedFloat (25 bytes).
+    // Verified against scrcpy source: actual format is int16 i16fp (21 bytes).
+    // See control_msg.c: sc_control_msg_serialize_inject_scroll_event.
 ```
 
 Update `toString()` and `toJSON()`:

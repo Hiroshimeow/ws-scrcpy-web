@@ -115,12 +115,29 @@ describe('ScrollControlMessage — scrcpy protocol match', () => {
         expect(view.getUint16(9)).toBe(1920);
         // bytes 11-12: screen height
         expect(view.getUint16(11)).toBe(1080);
-        // bytes 13-14: hScroll (int16 BE, raw value, no scaling)
-        expect(view.getInt16(13)).toBe(-1);
-        // bytes 15-16: vScroll (int16 BE, raw value, no scaling)
-        expect(view.getInt16(15)).toBe(1);
+        // bytes 13-14: hScroll (i16 fixed-point, -1 tick → -1/128 → -256)
+        expect(view.getInt16(13)).toBe(-256);
+        // bytes 15-16: vScroll (i16 fixed-point, 1 tick → 1/128 → 256)
+        expect(view.getInt16(15)).toBe(256);
         // bytes 17-20: buttons
         expect(view.getUint32(17)).toBe(0);
+    });
+
+    it('encodes zero scroll as zero', () => {
+        const msg = new ScrollControlMessage(pos(0, 0, 1920, 1080), 0, 0, 0);
+        const bytes = msg.toUint8Array();
+        const view = new DataView(bytes.buffer, bytes.byteOffset);
+        expect(view.getInt16(13)).toBe(0);
+        expect(view.getInt16(15)).toBe(0);
+    });
+
+    it('clamps large scroll values to [-1, 1] range after normalization', () => {
+        // 256 ticks would be 256/128 = 2.0, clamped to 1.0 → 0x7FFF
+        const msg = new ScrollControlMessage(pos(0, 0, 1920, 1080), 256, -256, 0);
+        const bytes = msg.toUint8Array();
+        const view = new DataView(bytes.buffer, bytes.byteOffset);
+        expect(view.getInt16(13)).toBe(0x7fff);
+        expect(view.getInt16(15)).toBe(-0x8000);
     });
 
     it('PAYLOAD_LENGTH + 1 equals protocol size', () => {

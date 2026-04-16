@@ -251,17 +251,17 @@ Bytes 24-27: actionButton (uint32 BE)     ← NEW (was not in v1.19)
 Bytes 28-31: buttons (uint32 BE)
 ```
 
-**ScrollControlMessage** (v1.25+ format, 25 bytes):
+**ScrollControlMessage** (v1.25+ format, 21 bytes):
 ```
 Byte 0:     type (3)
 Bytes 1-4:  x (uint32 BE)
 Bytes 5-8:  y (uint32 BE)
 Bytes 9-10: screenWidth (uint16 BE)
 Bytes 11-12: screenHeight (uint16 BE)
-Bytes 13-16: scrollX (int32 BE, SignedFloat encoding) ← was plain int32
-Bytes 17-20: scrollY (int32 BE, SignedFloat encoding)
-Bytes 21-24: buttons (uint32 BE)            ← NEW
-Total: 25 bytes
+Bytes 13-14: hScroll (int16 BE, i16 fixed-point: value/16, clamped [-1,1], sc_float_to_i16fp)
+Bytes 15-16: vScroll (int16 BE, i16 fixed-point: same encoding)
+Bytes 17-20: buttons (uint32 BE)            ← NEW
+Total: 21 bytes
 ```
 
 **SetClipboard** (v1.21+ format):
