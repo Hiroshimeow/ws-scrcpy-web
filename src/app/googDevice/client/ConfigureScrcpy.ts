@@ -37,22 +37,21 @@ export class ConfigureScrcpy extends Modal {
     private displayIdSelectElement?: HTMLSelectElement;
     private encoderSelectElement?: HTMLSelectElement;
     private statusElement?: HTMLElement;
-    private advancedSection?: HTMLElement;
     private advancedChevron?: HTMLElement;
     private statusText = '';
 
-    // DOM containers created by buildBody, filled by populateUI
-    private controlsContainer?: HTMLElement;
-    private bodyContainer?: HTMLElement;
+    // advancedSection is queried from DOM in populateUI, used by toggleAdvanced
+    private advancedSection?: HTMLElement;
 
     constructor(
         tracker: DeviceTracker,
         descriptor: GoogDeviceDescriptor,
+        deviceLabel: string,
         params: ParamsStreamScrcpy,
         onClose?: (result: boolean) => void,
     ) {
         super({
-            title: descriptor['ro.product.model'],
+            title: deviceLabel,
             onClose: onClose as ((result: unknown) => void) | undefined,
         });
         this.tracker = tracker;
@@ -431,11 +430,12 @@ export class ConfigureScrcpy extends Modal {
 
     protected buildBody(container: HTMLElement): void {
         // Create empty skeleton — instance fields are NOT available yet (super() is still running).
-        // populateUI() fills these containers after super() completes.
+        // With ES2022 useDefineForClassFields, ALL field declarations (even !:) emit initializers
+        // that run after super(), clobbering anything set here. So we store nothing — populateUI()
+        // queries these elements from the DOM via this.bodyEl after super() completes.
         const controls = document.createElement('div');
         controls.classList.add('modal-controls');
         container.appendChild(controls);
-        this.controlsContainer = controls;
 
         const advancedSeparator = document.createElement('div');
         advancedSeparator.classList.add('modal-advanced-separator');
@@ -449,9 +449,6 @@ export class ConfigureScrcpy extends Modal {
         const advancedSection = document.createElement('div');
         advancedSection.classList.add('modal-advanced');
         container.appendChild(advancedSection);
-        this.advancedSection = advancedSection;
-
-        this.bodyContainer = container;
     }
 
     protected buildFooter(): HTMLElement | null {
@@ -461,7 +458,7 @@ export class ConfigureScrcpy extends Modal {
     }
 
     private populateUI(): void {
-        const controls = this.controlsContainer!;
+        const controls = this.bodyEl.querySelector('.modal-controls') as HTMLElement;
 
         // Initialize player settings (single WebCodecs player, no dropdown needed)
         this.updateVideoSettingsForPlayer();
@@ -526,7 +523,7 @@ export class ConfigureScrcpy extends Modal {
         });
 
         // Set up the advanced toggle button (already in DOM from buildBody)
-        const advancedToggle = this.bodyContainer!.querySelector('.modal-advanced-toggle') as HTMLButtonElement;
+        const advancedToggle = this.bodyEl.querySelector('.modal-advanced-toggle') as HTMLButtonElement;
         const advancedText = document.createTextNode('advanced ');
         advancedToggle.appendChild(advancedText);
         const advancedChevron = (this.advancedChevron = document.createElement('span'));
@@ -536,7 +533,8 @@ export class ConfigureScrcpy extends Modal {
         advancedToggle.addEventListener('click', this.toggleAdvanced);
 
         // Fill advanced section
-        const advancedSection = this.advancedSection!;
+        const advancedSection = this.bodyEl.querySelector('.modal-advanced') as HTMLElement;
+        this.advancedSection = advancedSection;
 
         // I-Frame interval
         this.appendBasicInput(advancedSection, { label: 'i-frame interval', id: 'iFrameInterval' });
@@ -583,7 +581,7 @@ export class ConfigureScrcpy extends Modal {
         saveSettingsButton.addEventListener('click', this.saveSettings);
         settingsRow.appendChild(saveSettingsButton);
 
-        this.bodyContainer!.appendChild(settingsRow);
+        this.bodyEl.appendChild(settingsRow);
 
         // Footer: populate the status element and connect button
         const footer = this.frameEl.querySelector('.modal-footer');

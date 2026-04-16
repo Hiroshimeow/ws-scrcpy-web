@@ -682,7 +682,10 @@ export class StreamClientScrcpy
             pathname,
             useProxy,
         };
-        new ConfigureScrcpy(tracker, descriptor, options, (result: boolean) => {
+        // Use device label (user-assigned name) for the modal title, falling back to model
+        const nameEl = button.closest('.device')?.querySelector('.device-name-text');
+        const deviceLabel = nameEl?.textContent || descriptor['ro.product.model'] || udid;
+        new ConfigureScrcpy(tracker, descriptor, deviceLabel, options, (result: boolean) => {
             if (result) {
                 HostTracker.getInstance().destroy();
             }

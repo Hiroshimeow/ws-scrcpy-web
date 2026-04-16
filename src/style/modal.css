@@ -21,6 +21,7 @@ dialog.modal::backdrop {
 /* ── Glassmorphism frame ── */
 dialog.modal .modal-frame {
     font-family: monospace;
+    color: var(--text-color, #ddd);
     width: clamp(400px, 50vw, 650px);
     max-height: 80vh;
     display: flex;
