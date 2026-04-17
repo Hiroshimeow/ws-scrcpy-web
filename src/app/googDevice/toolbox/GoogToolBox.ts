@@ -52,7 +52,6 @@ export class GoogToolBox extends ToolBox {
         udid: string,
         player: BasePlayer,
         client: StreamClientScrcpy,
-        moreBox?: HTMLElement,
     ): GoogToolBox {
         const playerName = player.getName();
         const list = BUTTONS.slice();
@@ -164,16 +163,6 @@ export class GoogToolBox extends ToolBox {
         });
         elements.push(clipSet);
 
-        if (moreBox) {
-            const displayId = player.getVideoSettings().displayId;
-            const id = `show_more_${udid}_${playerName}_${displayId}`;
-            const more = new ToolBoxCheckbox('More', SvgImage.Icon.MORE, id);
-            more.addEventListener('click', (_, el) => {
-                const element = el.getElement();
-                moreBox.style.display = element.checked ? 'block' : 'none';
-            });
-            elements.unshift(more);
-        }
         return new GoogToolBox(elements);
     }
 }

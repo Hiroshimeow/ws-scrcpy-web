@@ -25,7 +25,6 @@ import { html } from '../../ui/HtmlTag';
 import VideoSettings from '../../VideoSettings';
 import DeviceMessage from '../DeviceMessage';
 import { type KeyEventListener, KeyInputHandler } from '../KeyInputHandler';
-import { GoogMoreBox } from '../toolbox/GoogMoreBox';
 import { GoogToolBox } from '../toolbox/GoogToolBox';
 import { UhidKeyboardHandler } from '../UhidKeyboardHandler';
 import { UhidManager } from '../UhidManager';
@@ -137,7 +136,6 @@ export class StreamClientScrcpy
     private uhidManager?: UhidManager;
     private uhidKeyboard?: UhidKeyboardHandler;
     private uhidMouse?: UhidMouseHandler;
-    private moreBox?: GoogMoreBox;
     private player?: BasePlayer;
     private fitToScreen?: boolean;
     private demuxer?: ScrcpyDemuxer;
@@ -404,11 +402,8 @@ export class StreamClientScrcpy
             // Mark that the upcoming WebSocket close is user-initiated so
             // onDisconnected does not fire the public onErrorReceived hook.
             this.isStopping = true;
-            let parent: HTMLElement | null;
-            parent = deviceView.parentElement;
+            const parent = deviceView.parentElement;
             if (parent) parent.removeChild(deviceView);
-            parent = moreBox.parentElement;
-            if (parent) parent.removeChild(moreBox);
             this.setHandleKeyboardEvents(false);
             document.removeEventListener('click', resumeAudio);
             document.removeEventListener('keydown', resumeAudio);
@@ -419,16 +414,12 @@ export class StreamClientScrcpy
 
         this.stopFn = () => stop();
 
-        const googMoreBox = (this.moreBox = new GoogMoreBox(udid, player, this));
-        const moreBox = googMoreBox.getHolderElement();
-        googMoreBox.setOnStop(stop);
-        const googToolBox = GoogToolBox.createToolBox(udid, player, this, moreBox);
+        const googToolBox = GoogToolBox.createToolBox(udid, player, this);
         this.controlButtons = googToolBox.getHolderElement();
         deviceView.appendChild(this.controlButtons);
         const video = document.createElement('div');
         video.className = 'video';
         deviceView.appendChild(video);
-        deviceView.appendChild(moreBox);
         player.setParent(video);
         player.pause();
 
