@@ -199,3 +199,35 @@ const libraryEsm: webpack.Configuration = {
 
 export const libraryUmdConfig = () => Object.assign({}, common(), libraryUmd);
 export const libraryEsmConfig = () => Object.assign({}, common(), libraryEsm);
+
+// Copies public/embed.html alongside embed.js
+class CopyEmbedHtmlPlugin {
+    apply(compiler: webpack.Compiler) {
+        compiler.hooks.afterEmit.tapAsync('CopyEmbedHtmlPlugin', (_: webpack.Compilation, callback: () => void) => {
+            const fs = require('fs') as typeof import('fs');
+            fs.copyFileSync(
+                path.resolve(PROJECT_ROOT, 'public/embed.html'),
+                path.resolve(CLIENT_DIST_PATH, 'embed.html'),
+            );
+            callback();
+        });
+    }
+}
+
+const embedConfig: webpack.Configuration = {
+    entry: path.join(PROJECT_ROOT, './src/app/public/embed-entry.ts'),
+    externals: ['fs'],
+    plugins: [
+        versionDefinePlugin,
+        new CopyEmbedHtmlPlugin(),
+    ],
+    resolve: {
+        extensions: ['.tsx', '.ts', '.js'],
+    },
+    output: {
+        filename: 'embed.js',
+        path: CLIENT_DIST_PATH,
+    },
+};
+
+export const embedEntryConfig = () => Object.assign({}, common(), embedConfig);

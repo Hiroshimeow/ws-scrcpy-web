@@ -3,8 +3,19 @@
  * Built as a standalone IIFE bundle and shipped as embed.js.
  */
 
-import { startStream } from './startStream';
-import type { StartStreamOptions } from './types';
+import type { StartStreamOptions, StreamHandle } from './types';
+
+// Declare the UMD global that ws-scrcpy.umd.js installs on the window
+// before embed.js runs. Using the global instead of importing ./startStream
+// avoids re-bundling the entire stream client into embed.js.
+declare global {
+    interface Window {
+        WsScrcpy?: {
+            startStream: (container: HTMLElement, deviceId: string, options?: StartStreamOptions) => StreamHandle;
+            version: string;
+        };
+    }
+}
 
 const CODECS = new Set(['h264', 'h265', 'av1']);
 
@@ -89,8 +100,12 @@ function bootstrap(): void {
     options.onDisconnect = (reason) => show(`disconnected${reason ? ` (${reason})` : ''}`, true);
     options.onError = (err) => show(`error: ${err.message}`, true);
 
+    if (!window.WsScrcpy) {
+        show('error: WsScrcpy library not loaded (expected ws-scrcpy.umd.js to run first)', true);
+        return;
+    }
     try {
-        startStream(document.body, deviceId, options);
+        window.WsScrcpy.startStream(document.body, deviceId, options);
     } catch (err) {
         show(`error: ${err instanceof Error ? err.message : String(err)}`, true);
     }
