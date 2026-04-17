@@ -16,17 +16,9 @@ window.onload = async (): Promise<void> => {
     const parsedQuery = new URLSearchParams(hash);
     const action = parsedQuery.get('action');
 
-    if (parsedQuery.get('embed') === 'true') {
-        document.body.classList.add('embed');
-    }
-
+    // WebCodecs player must be registered so ConnectModal can find it
     const { WebCodecsPlayer } = await import('./player/WebCodecsPlayer');
     StreamClientScrcpy.registerPlayer(WebCodecsPlayer);
-
-    if (action === StreamClientScrcpy.ACTION && typeof parsedQuery.get('udid') === 'string') {
-        StreamClientScrcpy.start(parsedQuery);
-        return;
-    }
 
     const tools: Tool[] = [];
 
@@ -50,16 +42,13 @@ window.onload = async (): Promise<void> => {
             DeviceTracker.registerTool(tool);
         });
     }
-    // Theme toggle button (outside container, fixed position)
+
     document.body.appendChild(createThemeToggle());
 
-    // Page container — centers content and caps width at 4 device cards
     const pageContainer = document.createElement('div');
     pageContainer.className = 'page-container';
     document.body.appendChild(pageContainer);
 
-    // Create page structure in fixed order BEFORE anything renders
-    // BaseDeviceTracker will find #devices and use it instead of creating its own
     const devicesDiv = document.createElement('div');
     devicesDiv.id = 'devices';
     devicesDiv.className = 'table-wrapper';
@@ -72,6 +61,5 @@ window.onload = async (): Promise<void> => {
         pageContainer.appendChild(depPanel.getElement());
     });
 
-    // Start device tracking — it will populate the #devices div we created above
     HostTracker.start();
 };
