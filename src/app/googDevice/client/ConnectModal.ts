@@ -2,31 +2,49 @@ import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import type BasePlayer from '../../player/BasePlayer';
 import type VideoSettings from '../../VideoSettings';
 import { Modal } from '../../ui/Modal';
-import { StreamClientScrcpy } from './StreamClientScrcpy';
+import { startStream } from '../../public/startStream';
+import type { StreamHandle } from '../../public/types';
 
 export class ConnectModal extends Modal {
-    private stopStream?: () => void;
+    private handle?: StreamHandle;
 
     constructor(
         params: ParamsStreamScrcpy,
-        player: BasePlayer,
-        fitToScreen: boolean,
+        _player: BasePlayer,
+        _fitToScreen: boolean,
         videoSettings: VideoSettings,
         deviceLabel: string,
     ) {
         super({ title: deviceLabel });
         this.dialog.classList.add('connect-modal');
 
-        const { stop } = StreamClientScrcpy.start(
-            params, player, fitToScreen, videoSettings,
-            this.bodyEl,
-            () => this.close(),
-        );
-        this.stopStream = stop;
+        const bounds = videoSettings.bounds;
+        const maxSize = bounds ? Math.max(bounds.width, bounds.height) : undefined;
+
+        const codec = normalizeCodec(params.videoCodec);
+
+        this.handle = startStream(this.bodyEl, params.udid, {
+            host: params.hostname || undefined,
+            port: params.port || undefined,
+            secure: params.secure || undefined,
+            pathname: params.pathname || undefined,
+            codec,
+            encoder: params.encoderName,
+            bitrate: params.bitrate,
+            maxFps: params.maxFps,
+            maxSize,
+            audio: true,
+            keyboard: true,
+            onDisconnect: () => this.close(),
+            onError: (err) => {
+                console.error('[ConnectModal]', err);
+                this.close();
+            },
+        });
     }
 
     protected buildBody(_container: HTMLElement): void {
-        // Empty — StreamClientScrcpy populates the container after super() completes
+        // Empty — startStream populates the container after super() completes
     }
 
     protected onEscapeKey(_event: Event): void {
@@ -38,6 +56,12 @@ export class ConnectModal extends Modal {
     }
 
     protected onBeforeClose(): void {
-        this.stopStream?.();
+        this.handle?.stop();
+        this.handle = undefined;
     }
+}
+
+function normalizeCodec(codec: string | undefined): 'h264' | 'h265' | 'av1' | undefined {
+    if (codec === 'h264' || codec === 'h265' || codec === 'av1') return codec;
+    return undefined;
 }
