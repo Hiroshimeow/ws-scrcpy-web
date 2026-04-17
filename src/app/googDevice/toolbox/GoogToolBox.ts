@@ -1,3 +1,5 @@
+import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
+import { ControlMessage } from '../../controlMessage/ControlMessage';
 import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
 import type { BasePlayer } from '../../player/BasePlayer';
 import { ToolBox } from '../../toolbox/ToolBox';
@@ -136,6 +138,31 @@ export class GoogToolBox extends ToolBox {
             client.refreshStream();
         });
         elements.push(refresh);
+
+        // GET: pull device clipboard to host
+        const clipGet = new ToolBoxButton('copy device clipboard to host', SvgImage.Icon.CLIPBOARD_GET);
+        clipGet.addEventListener('click', () => {
+            client.sendMessage(new CommandControlMessage(ControlMessage.TYPE_GET_CLIPBOARD));
+        });
+        elements.push(clipGet);
+
+        // SET: push host clipboard to device
+        const clipSet = new ToolBoxButton('push host clipboard to device', SvgImage.Icon.CLIPBOARD_SET);
+        clipSet.addEventListener('click', async () => {
+            if (!navigator.clipboard?.readText) {
+                console.error('[GoogToolBox] navigator.clipboard.readText unavailable');
+                return;
+            }
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
+                }
+            } catch (err) {
+                console.error('[GoogToolBox] clipboard read failed:', err);
+            }
+        });
+        elements.push(clipSet);
 
         if (moreBox) {
             const displayId = player.getVideoSettings().displayId;

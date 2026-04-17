@@ -268,8 +268,13 @@ export class StreamClientScrcpy
 
     public OnDeviceMessage = (data: Uint8Array): void => {
         const message = DeviceMessage.fromRaw(data);
-        if (this.moreBox) {
-            this.moreBox.OnDeviceMessage(message);
+        if (message.type === DeviceMessage.TYPE_CLIPBOARD) {
+            const text = message.getText();
+            if (text && navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).catch((err) => {
+                    console.error('[StreamClientScrcpy] clipboard write failed:', err);
+                });
+            }
         }
     };
 

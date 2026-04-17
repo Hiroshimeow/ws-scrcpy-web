@@ -3,6 +3,8 @@ import BarChartSVG from '../../public/images/buttons/bar_chart.svg';
 import DpadSVG from '../../public/images/buttons/dpad.svg';
 import TouchSVG from '../../public/images/buttons/touch.svg';
 import CancelSVG from '../../public/images/buttons/cancel.svg';
+import ClipboardGetSVG from '../../public/images/buttons/clipboard_get.svg';
+import ClipboardSetSVG from '../../public/images/buttons/clipboard_set.svg';
 import MenuSVG from '../../public/images/buttons/menu.svg';
 import OfflineSVG from '../../public/images/buttons/offline.svg';
 import RefreshSVG from '../../public/images/buttons/refresh.svg';
@@ -40,6 +42,8 @@ export enum Icon {
     BAR_CHART = 17,
     DPAD = 18,
     TOUCH_HAND = 19,
+    CLIPBOARD_GET = 20,
+    CLIPBOARD_SET = 21,
 }
 
 export default class SvgImage {
@@ -86,6 +90,10 @@ export default class SvgImage {
                 return DpadSVG;
             case Icon.TOUCH_HAND:
                 return TouchSVG;
+            case Icon.CLIPBOARD_GET:
+                return ClipboardGetSVG;
+            case Icon.CLIPBOARD_SET:
+                return ClipboardSetSVG;
             default:
                 return '';
         }
