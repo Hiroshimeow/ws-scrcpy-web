@@ -3,6 +3,25 @@
   "version": "1.0.0",
   "description": "Browser-based Android screen mirroring and control, powered by scrcpy",
   "license": "GPL-3.0-only",
+  "author": "bilbospocketses",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bilbospocketses/ws-scrcpy-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bilbospocketses/ws-scrcpy-web/issues"
+  },
+  "homepage": "https://github.com/bilbospocketses/ws-scrcpy-web#readme",
+  "keywords": [
+    "scrcpy",
+    "android",
+    "screen-mirroring",
+    "adb",
+    "websocket",
+    "webcodecs",
+    "remote-control",
+    "android-tv"
+  ],
   "engines": {
     "node": ">=24"
   },
