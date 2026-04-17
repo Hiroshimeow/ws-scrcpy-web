@@ -788,13 +788,15 @@ Create `public/embed.html`:
         #status.hidden { display: none; }
     </style>
 </head>
-<body>
+<body data-embed-entry>
     <div id="status">connecting...</div>
     <script src="ws-scrcpy.umd.js"></script>
     <script src="embed.js"></script>
 </body>
 </html>
 ```
+
+**IMPORTANT:** The `<body>` tag MUST include `data-embed-entry` (added above). `embed-entry.ts`'s bootstrap function checks for this attribute as an opt-in marker — without it, `startStream()` does not auto-fire on script load (protects tests and accidental imports).
 
 - [ ] **Step 2: Add embed webpack config factory**
 
