@@ -90,6 +90,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     private filterInput?: HTMLInputElement;
     private headerCheck?: HTMLInputElement;
     private fileListBody?: HTMLElement;
+    private rowsContainer?: HTMLElement;
     // Footer elements are NOT stored during buildFooter() — ES2022 field initializers
     // clobber values set during super(). Query from DOM instead via getFooterEl().
     private dropZone?: HTMLElement;
@@ -112,16 +113,12 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         this.params = params;
 
         // Add size picker button to header (left of X)
-        const header = this.dialog.querySelector('.modal-header');
-        const closeBtn = header?.querySelector('.modal-close');
-        if (header && closeBtn) {
-            const sizeBtn = document.createElement('button');
-            sizeBtn.className = 'modal-close';
-            sizeBtn.textContent = '\u229e'; // ⊞
-            sizeBtn.title = 'icon size preference';
-            sizeBtn.addEventListener('click', () => this.showSizePicker());
-            header.insertBefore(sizeBtn, closeBtn);
-        }
+        const sizeBtn = document.createElement('button');
+        sizeBtn.className = 'modal-close';
+        sizeBtn.textContent = '\u229e'; // ⊞
+        sizeBtn.title = 'icon size preference';
+        sizeBtn.addEventListener('click', () => this.showSizePicker());
+        this.addHeaderButton(sizeBtn);
 
         // Check localStorage for saved size preference
         const savedSize = localStorage.getItem(ICON_SIZE_KEY);
@@ -356,6 +353,12 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         nameHeader.addEventListener('click', () => this.toggleSort('name'));
         headerRow.appendChild(nameHeader);
 
+        // Spacer reserves the actions column width so size/date stay aligned
+        // whether actions are visible (hover) or hidden (non-hover, folder rows)
+        const actionsSpacer = document.createElement('span');
+        actionsSpacer.className = 'list-files-header-actions-spacer';
+        headerRow.appendChild(actionsSpacer);
+
         const sizeHeader = document.createElement('span');
         sizeHeader.className = 'list-files-header-size';
         sizeHeader.textContent = 'size';
@@ -368,16 +371,15 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         dateHeader.addEventListener('click', () => this.toggleSort('date'));
         headerRow.appendChild(dateHeader);
 
-        // Spacer for actions column — matches hover action buttons width
-        const actionsSpacer = document.createElement('span');
-        actionsSpacer.className = 'list-files-header-actions-spacer';
-        headerRow.appendChild(actionsSpacer);
-
-        this.bodyEl.appendChild(headerRow);
-
-        // Scrollable file list
+        // Scrollable file list — header is placed INSIDE this scroll container as
+        // a sticky element so header and rows share the same viewport width when
+        // a scrollbar appears (otherwise size/date columns would mis-align).
         this.fileListBody = document.createElement('div');
         this.fileListBody.className = 'list-files-body';
+        this.fileListBody.appendChild(headerRow);
+        this.rowsContainer = document.createElement('div');
+        this.rowsContainer.className = 'list-files-rows';
+        this.fileListBody.appendChild(this.rowsContainer);
         this.bodyEl.appendChild(this.fileListBody);
 
         // Drop zone overlay (hidden by default)
@@ -865,20 +867,20 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     // ── File list rendering ──
 
     private renderFileList(): void {
-        if (!this.fileListBody) return;
-        this.fileListBody.innerHTML = '';
+        if (!this.rowsContainer) return;
+        this.rowsContainer.innerHTML = '';
 
         if (this.filteredEntries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'list-files-loading';
             empty.textContent = this.filterText ? 'no matching files' : 'empty directory';
-            this.fileListBody.appendChild(empty);
+            this.rowsContainer.appendChild(empty);
             return;
         }
 
         this.filteredEntries.forEach((entry) => {
             const row = this.createFileRow(entry);
-            this.fileListBody!.appendChild(row);
+            this.rowsContainer!.appendChild(row);
         });
 
         this.updateHeaderCheck();
@@ -929,6 +931,36 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         nameSpan.textContent = entry.name;
         row.appendChild(nameSpan);
 
+        // Hover actions (reserved column — always takes space, visibility toggled on hover)
+        const actions = document.createElement('div');
+        actions.className = 'list-files-row-actions';
+
+        if (entry.isFile()) {
+            const dlBtn = document.createElement('button');
+            dlBtn.className = 'list-files-action-btn list-files-action-download';
+            dlBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+            dlBtn.title = 'download';
+            dlBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.downloadFile(entryPath, entry);
+            });
+            actions.appendChild(dlBtn);
+        }
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'list-files-action-btn list-files-action-delete';
+        delBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+        delBtn.title = 'delete';
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm(`delete "${entry.name}"?`)) {
+                this.deleteFiles([entryPath]);
+            }
+        });
+        actions.appendChild(delBtn);
+
+        row.appendChild(actions);
+
         // Size
         const sizeSpan = document.createElement('span');
         sizeSpan.className = 'list-files-row-size';
@@ -941,36 +973,6 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         dateSpan.textContent = formatDate(entry.mtime);
         row.appendChild(dateSpan);
 
-        // Hover actions
-        const actions = document.createElement('div');
-        actions.className = 'list-files-row-actions';
-
-        if (entry.isFile()) {
-            const dlBtn = document.createElement('button');
-            dlBtn.className = 'list-files-action-btn list-files-action-download';
-            dlBtn.textContent = '\u2b07'; // ⬇
-            dlBtn.title = 'download';
-            dlBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.downloadFile(entryPath, entry);
-            });
-            actions.appendChild(dlBtn);
-        }
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'list-files-action-btn list-files-action-delete';
-        delBtn.textContent = '\u2715'; // ✕
-        delBtn.title = 'delete';
-        delBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (confirm(`delete "${entry.name}"?`)) {
-                this.deleteFiles([entryPath]);
-            }
-        });
-        actions.appendChild(delBtn);
-
-        row.appendChild(actions);
-
         // Row click: navigate into directories
         row.addEventListener('click', () => {
             if (entry.isDirectory()) {
@@ -982,12 +984,12 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private showLoading(): void {
-        if (!this.fileListBody) return;
-        this.fileListBody.innerHTML = '';
+        if (!this.rowsContainer) return;
+        this.rowsContainer.innerHTML = '';
         const loading = document.createElement('div');
         loading.className = 'list-files-loading';
         loading.textContent = 'loading...';
-        this.fileListBody.appendChild(loading);
+        this.rowsContainer.appendChild(loading);
     }
 
     // ── Selection ──
@@ -1142,9 +1144,10 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             this.uploads.set(fileName, upload);
             this.activeUploads++;
 
-            // Insert at top of file list
-            if (this.fileListBody) {
-                this.fileListBody.insertBefore(row, this.fileListBody.firstChild);
+            // Insert at top of file list (rows container, not the scroll body,
+            // so the row doesn't appear above the sticky header)
+            if (this.rowsContainer) {
+                this.rowsContainer.insertBefore(row, this.rowsContainer.firstChild);
             }
         }
 

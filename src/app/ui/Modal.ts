@@ -10,6 +10,8 @@ export abstract class Modal {
     protected readonly dialog: HTMLDialogElement;
     protected readonly frameEl: HTMLElement;
     protected readonly bodyEl: HTMLElement;
+    private readonly headerControls: HTMLElement;
+    private readonly closeBtn: HTMLButtonElement;
     private readonly options: ModalOptions;
 
     constructor(options: ModalOptions) {
@@ -32,23 +34,21 @@ export abstract class Modal {
         title.textContent = options.title;
         header.appendChild(title);
 
-        // Header right-side controls: theme toggle + close button
-        const headerControls = document.createElement('div');
-        headerControls.style.display = 'flex';
-        headerControls.style.alignItems = 'center';
-        headerControls.style.gap = '8px';
+        // Header right-side controls: theme toggle + (optional subclass buttons) + close button
+        this.headerControls = document.createElement('div');
+        this.headerControls.classList.add('modal-header-controls');
 
         const themeBtn = createThemeToggle();
         themeBtn.classList.add('modal-close'); // reuse close button sizing
-        headerControls.appendChild(themeBtn);
+        this.headerControls.appendChild(themeBtn);
 
-        const closeBtn = document.createElement('button');
-        closeBtn.classList.add('modal-close');
-        closeBtn.textContent = '\u00d7';
-        closeBtn.addEventListener('click', () => this.onCloseButtonClick());
-        headerControls.appendChild(closeBtn);
+        this.closeBtn = document.createElement('button');
+        this.closeBtn.classList.add('modal-close');
+        this.closeBtn.textContent = '\u00d7';
+        this.closeBtn.addEventListener('click', () => this.onCloseButtonClick());
+        this.headerControls.appendChild(this.closeBtn);
 
-        header.appendChild(headerControls);
+        header.appendChild(this.headerControls);
 
         // Body
         this.bodyEl = document.createElement('div');
@@ -110,6 +110,12 @@ export abstract class Modal {
 
     /** Override for cleanup before DOM removal (dispose terminals, close sockets, etc.). */
     protected onBeforeClose(): void {}
+
+    /** Insert a button into the header controls at the far left, keeping the
+     *  theme toggle + close X together on the right for consistent UX across modals. */
+    protected addHeaderButton(btn: HTMLElement): void {
+        this.headerControls.insertBefore(btn, this.headerControls.firstChild);
+    }
 
     /** Close the modal. Calls onBeforeClose, triggers exit animation, removes from DOM, fires callback. */
     public close(result?: unknown): void {

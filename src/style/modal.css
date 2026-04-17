@@ -129,6 +129,25 @@ dialog.modal .modal-title {
     font-weight: 600;
 }
 
+dialog.modal .modal-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+}
+
+/* Reset home-page theme-toggle fixed positioning when it's reused inside a modal */
+dialog.modal .modal-header-controls .theme-toggle {
+    position: static;
+    top: auto;
+    right: auto;
+    z-index: auto;
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
 dialog.modal .modal-close {
     background: transparent;
     border: none;

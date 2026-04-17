@@ -91,7 +91,10 @@
     color: #333;
 }
 
-/* ── Column headers ── */
+/* ── Column headers ──
+   Sticky inside .list-files-body so header and rows share the same scroll
+   viewport width — prevents column mis-alignment when a scrollbar appears.
+   Background matches .modal-frame so rows scrolling under stay hidden. */
 .list-files-header {
     display: flex;
     align-items: center;
@@ -101,11 +104,16 @@
     color: rgba(255, 255, 255, 0.4);
     flex-shrink: 0;
     gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgb(30, 35, 45);
 }
 
 [data-theme="light"] .list-files-header {
     border-bottom-color: rgba(0, 0, 0, 0.08);
     color: rgba(0, 0, 0, 0.4);
+    background: rgb(245, 248, 252);
 }
 
 .list-files-header-icon-spacer {
@@ -128,9 +136,10 @@
     user-select: none;
 }
 
-/* Spacer for hover actions column so size/date align even when actions are hidden */
+/* Spacer for hover actions column so size/date align even when actions are hidden.
+   Width matches .list-files-row-actions width. */
 .list-files-header-actions-spacer {
-    width: 52px;
+    width: calc(var(--file-icon-size, 24px) * 2 + 20px);
     flex-shrink: 0;
 }
 
@@ -211,25 +220,41 @@
     flex-shrink: 0;
 }
 
-/* ── Hover actions ── */
+/* ── Hover actions ──
+   Reserved column: always flex, fixed width matching header spacer, child buttons
+   are visibility:hidden by default so size/date columns never shift on hover. */
 .list-files-row-actions {
-    display: none;
+    display: flex;
     gap: 4px;
     flex-shrink: 0;
+    justify-content: flex-end;
+    width: calc(var(--file-icon-size, 24px) * 2 + 20px);
 }
 
-.list-files-row:hover .list-files-row-actions {
-    display: flex;
+.list-files-row-actions .list-files-action-btn {
+    visibility: hidden;
+}
+
+.list-files-row:hover .list-files-row-actions .list-files-action-btn {
+    visibility: visible;
 }
 
 .list-files-action-btn {
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 2px 4px;
-    font-size: var(--file-icon-size, 24px);
+    padding: 2px;
     border-radius: 3px;
-    line-height: 1;
+    line-height: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.list-files-action-btn svg {
+    width: var(--file-icon-size, 24px);
+    height: var(--file-icon-size, 24px);
+    fill: currentColor;
 }
 
 .list-files-action-download {
