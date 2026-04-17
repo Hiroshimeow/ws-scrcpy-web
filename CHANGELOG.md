@@ -1,0 +1,122 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- `SECURITY.md` now points to GitHub Security Advisories for private vulnerability reporting
+- `CONTRIBUTING.md` with setup, style guide, and PR expectations
+- `CHANGELOG.md` following Keep a Changelog format
+- `repository`, `author`, `bugs`, `homepage`, and `keywords` fields in `package.json`
+
+### Changed
+- Personal filesystem paths scrubbed from historical plan documents in `docs/plans/` and `docs/superpowers/plans/`
+
+### Fixed
+- Stream library stylesheet (`ws-scrcpy.css`) now self-contains theme variables so `/embed.html` renders back/home/overview buttons correctly in light mode
+
+## [1.0.0] - 2026-04-17
+
+First public release. Browser-based Android screen mirroring rebuilt from the ground up on vanilla scrcpy v3.x with a modernized Node.js + TypeScript stack.
+
+### Added
+
+**Stream API + embed mode** (this release's headline)
+- Public `WsScrcpy.startStream(container, deviceId, options)` library shipped as UMD (`ws-scrcpy.umd.js`) and ES module (`ws-scrcpy.esm.js`) with bundled TypeScript types (`ws-scrcpy.d.ts`)
+- `/embed.html?device=<udid>` thin wrapper for iframe consumers; transparent background, auto-connect, full toolbar
+- `StreamHandle` with idempotent `stop()`, `isConnected`, `deviceId`
+- `onConnect` / `onDisconnect` / `onError` lifecycle callbacks with typed payloads
+- Full URL parameter surface (`host`, `port`, `secure`, `pathname`, `codec`, `encoder`, `bitrate`, `maxFps`, `maxSize`, `audio`, `keyboard`)
+
+**Modal system**
+- Native HTML `<dialog>` base class (`Modal`) with glassmorphism styling, `@starting-style` transitions, and `addHeaderButton()` helper
+- `ConfigureScrcpy`, `ShellModal`, `ConnectModal`, `ListFilesModal` all extend the base class
+- Device labels displayed in modal headers
+
+**File browser** (`ListFilesModal`)
+- Sticky header, reserved actions column, SVG hover icons that scale with size picker, sortable columns, breadcrumb navigation, bulk selection, drag-and-drop upload, download with progress, client-side filter
+
+**Input**
+- UHID keyboard + mouse via USB HID report descriptors (pointer lock)
+- D-pad / Touch input mode toggle (D-pad default for TV apps, fire-then-debounce for scroll wheel)
+- Scroll wheel with i16fp encoding (`sc_float_to_i16fp`) and latent-stream-tuned normalization
+- Clipboard toolbar buttons (GET device→host, SET host→device) — modernized from legacy MoreBox textarea flow
+
+**Codecs**
+- Multi-codec video: H.264, H.265 (HEVC), AV1 with smart auto-selection (H.265 preferred, falls back to H.264 for Firefox)
+- Multi-codec audio: Opus, AAC, FLAC, raw PCM via WebCodecs `AudioDecoder` + `AudioWorklet`
+- HEVC SPS parser with RBSP stripping, AV1 config record parser
+- Edge H.265 rendering fix: 8-arg `drawImage` using full coded rect as source (Edge reports display dims ≠ coded dims)
+
+**Device management**
+- Connected-devices card grid with live WebSocket updates
+- Network scan via `adb mdns services` with one-click connect
+- Device labels persisted to `device-labels.json`, keyed by `ro.serialno`
+- Per-card sleep/wake toggle with server-side polling (`dumpsys power`, 5s loop, `Promise.all` concurrency)
+- Disconnect button for network-connected devices
+
+**Deployment**
+- Self-contained folder layout: `dependencies/node/`, `dependencies/adb/`, `start.cmd` / `start.sh` launcher scripts
+- In-app updater for Node.js + node-pty (paired), ADB platform-tools, scrcpy-server
+- Windows file-locking workaround: rename running `node.exe`, write `.restart` marker, launcher relaunches
+- Dark/light theme toggle with localStorage persistence
+
+**Server**
+- Tagged logger (`Logger.for('Tag')`) replaces all raw `console.log`; tees to `ws-scrcpy-web.log` with ISO timestamps, 5MB rotation
+- `uncaughtException` + `unhandledRejection` handlers log to file before exit
+- Crash-safe WebSocket close (readyState guard, 123-byte reason truncation)
+- Vanilla scrcpy-server v3.3.4 binary; no Java patching
+
+**API endpoints**
+- `GET /api/dependencies/*` — updater status and operations
+- `GET /api/devices/labels` / `PUT /api/devices/labels`
+- `POST /api/devices/scan` — mDNS discovery
+- `POST /api/devices/connect` / `POST /api/devices/disconnect`
+- `POST /api/devices/files/*` — file browser operations including delete
+
+**Quality stats overlay**
+- Top-left HUD shows resolution, video codec, encoder name, bitrate, FPS counters; font scales with canvas resolution
+- Toolbar bar-chart button toggles stats visibility
+- Server echoes encoder in session metadata
+
+**Tests**
+- Vitest suite for control messages, binary readers/writers, multiplexer, codec configs, device labels
+- 87 tests passing across the final release
+
+### Changed
+
+- Dependencies overhaul: Node 24 LTS, TypeScript 6, Biome 2, webpack 5, node-pty 1.1.0, xterm 6.x
+- Runtime dependencies reduced to 2 total: `ws`, `node-pty`
+- Control message protocol: `ScrollControlMessage` now 20-byte int16 (not 25-byte int32); `TouchControlMessage` payload corrected to 31 bytes
+- Default keyboard: ON at stream start
+- Default FPS: 15 (tuned for latent network streams)
+- Default encoder: auto-selects hardware HEVC (`c2.mtk.hevc.encoder`, Qualcomm or Exynos equivalents)
+- Home page centered at max-width 1800px (5 cards on 4K)
+- Toolbar icons centered via SVG sizing; vertical spacing increased
+
+### Removed
+
+- iOS support, Chrome DevTools proxy, WASM decoder fallbacks, vendor decoder shims (~6,500 lines deleted)
+- `adbkit`, Express, YAML, ESLint, path-browserify (replaced by own implementations)
+- `GoogMoreBox` (383 lines) — clipboard flow replaced by toolbar buttons
+- `#!action=stream` URL hash routing
+- `?embed=true` URL parameter and all `body.embed` CSS rules
+- Patched `scrcpy-server.jar` — project now uses unmodified Genymobile binaries
+
+### Fixed
+
+- Edge WebCodecs H.265 displayWidth/codedWidth mismatch causing blurry or clipped frames
+- Firefox `VideoDecoder.isConfigSupported` falsely rejecting `avc1.42E01E` — H.264 now skips the check
+- Mouse click freeze after stream-quality refresh (race: old demuxer's async `onclose` fired after `isRefreshing` reset)
+- Stale device cards persisting across disconnects (ControlCenter + client-side `updateDescriptor` both now remove disconnected devices)
+- Scan Network missed plain `_adb._tcp` services (filter was restricted to `_adb-tls-connect`)
+- `RemoteShell` crash from `ws.send()` on closed socket (readyState guard)
+- `AdbUtils.ts` and `RemoteShell.ts` cross-platform fixes (hardcoded `'adb'` → `Config.adbPath`, `env.PWD` → `process.cwd()`)
+
+### Security
+
+- WebSocket close reason truncated to 123-byte spec limit with try/catch — offline devices no longer crash the Node process
