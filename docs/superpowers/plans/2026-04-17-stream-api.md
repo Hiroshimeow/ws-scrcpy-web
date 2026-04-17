@@ -199,7 +199,6 @@ Create `src/app/public/startStream.ts`:
 import { StreamClientScrcpy } from '../googDevice/client/StreamClientScrcpy';
 import type { ParamsStreamScrcpy } from '../../types/ParamsStreamScrcpy';
 import { ACTION } from '../../common/Action';
-import { ParseFlag } from '../../types/BaseClientParams';
 import type { StartStreamOptions, StreamHandle } from './types';
 
 const ACTIVE_STREAM_ATTR = 'data-ws-scrcpy-active';
@@ -234,13 +233,15 @@ export function startStream(
         pathname: options.pathname ?? '',
         useProxy: false,
         videoCodec: videoCodec as ParamsStreamScrcpy['videoCodec'],
-        audioCodec: options.audio === false ? undefined : undefined,
         encoderName: options.encoder,
         bitrate: options.bitrate,
         maxFps: options.maxFps,
         fitToScreen: true,
-        parseFlag: ParseFlag.FULL,
     } as ParamsStreamScrcpy;
+    // NOTE: before implementing, open src/types/ParamsStreamScrcpy.d.ts and
+    // reconcile fields exactly — remove any here that don't exist on the type,
+    // and add any that are required. Do NOT import ParseFlag; that type is not
+    // in this codebase.
 
     try {
         const { instance, stop } = StreamClientScrcpy.start(
@@ -262,6 +263,10 @@ export function startStream(
         instance.onMetadataReceived = (info) => {
             isConnected = true;
             options.onConnect?.(info);
+        };
+        // Hook async errors (WebSocket refused, probe failure, abnormal close)
+        instance.onErrorReceived = (err) => {
+            options.onError?.(err);
         };
     } catch (err) {
         container.removeAttribute(ACTIVE_STREAM_ATTR);
@@ -310,18 +315,21 @@ git commit -m "feat: startStream public API facade over StreamClientScrcpy"
 
 Open `src/app/googDevice/client/StreamClientScrcpy.ts`. Find the `onMetadata` handler (search for `onMetadata` — it's the callback passed to `ScrcpyDemuxer`). It parses session metadata (codec, encoder, resolution).
 
-- [ ] **Step 2: Add the public callback field**
+- [ ] **Step 2: Add the public callback fields**
 
 Near the other class fields around line 140, add:
 
 ```typescript
 /** Public hook — fires after session metadata is parsed. Used by the public startStream API. */
 public onMetadataReceived?: (info: { codec: string; encoder: string; resolution: string }) => void;
+
+/** Public hook — fires on async stream errors (WebSocket refused, probe failure, etc.). */
+public onErrorReceived?: (err: Error) => void;
 ```
 
 - [ ] **Step 3: Fire the callback**
 
-Inside the existing `onMetadata` handler, right after the existing metadata fields are parsed (codec name, encoder name, width/height), add:
+Inside the existing `onMetadata` handler (around line 304), right after the existing metadata fields are parsed, add:
 
 ```typescript
 this.onMetadataReceived?.({
@@ -331,7 +339,18 @@ this.onMetadataReceived?.({
 });
 ```
 
-Use the field names that exist in the metadata object already (check the surrounding code for the exact property names; adjust if they differ).
+**Exact property names:** open the handler and use whichever fields the existing code references to display codec/encoder/resolution in the stats overlay (same source of truth). The public API's `onConnect` fires HERE and only here — there is no first-frame-decoded signal in the codebase, and the spec has been relaxed to "on metadata received." Do not attempt to defer `onConnect` until first-frame decoding.
+
+- [ ] **Step 3b: Wire `onErrorReceived` into async failure paths**
+
+The `ScrcpyDemuxer` (or its internal WebSocket) exposes error/close events. Find where `this.demuxer.onDisconnect(...)` is wired (around line 444). Add a similar hook for error — either:
+
+(a) If `ScrcpyDemuxer` has an `onError` method: `this.demuxer.onError((err) => this.onErrorReceived?.(err));`
+(b) Otherwise, treat `onDisconnect` with a non-zero / non-normal close code as an error. Update the `onDisconnected` handler to check the close code and route to `onErrorReceived?.(new Error(reason))` for abnormal closures (not 1000, not 1001).
+
+Pick option (a) if available; fall back to (b) only if the demuxer doesn't expose error events. Inspect `src/app/ScrcpyDemuxer.ts` to decide.
+
+Also add: if the initial probe fails (`detectBestCodecAndEncoder` throws around line 426), catch and fire `onErrorReceived` before re-throwing / returning.
 
 - [ ] **Step 4: Run full test suite**
 
@@ -367,6 +386,12 @@ Create `src/app/public/index.ts`:
  */
 
 import '../../style/ws-scrcpy.css';
+import { StreamClientScrcpy } from '../googDevice/client/StreamClientScrcpy';
+import { WebCodecsPlayer } from '../player/WebCodecsPlayer';
+
+// Register the default player so startStream works standalone
+// (the home page also registers it, but a pure library consumer might not)
+StreamClientScrcpy.registerPlayer(WebCodecsPlayer);
 
 export { startStream } from './startStream';
 export type { StartStreamOptions, StreamInfo, StreamHandle } from './types';
@@ -458,7 +483,19 @@ const libraryEsm: webpack.Configuration = {
         path: CLIENT_DIST_PATH,
         library: { type: 'module' },
     },
-    // ESM build skips the CSS plugin — UMD build emits the shared ws-scrcpy.css
+    // ESM build skips the CSS extractor — UMD build emits the shared ws-scrcpy.css.
+    // We must ALSO override the CSS rule to use style-loader, because the inherited
+    // module.rules from common() references MiniCssExtractPlugin.loader which throws
+    // at compile time without its paired plugin.
+    module: {
+        rules: [
+            { test: /\.css$/i, use: ['style-loader', 'css-loader'] },
+            { test: /\.tsx?$/, use: [{ loader: 'ts-loader', options: { transpileOnly: true } }], exclude: /node_modules/ },
+            { test: /\.svg$/, type: 'asset/source' },
+            { test: /\.(png|jpe?g|gif)$/i, type: 'asset/resource' },
+            { test: /[\\/]assets[\\/]scrcpy-server/, type: 'asset/resource', generator: { filename: 'assets/scrcpy-server' } },
+        ],
+    },
     plugins: [versionDefinePlugin],
 };
 
@@ -1088,6 +1125,27 @@ Delete it entirely.
 
 Find the constructor (around line 195-209). Remove the `if (!container) { this.setBodyClass('stream'); }` block. The library always runs container-scoped; there is no full-page stream mode anymore.
 
+(Order note: this step is only safe because Task 9 already deleted the only caller of `StreamClientScrcpy.start()` with `URLSearchParams` — the hash-routed full-page stream path. If you are executing tasks out of order, confirm Task 9 is already committed before this step.)
+
+- [ ] **Step 3b: Clean up per-stream listeners in `stopStream()`**
+
+Find `stopStream` (around line 457). The `stop` closure (line 373-385) already removes `deviceView` and `moreBox` (moreBox removal will go away with Task 12), closes the demuxer, stops the audio player, and stops the video player. It does NOT clean up:
+
+1. `KeyInputHandler` keyboard listeners (registered via `this.setHandleKeyboardEvents(true)` at line 447)
+2. Autoplay `click`/`keydown` listeners on `document` (registered at lines 421-422 with `{ once: true }` but may survive if user never clicked before stop())
+
+Add to the `stop` closure body, before the demuxer close:
+
+```typescript
+this.setHandleKeyboardEvents(false);
+document.removeEventListener('click', resumeAudio);
+document.removeEventListener('keydown', resumeAudio);
+```
+
+(`resumeAudio` is defined in enclosing scope at line 416.)
+
+This prevents listener-stacking across consecutive `startStream()` calls on the same page.
+
 - [ ] **Step 4: Run full test suite**
 
 ```
@@ -1119,17 +1177,15 @@ git commit -m "refactor: drop embed-mode body-class, click-to-focus, setBodyClas
 
 In `src/style/app.css`, find the block starting at line 190 (`/* Embed mode — minimal UI for iframe embedding */`) and spanning through the `body.embed .video { ... }` rule at line 212. Delete the entire block (lines 190-213).
 
-- [ ] **Step 2: Identify stream + toolbar CSS to move**
+- [ ] **Step 2: Identify stream + toolbar CSS to move (strict allowlist)**
 
-Skim `src/style/app.css` top to bottom. Find rules targeting stream DOM classes (`.device-view`, `.video`, `.control-wrapper`, toolbar buttons, any class used inside the stream). These rules need to be accessible from the library consumers — currently they only live in `app.css` which is loaded only by the home page. Move them to `ws-scrcpy.css`.
-
-Identify by class name. Safe-to-move rules include those scoped to:
+Move ONLY rules whose outermost selector starts with one of these prefixes:
 - `.device-view`
 - `.video`
-- `.control-wrapper`
-- Any `.goog-*` toolbar class referenced in `GoogToolBox.ts`
+- `.control-wrapper` (and any `.control-wrapper > ...` descendant selectors)
+- `.goog-*` (any class prefixed `goog-`)
 
-Leave home-page-only rules (page container, device cards, scan panel) in `app.css`.
+If a rule's primary selector is anything else (`.page-container`, `.device-list`, `.dep-*`, `.scan-*`, `body` without a stream descendant, etc.), LEAVE IT in `app.css`. When unsure, DO NOT move it — it's safer to leave a stream-related rule in `app.css` than to orphan a home-page rule from its layout context.
 
 - [ ] **Step 3: Populate ws-scrcpy.css**
 
@@ -1163,6 +1219,95 @@ Build + run. ConnectModal renders stream with toolbar at correct sizing. `/embed
 ```bash
 git add src/style/app.css src/style/ws-scrcpy.css
 git commit -m "style: move stream/toolbar CSS to ws-scrcpy.css, delete body.embed rules"
+```
+
+---
+
+### Task 11b: Add clipboard toolbar button (preserves device→host clipboard sync)
+
+GoogMoreBox today handles `DeviceMessage.TYPE_CLIPBOARD` by writing the device's clipboard text into a hidden textarea and calling `document.execCommand('copy')`. When we delete GoogMoreBox in Task 12, that capability vanishes unless we reimplement it as a toolbar button with modern APIs.
+
+**Files:**
+- Modify: `src/app/googDevice/toolbox/GoogToolBox.ts`
+- Modify: `src/app/googDevice/client/StreamClientScrcpy.ts`
+- Modify: `src/app/SvgImage.ts` (add clipboard icon)
+
+- [ ] **Step 1: Add clipboard SVG icon**
+
+In `src/app/SvgImage.ts`, in the icon registry, add:
+
+```typescript
+clipboard: '<svg viewBox="0 0 24 24"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 16H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V8h10v2z"/></svg>',
+```
+
+- [ ] **Step 2: Add the toolbar button**
+
+In `src/app/googDevice/toolbox/GoogToolBox.ts`, in `createToolBox`, add a new button next to the existing toolbar buttons:
+
+```typescript
+const clipboardBtn = document.createElement('button');
+clipboardBtn.className = 'control-button';
+clipboardBtn.title = 'copy device clipboard to host';
+clipboardBtn.innerHTML = SvgImage.get('clipboard');
+clipboardBtn.addEventListener('click', () => {
+    client.sendMessage(CommandControlMessage.createSimpleCommand(ControlMessage.TYPE_GET_CLIPBOARD));
+});
+toolBox.appendChild(clipboardBtn);
+```
+
+Required imports at the top of the file (if not already present):
+```typescript
+import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
+import { ControlMessage } from '../../controlMessage/ControlMessage';
+```
+
+- [ ] **Step 3: Handle the device response in StreamClientScrcpy**
+
+In `src/app/googDevice/client/StreamClientScrcpy.ts`, modify `OnDeviceMessage` (around line 268) to handle clipboard messages. The existing version may look like:
+
+```typescript
+public OnDeviceMessage = (data: Uint8Array): void => {
+    const message = DeviceMessage.fromRaw(data);
+    if (this.moreBox) {
+        this.moreBox.OnDeviceMessage(message);
+    }
+};
+```
+
+Replace with:
+
+```typescript
+public OnDeviceMessage = (data: Uint8Array): void => {
+    const message = DeviceMessage.fromRaw(data);
+    if (message.type === DeviceMessage.TYPE_CLIPBOARD) {
+        const text = message.getText();
+        if (text && navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(text).catch((err) => {
+                console.error('[StreamClientScrcpy] clipboard write failed:', err);
+            });
+        }
+    }
+};
+```
+
+(The `if (this.moreBox) { ... }` block is removed; Task 12 will delete the `moreBox` field entirely.)
+
+- [ ] **Step 4: Build and smoke-test**
+
+```
+npm run build
+node dist/index.js
+```
+
+Browse to a device, click the new clipboard button, copy text on the device (long-press → Copy in a text field), click clipboard button again. Paste in your host clipboard somewhere — text should match.
+
+Note: `navigator.clipboard.writeText` requires a user gesture and a secure context (HTTPS or localhost). localhost is fine for local dev.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/app/googDevice/toolbox/GoogToolBox.ts src/app/googDevice/client/StreamClientScrcpy.ts src/app/SvgImage.ts
+git commit -m "feat: toolbar clipboard button (replaces GoogMoreBox clipboard sync)"
 ```
 
 ---
@@ -1263,6 +1408,57 @@ Browse http://localhost:8000/, connect a device, verify toolbar still has: d-pad
 ```bash
 git add -A
 git commit -m "refactor: delete GoogMoreBox (YAGNI — contents were all redundant with toolbar)"
+```
+
+---
+
+### Task 12b: Generate TypeScript declarations (bundled)
+
+Raw `tsc --emitDeclarationOnly` output produces relative imports (`from './startStream'`, `from './types'`) that break after flattening. Use `dts-bundle-generator` to produce a single self-contained `ws-scrcpy.d.ts`.
+
+**Files:**
+- Modify: `package.json`
+
+- [ ] **Step 1: Install the bundler**
+
+```
+npm install --save-dev dts-bundle-generator
+```
+
+- [ ] **Step 2: Add a bundled types script**
+
+Edit `package.json` scripts section:
+
+```json
+"build:types": "dts-bundle-generator -o dist/public/ws-scrcpy.d.ts --project tsconfig.json --no-check src/app/public/index.ts",
+"build": "webpack --config webpack/ws-scrcpy-web.prod.ts --stats-error-details && npm run build:types"
+```
+
+- [ ] **Step 3: Verify output**
+
+```
+npm run build
+cat dist/public/ws-scrcpy.d.ts | head -30
+```
+
+Expected: a single `.d.ts` file with inlined declarations for `startStream`, `StartStreamOptions`, `StreamHandle`, `StreamInfo`, and `version`. No relative imports inside the file (everything inlined).
+
+Create a quick sanity check — a temporary `check-types.ts` (not committed):
+
+```typescript
+import type { StartStreamOptions, StreamHandle } from './dist/public/ws-scrcpy';
+const opts: StartStreamOptions = { codec: 'h265' };
+const handle: StreamHandle = null as unknown as StreamHandle;
+console.log(opts, handle);
+```
+
+Run `npx tsc --noEmit check-types.ts` — expected: no errors. Delete the file afterward.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add package.json package-lock.json
+git commit -m "build: emit bundled ws-scrcpy.d.ts via dts-bundle-generator"
 ```
 
 ---

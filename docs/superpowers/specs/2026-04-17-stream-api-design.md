@@ -109,7 +109,7 @@ export const version: string;   // from package.json via DefinePlugin
 - Smart codec auto-selection runs if `codec`/`encoder` are omitted (existing logic in `StreamClientScrcpy`: H.265 > H.264 > AV1, filtered by device + browser support).
 - `stop()` closes the WebSocket, disposes the decoder + worklet, empties the container. `stop()` is idempotent.
 - Stream stops automatically on any of: device disconnect, WebSocket close (from any cause), or explicit `stop()`. In all cases `onDisconnect` fires once.
-- `onConnect` fires after session metadata is received and the first frame decodes successfully. `handle.isConnected` flips to `true` at that point and back to `false` when the stream stops.
+- `onConnect` fires after session metadata is received. `handle.isConnected` flips to `true` at that point and back to `false` when the stream stops. (Note: the codebase has no first-frame-decoded signal today; wiring one would require a new event on `BasePlayer` + emit from `WebCodecsPlayer` decoder output. Deferred. A future `onFirstFrame?: () => void` callback would be a non-breaking extension if ever needed.)
 - Errors during startup (missing `deviceId`, probe failure, WebSocket refused) fire `onError` and reject the stream. `handle.isConnected` stays `false`. `onDisconnect` does NOT fire in this case — an error that prevented connection is not a disconnect.
 - `handle.deviceId` reflects the `deviceId` arg regardless of connection success.
 
