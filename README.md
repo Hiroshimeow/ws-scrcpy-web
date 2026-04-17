@@ -32,7 +32,7 @@ A modernized spiritual successor to [ws-scrcpy](https://github.com/NetrisTV/ws-s
 - **Viewport scaling** -- video scales to fill available space with correct aspect ratio
 - **Remote ADB shell** -- native `<dialog>` terminal modal with xterm.js, close confirmation for active sessions, Escape/backdrop blocked (terminal needs both)
 - **File browser** -- native `<dialog>` modal with breadcrumb navigation, sortable columns (sticky header so size/date stay aligned when scrolling), SVG file type icons (6 types), configurable icon sizes, hover action icons sized to match, reserved actions column so columns never shift on hover, selection with bulk operations, drag-and-drop upload, download with progress, delete with confirmation, client-side filter
-- **Embed mode** -- streamlined iframe integration for embedding in other apps (hides toolbar, auto-scales video, used by [Control Menu](https://github.com/bilbospocketses/control-menu))
+- **Programmatic stream API** -- load `ws-scrcpy.umd.js` or `ws-scrcpy.esm.js` and call `WsScrcpy.startStream(container, deviceId, options)` to render a stream into any DOM element. Includes bundled TypeScript types (`ws-scrcpy.d.ts`). Also provides a thin `/embed.html?device=<udid>` wrapper for iframe consumers.
 - **Device labels** -- name your devices for easy identification, persisted across sessions in `device-labels.json`, inline edit from device cards or during network scan
 - **Network device discovery** -- scan local network for ADB devices via mDNS and connect with one click, optionally name devices during discovery
 - **Device disconnect** -- disconnect network devices directly from the device card

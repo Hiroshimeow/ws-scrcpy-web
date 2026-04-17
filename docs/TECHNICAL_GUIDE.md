@@ -15,7 +15,7 @@ This document covers the internal architecture of ws-scrcpy-web -- a browser-bas
 3. [Video Pipeline](#3-video-pipeline)
 4. [Audio Pipeline](#4-audio-pipeline)
 5. [Input Pipeline](#5-input-pipeline)
-6. [Embed Mode](#6-embed-mode)
+6. [Public Stream API](#6-public-stream-api)
 7. [Quality Protection System](#7-quality-protection-system)
 8. [Device Probe and Codec Selection](#8-device-probe-and-codec-selection)
 9. [Server Architecture](#9-server-architecture)
@@ -66,7 +66,7 @@ src/
 │   │   ├── UhidMouseHandler.ts       # Pointer lock mouse -> USB HID mouse reports
 │   │   ├── KeyInputHandler.ts        # Legacy scrcpy keycode input (Android keycodes)
 │   │   ├── hid-usage-tables.ts       # Browser code -> USB HID keycode mapping tables
-│   │   └── toolbox/                  # Toolbar UI (GoogToolBox, GoogMoreBox)
+│   │   └── toolbox/                  # Toolbar UI (GoogToolBox)
 │   ├── controlMessage/
 │   │   ├── ControlMessage.ts         # Base class, type constants (0-17, 101-102)
 │   │   ├── TouchControlMessage.ts    # 32-byte binary touch event
@@ -103,7 +103,7 @@ src/
 │   ├── Action.ts                     # WebSocket action identifiers (STREAM_SCRCPY, PROBE_DEVICE, etc.)
 │   ├── ProbeResult.ts                # Probe response interface
 │   └── TypedEmitter.ts              # Type-safe event emitter
-└── style/app.css                      # All CSS including embed mode rules
+└── style/app.css                      # Home-page CSS (@imports ws-scrcpy.css for stream/toolbar styles)
 ```
 
 ---
@@ -428,41 +428,167 @@ UHID (User-space HID) creates virtual USB devices on the Android device via scrc
 
 ---
 
-## 6. Embed Mode
+## 6. Public Stream API
 
-Embed mode provides a streamlined UI for iframe integration, used by the Control Menu project's `ScrcpyMirror.razor` component.
+`WsScrcpy.startStream(container, deviceId, options)` is the canonical public API for rendering a scrcpy stream into any DOM element. It ships as three artifacts from `dist/public/`:
 
-### 6.1 Activation
+- `ws-scrcpy.umd.js` -- UMD bundle exposing `window.WsScrcpy`
+- `ws-scrcpy.esm.js` -- native ES module with named `startStream` export
+- `ws-scrcpy.d.ts` -- bundled TypeScript declarations
 
-URL parameter `embed=true` triggers embed mode in `StreamClientScrcpy.parseParameters()`, which sets `fitToScreen: true`. The `body.embed` CSS class is applied.
+`embed.html` (also shipped in `dist/public/`) is a thin wrapper that reads URL parameters and calls the same library. There is one code path; the home page's own `ConnectModal` dogfoods it too.
 
-### 6.2 CSS Rules
+### 6.1 UMD Usage
 
-```css
-body.embed {
-    background: transparent;        /* Blends with parent page */
-}
-body.embed .more-box {
-    display: none !important;       /* Hides settings/info panel */
-}
-body.embed .device-view {
-    float: none;
-    display: flex;
-    width: 100%;
-    height: 100%;                   /* Fills iframe */
-}
-body.embed .video {
-    float: none;
-    flex: 1;
-    max-height: 100vh;
-    max-width: 100vw;
-    background: transparent;
+```html
+<script src="/ws-scrcpy.umd.js"></script>
+<script>
+  const handle = WsScrcpy.startStream(
+      document.getElementById('stream-container'),
+      'ip:5555',
+      {
+          codec: 'h265',
+          onConnect: (info) => console.log('connected:', info),
+      },
+  );
+  // handle.stop(); // tear down later
+</script>
+```
+
+### 6.2 ESM Usage
+
+```js
+import { startStream } from '/ws-scrcpy.esm.js';
+
+const handle = startStream(container, 'ip:5555', { codec: 'h265' });
+```
+
+In TypeScript projects, point your compiler at the shipped declaration file to get typed `StartStreamOptions` / `StreamHandle` / `StreamInfo` interfaces.
+
+### 6.3 `StartStreamOptions`
+
+The full options interface (source: `src/app/public/types.ts`):
+
+```ts
+export interface StartStreamOptions {
+    // Connection (optional — defaults to current location)
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    pathname?: string;
+
+    // Stream settings (optional — smart auto-selection if omitted)
+    codec?: 'h264' | 'h265' | 'av1';
+    encoder?: string;
+    bitrate?: number;
+    maxFps?: number;
+    maxSize?: number;
+
+    // Features
+    audio?: boolean;      // default true
+    keyboard?: boolean;   // default true
+
+    // Lifecycle callbacks
+    onConnect?: (info: StreamInfo) => void;
+    onDisconnect?: (reason?: string) => void;
+    onError?: (err: Error) => void;
 }
 ```
 
-### 6.3 Click-to-Focus
+**Connection**
 
-In embed mode, a one-time `click` listener on the video container calls `video.focus()`, ensuring keyboard events are captured by the iframe.
+| Field | Purpose |
+|-------|---------|
+| `host` | Server hostname. Defaults to `location.hostname`. |
+| `port` | Server port. Defaults to `location.port`. |
+| `secure` | Use `wss://` / `https://` when `true`. Defaults to `location.protocol === 'https:'`. |
+| `pathname` | HTTP path prefix for the WebSocket endpoint. Defaults to `location.pathname`. |
+
+**Stream settings** — all optional. Omit them and the library runs smart auto-selection against the device's probed encoder list (H.265 preferred, then H.264, then AV1, filtered by what the browser can decode).
+
+| Field | Purpose |
+|-------|---------|
+| `codec` | Force a specific codec: `'h264'`, `'h265'`, or `'av1'`. |
+| `encoder` | Force a specific encoder name (e.g. `'c2.mtk.hevc.encoder'`). Must be paired with a valid `codec`. |
+| `bitrate` | Target video bitrate in bits per second. |
+| `maxFps` | Frame rate cap. |
+| `maxSize` | Pixel bound on the longest dimension (scrcpy will scale to fit). |
+
+**Features**
+
+| Field | Purpose |
+|-------|---------|
+| `audio` | Enable audio streaming. Default `true`. |
+| `keyboard` | Capture keyboard input from the container and forward it. Default `true`. |
+
+**Lifecycle callbacks** — see section 6.5.
+
+### 6.4 `StreamHandle`
+
+`startStream()` returns a handle:
+
+```ts
+export interface StreamHandle {
+    stop(): void;
+    readonly isConnected: boolean;
+    readonly deviceId: string;
+}
+```
+
+- `stop()` closes the WebSocket, disposes the decoder and audio worklet, and empties the container. Idempotent — calling it twice is a no-op.
+- `isConnected` flips to `true` when session metadata arrives and back to `false` when the stream ends (for any reason).
+- `deviceId` echoes the `deviceId` argument regardless of connection success.
+
+Calling `startStream()` a second time on the same container without first calling `stop()` throws `Error('container already has an active stream; call stop() first')`.
+
+### 6.5 Lifecycle Callbacks
+
+- **`onConnect(info)`** fires once, as soon as session metadata is received. `info` contains the actual resolved `codec`, `encoder`, and `resolution` strings. Note: this fires at metadata receipt, not first decoded frame — the codebase has no first-frame signal today. This is a deliberate simplification. A future `onFirstFrame` callback would be a non-breaking addition.
+- **`onDisconnect(reason?)`** fires once when the stream ends for any reason: the device disconnects, the WebSocket closes, or the caller invokes `handle.stop()`. `reason` is a short human-readable string when available.
+- **`onError(err)`** fires on startup failures (missing `deviceId`, device probe failure, WebSocket refused) and on abnormal WebSocket close codes. A startup error does NOT also fire `onDisconnect` — it's an error that prevented connection, not a disconnect. `handle.isConnected` stays `false`.
+
+### 6.6 `embed.html` URL Parameters
+
+`/embed.html` is a zero-config iframe target. It reads these URL parameters, maps them to `StartStreamOptions`, and calls the library. Unknown parameters are silently ignored for forward compatibility.
+
+| URL Param   | Type   | Default                          | Notes                                                     |
+|-------------|--------|----------------------------------|-----------------------------------------------------------|
+| `device`    | string | **required**                     | ADB serial or `ip:port`. Missing -> error, no stream.     |
+| `host`      | string | `location.hostname`              | Server hostname.                                          |
+| `port`      | int    | `location.port`                  | Parsed via `parseInt`; `NaN` falls back to the default.   |
+| `secure`    | bool   | `location.protocol === 'https:'` | `"true"` / `"false"` string-to-bool.                      |
+| `pathname`  | string | `location.pathname`              | HTTP path prefix for the WebSocket endpoint.              |
+| `codec`     | string | auto                             | Only `"h264"`, `"h265"`, `"av1"` accepted; others ignored.|
+| `encoder`   | string | auto                             | Forced encoder name.                                      |
+| `bitrate`   | int    | auto                             | Video bitrate in bps.                                     |
+| `maxFps`    | int    | auto                             | Frame rate cap.                                           |
+| `maxSize`   | int    | auto                             | Longest-dimension pixel bound.                            |
+| `audio`     | bool   | `true`                           | `"true"` / `"false"`.                                     |
+| `keyboard`  | bool   | `true`                           | `"true"` / `"false"`.                                     |
+
+`embed.html` sets `body { background: transparent }` so iframe consumers can place any background they like behind the video. A small status overlay in the top-left shows `connecting...`, then `connected <codec> <resolution>` (auto-hides after 2 s), or an error / disconnect message.
+
+### 6.7 Migration from the Old Embed Mode
+
+This section replaces the previous CSS-hack embed mode. Breaking changes:
+
+- **`#!action=stream&udid=...` hash routing is REMOVED.** Direct-link stream access now uses `/embed.html?device=<udid>` (or call `startStream()` directly from your own page).
+- **`?embed=true` URL param is REMOVED** along with the `body.embed` CSS class. `embed.html` always runs with a transparent background — there is no flag to toggle.
+- **The `more-box` overflow UI is REMOVED** (YAGNI — all its functions were already duplicated in the toolbar). Clipboard sync is now first-class: the toolbar has separate GET and SET clipboard buttons.
+- **TypeScript types are shipped** as `dist/public/ws-scrcpy.d.ts`, bundled so no `src/**` imports leak.
+
+### 6.8 Internal Architecture
+
+`StreamClientScrcpy` (in `src/app/googDevice/client/`) is the rendering engine. It handles the WebSocket connection, video demuxer, WebCodecs decoder, audio worklet, touch / keyboard / UHID input, and toolbar wiring.
+
+The public API in `src/app/public/` is a thin typed facade:
+
+- `types.ts` -- `StartStreamOptions`, `StreamInfo`, `StreamHandle` interfaces
+- `startStream.ts` -- validates options, constructs the underlying parameter objects, invokes `StreamClientScrcpy`, returns a handle with lifecycle wiring
+- `index.ts` -- re-exports `startStream` and `version` for the library bundles
+- `embed-entry.ts` -- `embed.js` source: URL-param parsing + `startStream()` call + status overlay
+
+The home page's `ConnectModal` imports `startStream` from the same TypeScript source that the library bundles are built from. This is deliberate: one code path, one set of bugs, and any regression that breaks external consumers also breaks the home page.
 
 ---
 
