@@ -1,5 +1,6 @@
 import path from 'path';
 import webpack from 'webpack';
+import { readFileSync } from 'fs';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
 
 export const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -8,6 +9,14 @@ export const CLIENT_DIST_PATH = path.join(PROJECT_ROOT, 'dist/public');
 
 const buildConfigDefinePlugin = new webpack.DefinePlugin({
     '__PATHNAME__': JSON.stringify('/'),
+});
+
+const pkgVersion: string = JSON.parse(
+    readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'),
+).version;
+
+const versionDefinePlugin = new webpack.DefinePlugin({
+    '__WSSCRCPY_VERSION__': JSON.stringify(pkgVersion),
 });
 
 // Inline plugin: generates a minimal package.json in dist/
@@ -136,3 +145,5 @@ const back: webpack.Configuration = {
 export const backend = () => {
     return Object.assign({}, common(), back);
 };
+
+export { versionDefinePlugin };
