@@ -1,1 +1,86 @@
-/* Stream + toolbar styles (populated in Task 11) */
+/* Stream + toolbar styles shared by the home-page bundle and the ws-scrcpy library bundle. */
+
+.device-view {
+    z-index: 1;
+    float: right;
+    display: inline-block;
+}
+
+.video-layer {
+    position: absolute;
+    z-index: 0;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
+}
+
+.video {
+    float: right;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
+    background-color: #000000;
+}
+
+.control-wrapper > input[type="checkbox"] {
+    display: none;
+}
+
+.control-wrapper > label.control-button {
+    display: block;
+    margin: 0.571rem auto;
+}
+
+.control-wrapper > input[type="checkbox"].two-images:checked + label > svg.image-on {
+    display: block;
+}
+
+.control-wrapper > input[type="checkbox"].two-images:not(:checked) + label > svg.image-on {
+    display: none;
+}
+
+.control-wrapper > input[type="checkbox"].two-images:checked + label > svg.image-off {
+    display: none;
+}
+
+.control-wrapper > input[type="checkbox"].two-images:not(:checked) + label > svg.image-off {
+    display: block;
+}
+
+.control-wrapper > input[type="checkbox"]:checked + label > svg {
+    fill: var(--svg-checkbox-bg-color);
+}
+
+.touch-layer {
+    position: absolute;
+    z-index: 1;
+    max-height: 100vh;
+    max-width: calc(100vw - 3.715rem);
+}
+
+.control-buttons-list {
+    float: right;
+    width: 3.715rem;
+    background-color: var(--control-buttons-bg-color);
+}
+
+.control-button {
+    margin: 0.571rem auto;
+    padding: 0;
+    display: block;
+    width: 2.143rem;
+    height: 2.143rem;
+    border: none;
+    opacity: 0.75;
+    background-color: var(--control-buttons-bg-color);
+    overflow: hidden;
+}
+
+.control-button:hover {
+    opacity: 1;
+}
+
+.control-button > svg {
+    fill: var(--svg-button-fill);
+    width: 100%;
+    height: 100%;
+    display: block;
+}
