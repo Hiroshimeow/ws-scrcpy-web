@@ -148,6 +148,12 @@ export class StreamClientScrcpy
     private lastRefreshTime = 0;
     private stopFn?: () => void;
 
+    /** Public hook — fires after session metadata is parsed. Used by the public startStream API. */
+    public onMetadataReceived?: (info: { codec: string; encoder: string; resolution: string }) => void;
+
+    /** Public hook — fires on async stream errors (WebSocket refused, probe failure, etc.). */
+    public onErrorReceived?: (err: Error) => void;
+
     public static registerPlayer(playerClass: PlayerClass): void {
         if (playerClass.isSupported()) {
             this.players.set(playerClass.playerFullName, playerClass);
@@ -319,6 +325,15 @@ export class StreamClientScrcpy
             this.player.setSessionInfo(meta.videoCodec, meta.audioCodec, meta.videoEncoder || this.params.encoderName);
         }
 
+        // Public hook — fire after session metadata is parsed. Mirrors the
+        // fields used by the stats overlay above so there is a single source
+        // of truth for codec/encoder/resolution.
+        this.onMetadataReceived?.({
+            codec: meta.videoCodec ?? '',
+            encoder: meta.videoEncoder ?? this.params.encoderName ?? '',
+            resolution: `${meta.screenWidth ?? 0}x${meta.screenHeight ?? 0}`,
+        });
+
         if (meta.audioCodec !== 'disabled' && meta.audioCodec !== 'error') {
             this.audioPlayer = new AudioPlayer(meta.audioCodec);
             this.audioPlayer.start().catch((err) => {
@@ -328,8 +343,9 @@ export class StreamClientScrcpy
     };
 
     private isRefreshing = false;
+    private isStopping = false;
 
-    public onDisconnected = (): void => {
+    public onDisconnected = (ev?: CloseEvent): void => {
         this.audioPlayer?.stop();
         this.uhidKeyboard?.detach();
         this.uhidMouse?.detach();
@@ -340,9 +356,20 @@ export class StreamClientScrcpy
             this.touchHandler = undefined;
             this.onDisconnectCallback?.();
         }
+        // Public hook — fire on abnormal WebSocket closures. ScrcpyDemuxer does
+        // not expose a separate onError callback (its ws.onerror is a no-op),
+        // so close codes are our only signal for async stream errors.
+        // 1000 = normal closure, 1001 = going away (tab close/refresh).
+        // Skip during user-initiated stop/refresh — those are not errors.
+        const cleanCodes = new Set([1000, 1001, 1005]);
+        if (!this.isStopping && ev && !cleanCodes.has(ev.code)) {
+            const reason = ev.reason || `WebSocket closed with code ${ev.code}`;
+            this.onErrorReceived?.(new Error(reason));
+        }
     };
 
     public async startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): Promise<void> {
+        this.isStopping = false;
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
         }
@@ -374,6 +401,9 @@ export class StreamClientScrcpy
             if (ev && ev instanceof Event && ev.type === 'error') {
                 console.error(TAG, ev);
             }
+            // Mark that the upcoming WebSocket close is user-initiated so
+            // onDisconnected does not fire the public onErrorReceived hook.
+            this.isStopping = true;
             let parent: HTMLElement | null;
             parent = deviceView.parentElement;
             if (parent) parent.removeChild(deviceView);
@@ -423,14 +453,20 @@ export class StreamClientScrcpy
 
         // Auto-detect best codec + encoder if not specified (direct link without ConfigureScrcpy)
         if (!this.params.videoCodec) {
-            const detected = await detectBestCodecAndEncoder(udid, {
-                hostname: this.params.hostname,
-                port: this.params.port,
-                secure: this.params.secure,
-            });
-            this.params.videoCodec = detected.videoCodec;
-            if (detected.encoderName) {
-                this.params.encoderName = detected.encoderName;
+            try {
+                const detected = await detectBestCodecAndEncoder(udid, {
+                    hostname: this.params.hostname,
+                    port: this.params.port,
+                    secure: this.params.secure,
+                });
+                this.params.videoCodec = detected.videoCodec;
+                if (detected.encoderName) {
+                    this.params.encoderName = detected.encoderName;
+                }
+            } catch (err) {
+                const e = err instanceof Error ? err : new Error(String(err));
+                this.onErrorReceived?.(e);
+                throw e;
             }
         }
 
