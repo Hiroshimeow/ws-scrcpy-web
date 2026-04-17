@@ -1,15 +1,13 @@
-import { backend, frontend } from './ws-scrcpy-web.common';
+import { backend, frontend, libraryUmdConfig, libraryEsmConfig } from './ws-scrcpy-web.common';
 import webpack from 'webpack';
 
 const prodOpts: webpack.Configuration = {
     mode: 'production',
 };
 
-const front = () => {
-    return Object.assign({}, frontend(), prodOpts);
-};
-const back = () => {
-    return Object.assign({}, backend(), prodOpts);
-};
+const front = () => Object.assign({}, frontend(), prodOpts);
+const back = () => Object.assign({}, backend(), prodOpts);
+const libUmd = () => Object.assign({}, libraryUmdConfig(), prodOpts);
+const libEsm = () => Object.assign({}, libraryEsmConfig(), prodOpts);
 
-module.exports = [front, back];
+module.exports = [front, back, libUmd, libEsm];

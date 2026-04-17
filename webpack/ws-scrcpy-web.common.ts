@@ -147,3 +147,55 @@ export const backend = () => {
 };
 
 export { versionDefinePlugin };
+
+// Clone common()'s module.rules but swap the CSS rule to use style-loader
+// instead of MiniCssExtractPlugin.loader (used by the ESM library config which
+// drops the MiniCssExtractPlugin). This keeps ONE source of truth for non-CSS
+// rules — new loaders added to common() automatically flow into the ESM build.
+function esmModuleRules(): webpack.RuleSetRule[] {
+    const baseRules = (common().module?.rules ?? []) as webpack.RuleSetRule[];
+    return baseRules.map((rule) => {
+        const test = (rule as { test?: RegExp }).test;
+        if (test instanceof RegExp && test.source === /\.css$/i.source) {
+            return { test: /\.css$/i, use: ['style-loader', 'css-loader'] };
+        }
+        return rule;
+    });
+}
+
+const libraryCommon = {
+    entry: path.join(PROJECT_ROOT, './src/app/public/index.ts'),
+    externals: ['fs'],
+    plugins: [
+        new MiniCssExtractPlugin({ filename: 'ws-scrcpy.css' }),
+        versionDefinePlugin,
+    ],
+    resolve: {
+        extensions: ['.tsx', '.ts', '.js'],
+    },
+};
+
+const libraryUmd: webpack.Configuration = {
+    ...libraryCommon,
+    output: {
+        filename: 'ws-scrcpy.umd.js',
+        path: CLIENT_DIST_PATH,
+        library: { name: 'WsScrcpy', type: 'umd', export: undefined },
+        globalObject: 'globalThis',
+    },
+};
+
+const libraryEsm: webpack.Configuration = {
+    ...libraryCommon,
+    experiments: { outputModule: true },
+    output: {
+        filename: 'ws-scrcpy.esm.js',
+        path: CLIENT_DIST_PATH,
+        library: { type: 'module' },
+    },
+    module: { rules: esmModuleRules() },
+    plugins: [versionDefinePlugin],
+};
+
+export const libraryUmdConfig = () => Object.assign({}, common(), libraryUmd);
+export const libraryEsmConfig = () => Object.assign({}, common(), libraryEsm);
