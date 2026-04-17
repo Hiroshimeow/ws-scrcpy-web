@@ -1,4 +1,32 @@
-/* Stream + toolbar styles shared by the home-page bundle and the ws-scrcpy library bundle. */
+/* Stream + toolbar styles shared by the home-page bundle and the ws-scrcpy library bundle.
+ *
+ * This file is also loaded standalone by embed.html (which does NOT link app.css),
+ * so it must self-contain every theme variable the stream/toolbar styling depends on.
+ * Home-page callers (app.css) re-define the same variables — identical values, so
+ * the cascade harmless. Light-mode auto-detection uses prefers-color-scheme, but
+ * an explicit data-theme="light"/"dark" attribute on <html> wins.
+ */
+
+:root,
+[data-theme="dark"] {
+    --control-buttons-bg-color: #2d3741;
+    --svg-button-fill: #ffffff;
+    --svg-checkbox-bg-color: #10b981;
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        --control-buttons-bg-color: #f8f9fa;
+        --svg-button-fill: #495057;
+        --svg-checkbox-bg-color: #198754;
+    }
+}
+
+[data-theme="light"] {
+    --control-buttons-bg-color: #f8f9fa;
+    --svg-button-fill: #495057;
+    --svg-checkbox-bg-color: #198754;
+}
 
 .device-view {
     z-index: 1;
