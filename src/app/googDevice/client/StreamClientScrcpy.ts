@@ -209,9 +209,6 @@ export class StreamClientScrcpy
         super(params);
         const { udid, player: playerName } = this.params;
         this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings });
-        if (!container) {
-            this.setBodyClass('stream');
-        }
     }
 
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {
@@ -220,14 +217,12 @@ export class StreamClientScrcpy
         if (action !== ACTION.STREAM_SCRCPY) {
             throw Error('Incorrect action');
         }
-        const embed = params.get('embed') === 'true';
         return {
             ...typedParams,
             action,
             player: Util.parseString(params, 'player', true),
             udid: Util.parseString(params, 'udid', true),
             ws: Util.parseString(params, 'ws') || '',
-            ...(embed ? { fitToScreen: true } : {}),
         };
     }
 
@@ -409,6 +404,9 @@ export class StreamClientScrcpy
             if (parent) parent.removeChild(deviceView);
             parent = moreBox.parentElement;
             if (parent) parent.removeChild(moreBox);
+            this.setHandleKeyboardEvents(false);
+            document.removeEventListener('click', resumeAudio);
+            document.removeEventListener('keydown', resumeAudio);
             this.demuxer?.close();
             this.audioPlayer?.stop();
             if (this.player) this.player.stop();
@@ -481,11 +479,6 @@ export class StreamClientScrcpy
 
         // Always enable keyboard capture
         this.setHandleKeyboardEvents(true);
-
-        // In embed mode, also add click-to-focus
-        if (document.body.classList.contains('embed')) {
-            video.addEventListener('click', () => video.focus(), { once: true });
-        }
 
         console.log(TAG, player.getName(), udid);
     }
