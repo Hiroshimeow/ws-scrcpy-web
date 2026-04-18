@@ -42,4 +42,10 @@ describe('classifyDeviceKind', () => {
         // 600dp @ 160dpi = 600px smallest side. Use 600x1200 @ 160dpi
         expect(classifyDeviceKind('default', 'false', 'Physical size: 600x1200', 'Physical density: 160')).toBe('tablet');
     });
+
+    it('still classifies phone when leanback call fails and is empty', () => {
+        // Some Android versions exit non-zero from `pm has-feature` when the feature
+        // is absent; our caller catches per-call and passes '' when that happens.
+        expect(classifyDeviceKind('nosdcard', '', 'Physical size: 1080x2424', 'Physical density: 420')).toBe('phone');
+    });
 });

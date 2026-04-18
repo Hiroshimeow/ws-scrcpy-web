@@ -365,20 +365,21 @@ export class Device extends TypedEmitter<DeviceEvents> {
     public async detectDeviceKind(): Promise<void> {
         if (this.descriptor.deviceKind) return;
         if (!this.connected) return;
-        try {
-            const [characteristics, leanback, sizeOut, densityOut] = await Promise.all([
-                this.runShellCommand('getprop ro.build.characteristics'),
-                this.runShellCommand('pm has-feature android.software.leanback'),
-                this.runShellCommand('wm size'),
-                this.runShellCommand('wm density'),
-            ]);
-            const kind = classifyDeviceKind(characteristics, leanback, sizeOut, densityOut);
-            if (kind) {
-                this.descriptor.deviceKind = kind;
-                this.emitUpdate();
-            }
-        } catch {
-            // Device temporarily unreachable — next poll retries
+        // Each shell is wrapped individually because some commands exit non-zero
+        // even when they produce a valid answer (e.g. `pm has-feature` returns 1
+        // when the feature is absent on some Android versions). Swallowing per-call
+        // means one ignorable exit doesn't scuttle the whole detection pass.
+        const safe = (cmd: string) => this.runShellCommand(cmd).catch(() => '');
+        const [characteristics, leanback, sizeOut, densityOut] = await Promise.all([
+            safe('getprop ro.build.characteristics'),
+            safe('pm has-feature android.software.leanback'),
+            safe('wm size'),
+            safe('wm density'),
+        ]);
+        const kind = classifyDeviceKind(characteristics, leanback, sizeOut, densityOut);
+        if (kind) {
+            this.descriptor.deviceKind = kind;
+            this.emitUpdate();
         }
     }
 
