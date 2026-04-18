@@ -199,8 +199,10 @@ export class ConfigureScrcpy extends Modal {
             opt.innerText = value;
             this.encoderSelectElement!.appendChild(opt);
         });
-        if (options.includes(previousValue)) {
+        if (previousValue && options.includes(previousValue)) {
             this.encoderSelectElement.value = previousValue;
+        } else if (matching.length > 0) {
+            this.encoderSelectElement.value = matching[0];
         }
     }
 
