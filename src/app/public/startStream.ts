@@ -92,6 +92,7 @@ export function startStream(
                 isConnected = false;
                 options.onDisconnect?.();
             },
+            options.deviceKind,
         );
         stopFn = () => {
             stop();

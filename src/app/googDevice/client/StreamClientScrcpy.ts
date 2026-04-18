@@ -38,6 +38,7 @@ type StartParams = {
     player?: BasePlayer;
     fitToScreen?: boolean;
     videoSettings?: VideoSettings;
+    deviceKind?: 'phone' | 'tablet' | 'tv';
 };
 
 const TAG = '[StreamClientScrcpy]';
@@ -190,9 +191,10 @@ export class StreamClientScrcpy
         videoSettings?: VideoSettings,
         container?: HTMLElement,
         onDisconnect?: () => void,
+        deviceKind?: 'phone' | 'tablet' | 'tv',
     ): { instance: StreamClientScrcpy; stop: () => void } {
         const params = query instanceof URLSearchParams ? StreamClientScrcpy.parseParameters(query) : query;
-        const instance = new StreamClientScrcpy(params, player, fitToScreen, videoSettings, container, onDisconnect);
+        const instance = new StreamClientScrcpy(params, player, fitToScreen, videoSettings, container, onDisconnect, deviceKind);
         return { instance, stop: () => instance.stopStream() };
     }
 
@@ -203,10 +205,11 @@ export class StreamClientScrcpy
         videoSettings?: VideoSettings,
         private readonly container?: HTMLElement,
         private readonly onDisconnectCallback?: () => void,
+        private readonly deviceKind?: 'phone' | 'tablet' | 'tv',
     ) {
         super(params);
         const { udid, player: playerName } = this.params;
-        this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings });
+        this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings, deviceKind });
     }
 
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {
@@ -366,7 +369,7 @@ export class StreamClientScrcpy
         }
     };
 
-    public async startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): Promise<void> {
+    public async startStream({ udid, player, playerName, videoSettings, fitToScreen, deviceKind }: StartParams): Promise<void> {
         this.isStopping = false;
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
@@ -414,7 +417,7 @@ export class StreamClientScrcpy
 
         this.stopFn = () => stop();
 
-        const googToolBox = GoogToolBox.createToolBox(udid, player, this);
+        const googToolBox = GoogToolBox.createToolBox(udid, player, this, deviceKind);
         this.controlButtons = googToolBox.getHolderElement();
         deviceView.appendChild(this.controlButtons);
         const video = document.createElement('div');

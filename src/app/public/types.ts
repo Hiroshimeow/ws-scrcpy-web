@@ -21,6 +21,13 @@ export interface StartStreamOptions {
     audio?: boolean;      // default true
     keyboard?: boolean;   // default true
 
+    /**
+     * Android device kind. When provided, seeds the stream toolbar's
+     * D-pad/Touch toggle to the appropriate default (D-pad for TV,
+     * Touch for phone/tablet). When omitted, falls back to D-pad default.
+     */
+    deviceKind?: 'phone' | 'tablet' | 'tv';
+
     // Lifecycle callbacks
     onConnect?: (info: StreamInfo) => void;
     onDisconnect?: (reason?: string) => void;

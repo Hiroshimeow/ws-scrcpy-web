@@ -351,7 +351,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 player.setVideoSettings(videoSettings, fitToScreen, false);
 
                 const { ConnectModal } = await import('./ConnectModal');
-                new ConnectModal(params, player, fitToScreen, videoSettings, label);
+                new ConnectModal(params, player, fitToScreen, videoSettings, label, device.deviceKind);
             });
         });
     }

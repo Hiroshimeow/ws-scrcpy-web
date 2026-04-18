@@ -14,6 +14,7 @@ export class ConnectModal extends Modal {
         _fitToScreen: boolean,
         videoSettings: VideoSettings,
         deviceLabel: string,
+        deviceKind?: 'phone' | 'tablet' | 'tv',
     ) {
         super({ title: deviceLabel });
         this.dialog.classList.add('connect-modal');
@@ -36,6 +37,7 @@ export class ConnectModal extends Modal {
             maxSize,
             audio: true,
             keyboard: true,
+            deviceKind,
             onDisconnect: () => this.close(),
             onError: (err) => {
                 console.error('[ConnectModal]', err);

@@ -51,6 +51,7 @@ export class GoogToolBox extends ToolBox {
         udid: string,
         player: BasePlayer,
         client: StreamClientScrcpy,
+        deviceKind?: 'phone' | 'tablet' | 'tv',
     ): GoogToolBox {
         const playerName = player.getName();
         const list = BUTTONS.slice();
@@ -124,6 +125,15 @@ export class GoogToolBox extends ToolBox {
             `input_mode_${udid}_${playerName}`,
         );
         const inputModeLabel = inputMode.getAllElements()[1];
+
+        // Seed default from deviceKind: phone/tablet → Touch; tv/undefined → D-pad.
+        const startInTouch = deviceKind === 'phone' || deviceKind === 'tablet';
+        if (startInTouch) {
+            inputMode.getElement().checked = true;
+            client.setDpadMode(false);
+            inputModeLabel.title = TOUCH_TITLE;
+        }
+
         inputMode.addEventListener('click', (_, el) => {
             const touchMode = el.getElement().checked;
             client.setDpadMode(!touchMode);
