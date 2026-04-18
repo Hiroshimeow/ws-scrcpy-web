@@ -240,20 +240,22 @@ export class ScrcpyConnection extends Mw {
     }
 
     private async connectAndAwaitDummy(port: number, maxWaitMs: number): Promise<net.Socket> {
-        // Open a TCP connection to the adb-forward and wait for scrcpy-server's
-        // handshake byte. Mirrors scrcpy's own client: keep the read BLOCKED —
-        // don't churn the socket every couple seconds. adb-forward holds the
-        // TCP connection while it waits for device-side bind; once scrcpy-server
-        // binds and accepts us, it writes the byte and the read completes.
-        // We only retry on actual socket errors (adb dropping a stale forward).
+        // Open a TCP connection to the adb-forward, then try to read 1 byte
+        // with a short per-attempt timeout. If the byte arrives, scrcpy-server
+        // is alive and this is the video socket. If the read times out, adb
+        // accepted us but the device side isn't bound yet — close the socket
+        // and retry. The per-attempt timeout is deliberate on Windows: adb
+        // forward silently holds the TCP connection when device-side isn't
+        // bound (no error surfaces), so we can't rely on scrcpy's "just block
+        // on recv" pattern; we need to recycle sockets to kick adb into
+        // re-attempting the device-side connection.
         const deadline = Date.now() + maxWaitMs;
         let lastErr: Error | null = null;
         while (Date.now() < deadline) {
             let sock: net.Socket | undefined;
             try {
-                sock = await this.connectLocal(port, 5000);
-                const remaining = deadline - Date.now();
-                const byte = await this.readExactWithTimeout(sock, 1, Math.max(1000, remaining));
+                sock = await this.connectLocal(port, 2000);
+                const byte = await this.readExactWithTimeout(sock, 1, 2000);
                 log.info(`Received handshake byte 0x${byte[0].toString(16).padStart(2, '0')} on ${this.serial}`);
                 return sock;
             } catch (e) {
@@ -263,7 +265,7 @@ export class ScrcpyConnection extends Mw {
                 } catch {
                     // ignore
                 }
-                await new Promise((r) => setTimeout(r, 100));
+                await new Promise((r) => setTimeout(r, 150));
             }
         }
         throw lastErr ?? new Error(`scrcpy-server did not emit handshake byte within ${maxWaitMs}ms`);
