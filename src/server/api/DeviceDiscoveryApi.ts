@@ -50,11 +50,24 @@ export class DeviceDiscoveryApi {
                     res.end(JSON.stringify({ error: 'address is required' }));
                     return true;
                 }
+                // mDNS path: serial is known upfront, save the label before connecting.
                 if (serial && label) {
                     DeviceLabelStore.getInstance().set(serial, label);
                 }
                 const result = await this.adbClient.connect(address);
                 const success = result.includes('connected');
+                // Manual-add path: serial unknown until connected. Look it up now
+                // via getprop and save the label so it persists.
+                if (success && label && !serial) {
+                    try {
+                        const lookedUp = (await this.adbClient.shell(address, 'getprop ro.serialno')).trim();
+                        if (lookedUp) {
+                            DeviceLabelStore.getInstance().set(lookedUp, label);
+                        }
+                    } catch {
+                        // Serial lookup failed — skip saving; user can set the label from the card.
+                    }
+                }
                 res.writeHead(success ? 200 : 500);
                 res.end(JSON.stringify({ success, message: result.trim() }));
                 return true;

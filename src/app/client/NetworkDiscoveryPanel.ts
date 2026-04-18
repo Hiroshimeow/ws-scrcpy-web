@@ -26,7 +26,18 @@ export class NetworkDiscoveryPanel {
         this.container.innerHTML = `
             <div class="discovery-header">
                 <h2>Available Network Devices</h2>
-                <button class="dep-btn discovery-scan-btn">scan network</button>
+                <div class="discovery-header-actions">
+                    <button class="dep-btn discovery-scan-btn">scan network</button>
+                    <button class="dep-btn discovery-manual-btn">manually add</button>
+                </div>
+            </div>
+            <div class="discovery-manual-form" hidden>
+                <input type="text" class="discovery-manual-address" placeholder="192.168.86.50" />
+                <input type="text" class="discovery-manual-port" placeholder="5555" value="5555" />
+                <input type="text" class="discovery-manual-label" placeholder="optional name" />
+                <button class="dep-btn dep-update discovery-manual-connect">connect</button>
+                <button class="discovery-manual-close" aria-label="close" title="close">×</button>
+                <div class="discovery-manual-result" hidden></div>
             </div>
             <div class="discovery-results"></div>
             <div class="empty-state-card discovery-info">Click scan network to find devices. Make sure wireless debugging is enabled on the devices you wish to connect with.</div>
@@ -34,6 +45,17 @@ export class NetworkDiscoveryPanel {
         this.infoBox = this.container.querySelector('.discovery-info')!;
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
+        this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
+        this.container.querySelector('.discovery-manual-close')!.addEventListener('click', () =>
+            this.toggleManualForm(false),
+        );
+        this.container.querySelector('.discovery-manual-connect')!.addEventListener('click', () => this.manualConnect());
+        for (const selector of ['.discovery-manual-address', '.discovery-manual-port', '.discovery-manual-label']) {
+            const input = this.container.querySelector(selector) as HTMLInputElement;
+            input.addEventListener('keydown', (e) => {
+                if ((e as KeyboardEvent).key === 'Enter') this.manualConnect();
+            });
+        }
     }
 
     getElement(): HTMLElement {
@@ -95,6 +117,81 @@ export class NetworkDiscoveryPanel {
             grid.appendChild(card);
         }
         this.resultsContainer.appendChild(grid);
+    }
+
+    private toggleManualForm(show?: boolean): void {
+        const form = this.container.querySelector('.discovery-manual-form') as HTMLElement;
+        const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
+        if (shouldShow) {
+            form.removeAttribute('hidden');
+            (this.container.querySelector('.discovery-manual-address') as HTMLInputElement).focus();
+        } else {
+            form.setAttribute('hidden', '');
+            this.clearManualForm();
+        }
+    }
+
+    private clearManualForm(): void {
+        (this.container.querySelector('.discovery-manual-address') as HTMLInputElement).value = '';
+        (this.container.querySelector('.discovery-manual-port') as HTMLInputElement).value = '5555';
+        (this.container.querySelector('.discovery-manual-label') as HTMLInputElement).value = '';
+        const resultEl = this.container.querySelector('.discovery-manual-result') as HTMLElement;
+        resultEl.setAttribute('hidden', '');
+        resultEl.textContent = '';
+        resultEl.classList.remove('error', 'success');
+    }
+
+    private showManualResult(text: string, kind: 'success' | 'error'): void {
+        const resultEl = this.container.querySelector('.discovery-manual-result') as HTMLElement;
+        resultEl.textContent = text;
+        resultEl.classList.toggle('success', kind === 'success');
+        resultEl.classList.toggle('error', kind === 'error');
+        resultEl.removeAttribute('hidden');
+    }
+
+    private async manualConnect(): Promise<void> {
+        const addressInput = this.container.querySelector('.discovery-manual-address') as HTMLInputElement;
+        const portInput = this.container.querySelector('.discovery-manual-port') as HTMLInputElement;
+        const labelInput = this.container.querySelector('.discovery-manual-label') as HTMLInputElement;
+        const btn = this.container.querySelector('.discovery-manual-connect') as HTMLButtonElement;
+
+        const ip = addressInput.value.trim();
+        const port = portInput.value.trim() || '5555';
+        const label = labelInput.value.trim();
+
+        if (!ip) {
+            this.showManualResult('Address is required', 'error');
+            addressInput.focus();
+            return;
+        }
+
+        const address = `${ip}:${port}`;
+        btn.disabled = true;
+        btn.textContent = 'Connecting...';
+        const resultEl = this.container.querySelector('.discovery-manual-result') as HTMLElement;
+        resultEl.setAttribute('hidden', '');
+        resultEl.textContent = '';
+        resultEl.classList.remove('error', 'success');
+
+        try {
+            const res = await fetch('/api/devices/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address, label: label || undefined }),
+            });
+            const result: ConnectResult = await res.json();
+            if (result.success) {
+                this.showManualResult(`Connected to ${address}`, 'success');
+                setTimeout(() => this.toggleManualForm(false), 2000);
+            } else {
+                this.showManualResult(result.message || `Failed to connect to ${address}`, 'error');
+            }
+        } catch (err: any) {
+            this.showManualResult(err?.message || 'Request failed', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'connect';
+        }
     }
 
     private async connectDevice(address: string, serial: string, card: HTMLElement): Promise<void> {
