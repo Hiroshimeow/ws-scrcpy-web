@@ -184,7 +184,15 @@ export class ScrcpyConnection extends Mw {
     private async startWithForwardTunnel(options: ScrcpyOptions): Promise<net.Socket[]> {
         // adb forwards a host port to scrcpy-server's localabstract socket. The
         // server binds and listens (because tunnel_forward=true); host initiates
-        // the 3 client connections through the forward.
+        // the 2 or 3 client connections through the forward.
+        //
+        // IMPORTANT: adb-forward accepts host-side TCP connections eagerly even
+        // before the device-side socket is bound. A successful connect() does
+        // NOT mean scrcpy-server is actually ready. We detect real readiness by
+        // waiting for scrcpy's dummy 0x00 byte on the first socket (scrcpy v3
+        // writes it on exactly one socket, video-first). If no byte arrives in
+        // a short window, the connection is stale — close it and retry. This
+        // matches what the upstream scrcpy client does.
         const localPort = await this.reserveLocalPort();
         this.forwardTunnel = `tcp:${localPort}`;
         const remote = `localabstract:scrcpy_${options.scid}`;
@@ -192,41 +200,56 @@ export class ScrcpyConnection extends Mw {
 
         this.launchServer(options);
 
-        // Older / slower devices can take a long time to app_process the server
-        // and bind the localabstract socket — the SM-T550 (API 25) needs >60s.
-        // Give the first connect generous runway; later connects resolve fast
-        // once scrcpy-server is accepting.
-        log.info(`Waiting for scrcpy-server to bind localabstract on ${this.serial} (up to 120s)...`);
-        const first = await this.connectLocalRetry(localPort, 120000);
-        log.info(`scrcpy-server bound on ${this.serial}; collecting audio + control sockets`);
-        // Brief pause between connects so scrcpy-server has a chance to accept
-        // each socket and write its per-connection handshake byte before the next
-        // client connection arrives at the device-side server socket. Back-to-back
-        // connects overwhelm the accept loop on slow devices and at least one
-        // connection silently doesn't get its dummy byte.
-        await new Promise((r) => setTimeout(r, 500));
-        const second = await this.connectLocal(localPort, 15000);
-        await new Promise((r) => setTimeout(r, 500));
-        const third = await this.connectLocal(localPort, 15000);
+        log.info(`Waiting for scrcpy-server handshake on ${this.serial} (up to 120s)...`);
+        const videoSocket = await this.connectAndAwaitDummy(localPort, 120000);
+        log.info(`scrcpy-server is live on ${this.serial}; opening remaining sockets`);
 
-        // In forward-tunnel mode scrcpy-server writes a single dummy 0x00 byte on
-        // each socket before real traffic, to flush adb's forward buffer. Consume
-        // those bytes sequentially; if the server version doesn't emit one on a
-        // given socket we log and move on rather than hang.
-        await this.consumeDummyByte(first, 'video');
-        await this.consumeDummyByte(second, 'audio');
-        await this.consumeDummyByte(third, 'control');
+        // scrcpy accepts in order: video → audio (if enabled) → control. Give it
+        // a brief beat between connects so each accept/return cycle completes.
+        const audioEnabled = options.audio !== false;
+        await new Promise((r) => setTimeout(r, 250));
+        let audioSocket: net.Socket;
+        if (audioEnabled) {
+            audioSocket = await this.connectLocal(localPort, 15000);
+            await new Promise((r) => setTimeout(r, 250));
+        } else {
+            // audio=false means scrcpy-server skips the audio accept. Feed
+            // parseMetadata a synthetic AUDIO_DISABLED 4-byte status so the rest
+            // of the pipeline keeps the same shape without needing a special case.
+            audioSocket = new net.Socket();
+            audioSocket.unshift(Buffer.from([0x00, 0x00, 0x00, 0x00])); // AUDIO_DISABLED (0x00000000) sentinel
+        }
+        const controlSocket = await this.connectLocal(localPort, 15000);
 
-        return [first, second, third];
+        return [videoSocket, audioSocket, controlSocket];
     }
 
-    private async consumeDummyByte(socket: net.Socket, label: string): Promise<void> {
-        try {
-            const byte = await this.readExactWithTimeout(socket, 1, 10000);
-            log.info(`Consumed dummy byte 0x${byte[0].toString(16).padStart(2, '0')} on ${label} socket for ${this.serial}`);
-        } catch (e: any) {
-            log.info(`No dummy byte on ${label} socket within 10s for ${this.serial} (${e?.message || e}) — proceeding`);
+    private async connectAndAwaitDummy(port: number, maxWaitMs: number): Promise<net.Socket> {
+        // Open a TCP connection to the adb-forward, then read 1 byte with a
+        // short timeout. If the byte arrives, scrcpy-server is alive and this
+        // is the video socket (the first accept in DesktopConnection.open).
+        // If the read times out, adb has accepted us but the device side
+        // isn't bound yet — discard this socket and retry.
+        const deadline = Date.now() + maxWaitMs;
+        let lastErr: Error | null = null;
+        while (Date.now() < deadline) {
+            let sock: net.Socket | undefined;
+            try {
+                sock = await this.connectLocal(port, 2000);
+                const byte = await this.readExactWithTimeout(sock, 1, 2000);
+                log.info(`Received handshake byte 0x${byte[0].toString(16).padStart(2, '0')} on ${this.serial}`);
+                return sock;
+            } catch (e) {
+                lastErr = e as Error;
+                try {
+                    sock?.destroy();
+                } catch {
+                    // ignore
+                }
+                await new Promise((r) => setTimeout(r, 500));
+            }
         }
+        throw lastErr ?? new Error(`scrcpy-server did not emit handshake byte within ${maxWaitMs}ms`);
     }
 
     private readExactWithTimeout(socket: net.Socket, size: number, timeoutMs: number): Promise<Buffer> {
