@@ -709,6 +709,7 @@ export class ConfigureScrcpy extends Modal {
             encoderName,
         };
         const { ConnectModal } = await import('./ConnectModal');
-        new ConnectModal(params, player, fitToScreen, videoSettings, deviceLabel);
+        const deviceKind = this.tracker.getDescriptorByUdid(this.udid)?.deviceKind;
+        new ConnectModal(params, player, fitToScreen, videoSettings, deviceLabel, deviceKind);
     };
 }
