@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Personal filesystem paths scrubbed from historical plan documents in `docs/plans/` and `docs/superpowers/plans/`
 - Stream layout in `ws-scrcpy.css` promoted to flex-row (video | toolbar) with CSS grid for canvas-layer stacking — replaces legacy `float: right` + `position: absolute` layout. Redundant `dialog.connect-modal` layout overrides in `modal.css` deleted; modal keeps a targeted canvas-layer cap to fit inside the `95vw × 90vh` frame
+- Home page section headings ("Connected Devices", "Available Network Devices", "Dependencies") now render at a consistent `18px / 600` weight. `#devices .tracker-name` was `font-size: larger; font-weight: bolder` and `.dep-header h2` was `1.1rem` — both now inherit / match `.home-section h2`
+- `.dep-btn` hover (scan network, check for updates) replaced `opacity: 0.8` with `background-color: var(--device-list-hover-color)` — matches the blue-tint hover used on device card overlay buttons (`.action-button`)
 
 ### Fixed
 - Stream library stylesheet (`ws-scrcpy.css`) now self-contains theme variables so `/embed.html` renders back/home/overview buttons correctly in light mode

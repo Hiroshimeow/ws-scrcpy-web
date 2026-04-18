@@ -7,9 +7,6 @@
 
 .dep-header h2 {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-color);
 }
 
 .dep-table {
@@ -65,11 +62,11 @@
     font-size: var(--font-size);
     cursor: pointer;
     white-space: nowrap;
-    transition: opacity 0.15s;
+    transition: background-color 0.15s;
 }
 
 .dep-btn:hover:not(:disabled) {
-    opacity: 0.8;
+    background-color: var(--device-list-hover-color);
 }
 
 .dep-btn:disabled {

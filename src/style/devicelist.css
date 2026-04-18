@@ -283,8 +283,9 @@ body.list #device_list_menu {
 /* Tracker name header */
 #devices .tracker-name {
     padding: 0 0 8px 0;
-    font-size: larger;
-    font-weight: bolder;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color, #eee);
     grid-column: 1 / -1;
 }
 
