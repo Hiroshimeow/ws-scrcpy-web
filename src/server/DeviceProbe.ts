@@ -5,6 +5,7 @@ import type { ProbeResult } from '../common/ProbeResult';
 import { AdbClient } from './AdbClient';
 import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
+import { parseWmSize, parseWmDensity } from './goog-device/wmParsers';
 
 const log = Logger.for('DeviceProbe');
 
@@ -52,8 +53,8 @@ export class DeviceProbe extends Mw {
 
         const videoEncoders = this.parseEncoders(encoderOutput, ['avc', 'hevc', 'av1']);
         const audioEncoders = this.parseEncoders(encoderOutput, ['opus', 'aac', 'flac']);
-        const { width, height } = this.parseSize(sizeOutput);
-        const density = this.parseDensity(densityOutput);
+        const { width, height } = parseWmSize(sizeOutput);
+        const density = parseWmDensity(densityOutput);
 
         const result: ProbeResult = { width, height, density, videoEncoders, audioEncoders };
         log.info(`Probe result for ${this.serial}:`, JSON.stringify(result));
@@ -77,22 +78,6 @@ export class DeviceProbe extends Mw {
         return encoders;
     }
 
-    private parseSize(output: string): { width: number; height: number } {
-        const override = output.match(/Override size:\s*(\d+)x(\d+)/);
-        if (override) {
-            return { width: Number.parseInt(override[1], 10), height: Number.parseInt(override[2], 10) };
-        }
-        const physical = output.match(/Physical size:\s*(\d+)x(\d+)/);
-        if (physical) {
-            return { width: Number.parseInt(physical[1], 10), height: Number.parseInt(physical[2], 10) };
-        }
-        return { width: 1920, height: 1080 };
-    }
-
-    private parseDensity(output: string): number {
-        const match = output.match(/(?:Override|Physical) density:\s*(\d+)/);
-        return match ? Number.parseInt(match[1], 10) : 320;
-    }
 
     protected onSocketMessage(): void {
         // Probe is one-shot server→client; no incoming messages expected
