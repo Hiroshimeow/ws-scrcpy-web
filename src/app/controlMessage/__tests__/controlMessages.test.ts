@@ -10,6 +10,7 @@ import { ControlMessage } from '../ControlMessage';
 import { KeyCodeControlMessage } from '../KeyCodeControlMessage';
 import { ScrollControlMessage } from '../ScrollControlMessage';
 import { TouchControlMessage } from '../TouchControlMessage';
+import { UhidCreateMessage } from '../UhidCreateMessage';
 
 // Helper to build a Position for tests
 function pos(x: number, y: number, w: number, h: number): Position {
@@ -157,5 +158,55 @@ describe('KeyCodeControlMessage — scrcpy protocol match (baseline)', () => {
 
     it('PAYLOAD_LENGTH + 1 equals protocol size', () => {
         expect(KeyCodeControlMessage.PAYLOAD_LENGTH + 1).toBe(SCRCPY_KEYCODE_MSG_SIZE);
+    });
+});
+
+describe('UhidCreateMessage — scrcpy v3.3.4 protocol match', () => {
+    // scrcpy v3.3.4 ControlMessageReader.parseUhidCreate wire format:
+    // type(1) + id(2) + vendorId(2) + productId(2) + nameLen(1) + name + dataLen(2) + data
+    // Added in commit 27a5934a (2024-12-07, "Define UHID vendorId and productId from the client")
+    const FIXED_HEADER_SIZE = 1 + 2 + 2 + 2 + 1 + 2; // everything except name + descriptor
+
+    it('keyboard message has correct byte layout per scrcpy v3.3.4', () => {
+        const msg = UhidCreateMessage.createKeyboard(1);
+        const bytes = msg.toUint8Array();
+        const view = new DataView(bytes.buffer, bytes.byteOffset);
+        const name = 'ws-scrcpy keyboard';
+        const nameBytes = new TextEncoder().encode(name);
+
+        // byte 0: type
+        expect(bytes[0]).toBe(ControlMessage.TYPE_UHID_CREATE); // 12
+        // bytes 1-2: id
+        expect(view.getUint16(1)).toBe(1);
+        // bytes 3-4: vendorId (0 = unspecified, matches scrcpy's own client)
+        expect(view.getUint16(3)).toBe(0);
+        // bytes 5-6: productId
+        expect(view.getUint16(5)).toBe(0);
+        // byte 7: nameLen (1 byte, not 2 — see parseString(1) in ControlMessageReader)
+        expect(bytes[7]).toBe(nameBytes.length);
+        // bytes 8..8+nameLen: name UTF-8 bytes
+        const nameStart = 8;
+        for (let i = 0; i < nameBytes.length; i++) {
+            expect(bytes[nameStart + i]).toBe(nameBytes[i]);
+        }
+        // after name: 2-byte descriptor length
+        const descLenOffset = nameStart + nameBytes.length;
+        const descLen = view.getUint16(descLenOffset);
+        expect(descLen).toBeGreaterThan(0);
+        // total size = fixed header + name + descriptor
+        expect(bytes.length).toBe(FIXED_HEADER_SIZE + nameBytes.length + descLen);
+    });
+
+    it('mouse message has correct byte layout per scrcpy v3.3.4', () => {
+        const msg = UhidCreateMessage.createMouse(2);
+        const bytes = msg.toUint8Array();
+        const view = new DataView(bytes.buffer, bytes.byteOffset);
+
+        expect(bytes[0]).toBe(ControlMessage.TYPE_UHID_CREATE);
+        expect(view.getUint16(1)).toBe(2);
+        expect(view.getUint16(3)).toBe(0); // vendorId
+        expect(view.getUint16(5)).toBe(0); // productId
+        const nameLen = bytes[7];
+        expect(nameLen).toBe('ws-scrcpy mouse'.length);
     });
 });

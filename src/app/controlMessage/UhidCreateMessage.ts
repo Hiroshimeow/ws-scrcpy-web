@@ -112,28 +112,38 @@ const MOUSE_DESCRIPTOR = new Uint8Array([
 export class UhidCreateMessage extends ControlMessage {
     private constructor(
         private readonly id: number,
+        private readonly vendorId: number,
+        private readonly productId: number,
         private readonly name: string,
         private readonly descriptor: Uint8Array,
     ) {
         super(ControlMessage.TYPE_UHID_CREATE);
     }
 
+    // scrcpy's own client sends 0/0 for virtual HID devices (see
+    // app/src/uhid/{keyboard,mouse}_uhid.c). 0 = unspecified per USB spec.
     static createKeyboard(id: number): UhidCreateMessage {
-        return new UhidCreateMessage(id, 'ws-scrcpy keyboard', KEYBOARD_DESCRIPTOR);
+        return new UhidCreateMessage(id, 0, 0, 'ws-scrcpy keyboard', KEYBOARD_DESCRIPTOR);
     }
 
     static createMouse(id: number): UhidCreateMessage {
-        return new UhidCreateMessage(id, 'ws-scrcpy mouse', MOUSE_DESCRIPTOR);
+        return new UhidCreateMessage(id, 0, 0, 'ws-scrcpy mouse', MOUSE_DESCRIPTOR);
     }
 
     public toUint8Array(): Uint8Array {
         const nameBytes = new TextEncoder().encode(this.name);
-        // type(1) + id(2) + nameLength(2) + name(N) + descriptorLength(2) + descriptor(M)
-        const size = 1 + 2 + 2 + nameBytes.length + 2 + this.descriptor.length;
+        if (nameBytes.length > 0xff) {
+            throw new Error(`UHID name too long (${nameBytes.length} bytes, max 255)`);
+        }
+        // scrcpy v3.3.4 ControlMessageReader.parseUhidCreate:
+        // type(1) + id(2) + vendorId(2) + productId(2) + nameLen(1) + name(N) + dataLen(2) + data(M)
+        const size = 1 + 2 + 2 + 2 + 1 + nameBytes.length + 2 + this.descriptor.length;
         return new BinaryWriter(size)
             .writeUInt8(this.type)
             .writeUInt16BE(this.id)
-            .writeUInt16BE(nameBytes.length)
+            .writeUInt16BE(this.vendorId)
+            .writeUInt16BE(this.productId)
+            .writeUInt8(nameBytes.length)
             .writeBytes(nameBytes)
             .writeUInt16BE(this.descriptor.length)
             .writeBytes(this.descriptor)
