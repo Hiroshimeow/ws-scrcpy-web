@@ -131,7 +131,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 <tr class="device-name-row"><td class="device-label">Device Name:</td><td colspan="2"></td></tr>
                 <tr><td class="device-label">Model:</td><td colspan="2">${deviceName}</td></tr>
                 <tr><td class="device-label">Device ID:</td><td colspan="2" class="device-serial">${device.udid}</td></tr>
-                <tr class="android-row"><td class="device-label">Android:</td><td>${device['ro.build.version.release']}</td></tr>
+                <tr class="android-row"><td class="device-label">Android:</td><td>${(device['ro.build.version.release'] || '').split('.')[0]}</td></tr>
                 <tr><td class="device-label">SDK:</td><td>${device['ro.build.version.sdk']}</td></tr>
             </table>
             <div id="${overlayId}" class="services">
