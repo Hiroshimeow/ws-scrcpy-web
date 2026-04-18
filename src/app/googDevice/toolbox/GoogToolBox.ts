@@ -1,5 +1,4 @@
 import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
-import { ControlMessage } from '../../controlMessage/ControlMessage';
 import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
 import type { BasePlayer } from '../../player/BasePlayer';
 import { ToolBox } from '../../toolbox/ToolBox';
@@ -141,7 +140,7 @@ export class GoogToolBox extends ToolBox {
         // GET: pull device clipboard to host
         const clipGet = new ToolBoxButton('copy device clipboard to host', SvgImage.Icon.CLIPBOARD_GET);
         clipGet.addEventListener('click', () => {
-            client.sendMessage(new CommandControlMessage(ControlMessage.TYPE_GET_CLIPBOARD));
+            client.sendMessage(CommandControlMessage.createGetClipboardCommand());
         });
         elements.push(clipGet);
 

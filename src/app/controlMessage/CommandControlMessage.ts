@@ -41,6 +41,21 @@ export class CommandControlMessage extends ControlMessage {
         return event;
     }
 
+    // scrcpy GET_CLIPBOARD requires a copy_key byte after the type byte —
+    // see scrcpy's ControlMessageReader.parseGetClipboard (reads 1 unsigned byte).
+    // Sending the bare type alone (1 byte) leaves the server blocked waiting
+    // for the copy_key, which then gets consumed from the next control message
+    // and silently misaligns the whole stream until it crashes the session.
+    public static COPY_KEY_NONE = 0;
+    public static COPY_KEY_COPY = 1;
+    public static COPY_KEY_CUT = 2;
+
+    public static createGetClipboardCommand(copyKey = CommandControlMessage.COPY_KEY_NONE): CommandControlMessage {
+        const event = new CommandControlMessage(ControlMessage.TYPE_GET_CLIPBOARD);
+        event.buffer = new BinaryWriter(1 + 1).writeUInt8(event.type).writeUInt8(copyKey).toUint8Array();
+        return event;
+    }
+
     public static createSetClipboardCommand(text: string, paste = false, sequence = 0n): CommandControlMessage {
         const event = new CommandControlMessage(ControlMessage.TYPE_SET_CLIPBOARD);
         const textBytes: Uint8Array | null = text ? Util.stringToUtf8ByteArray(text) : null;
