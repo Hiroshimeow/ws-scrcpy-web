@@ -3,6 +3,7 @@ import type GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
 import type { NetInterface } from '../../types/NetInterface';
 import { AdbClient } from '../AdbClient';
 import { Logger } from '../Logger';
+import { classifyDeviceKind } from './deviceKind';
 import { Properties } from './Properties';
 
 import Timeout = NodeJS.Timeout;
@@ -358,6 +359,26 @@ export class Device extends TypedEmitter<DeviceEvents> {
             }
         } catch {
             // Device not responding — leave state unchanged
+        }
+    }
+
+    public async detectDeviceKind(): Promise<void> {
+        if (this.descriptor.deviceKind) return;
+        if (!this.connected) return;
+        try {
+            const [characteristics, leanback, sizeOut, densityOut] = await Promise.all([
+                this.runShellCommand('getprop ro.build.characteristics'),
+                this.runShellCommand('pm has-feature android.software.leanback'),
+                this.runShellCommand('wm size'),
+                this.runShellCommand('wm density'),
+            ]);
+            const kind = classifyDeviceKind(characteristics, leanback, sizeOut, densityOut);
+            if (kind) {
+                this.descriptor.deviceKind = kind;
+                this.emitUpdate();
+            }
+        } catch {
+            // Device temporarily unreachable — next poll retries
         }
     }
 
