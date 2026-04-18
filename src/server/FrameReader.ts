@@ -14,7 +14,7 @@ export interface ScrcpyFrame {
 }
 
 export class FrameReader {
-    private buffer = Buffer.alloc(0);
+    private buffer: Buffer = Buffer.alloc(0);
     private frameCallback?: (frame: ScrcpyFrame) => void;
     private endCallback?: () => void;
 

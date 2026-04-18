@@ -82,7 +82,7 @@ export class ScrcpyDemuxer {
 
     private flushPending(): void {
         for (const msg of this.pendingControl) {
-            this.ws.send(msg);
+            this.ws.send(msg as BufferSource);
         }
         this.pendingControl.length = 0;
     }

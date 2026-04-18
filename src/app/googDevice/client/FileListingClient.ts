@@ -562,7 +562,7 @@ export class FileListingClient extends ManagerClient<ParamsFileListing, never> i
             this.channels.delete(channel);
             this.loadContent(download.pathToLoadAfter);
         }
-        const file = new File(download.chunks, name, { type: 'application/octet-stream' });
+        const file = new File(download.chunks as BlobPart[], name, { type: 'application/octet-stream' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(file);
         a.download = `${name}`;

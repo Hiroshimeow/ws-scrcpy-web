@@ -737,7 +737,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         }
 
         const name = download.entry?.name ?? basename(download.path);
-        const file = new File(download.chunks, name, { type: 'application/octet-stream' });
+        const file = new File(download.chunks as BlobPart[], name, { type: 'application/octet-stream' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(file);
         a.download = name;

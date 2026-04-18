@@ -67,7 +67,7 @@ export class FilePushReader {
         if (this.channel.readyState === this.channel.CLOSING || this.channel.readyState === this.channel.CLOSED) {
             return;
         }
-        this.channel.send(FilePushReader.createResponse(this.pushId, status));
+        this.channel.send(FilePushReader.createResponse(this.pushId, status) as unknown as BufferSource);
     }
 
     private closeWithError(code: number, message?: string): void {
