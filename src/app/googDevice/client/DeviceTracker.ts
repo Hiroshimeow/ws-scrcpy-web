@@ -245,16 +245,25 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             }
         }
 
-        // Overlay section: configure stream (own line), then shell, list files, connect
+        // Overlay section 2x2 grid: row 1 = [configure stream, connect], row 2 = [shell, list files]
         const streamEntry = StreamClientScrcpy.createEntryForDeviceList(device, 'desc-block', fullName, this.params);
         streamEntry && overlaySection.appendChild(streamEntry);
 
-        // Force new line after configure stream
-        const lineBreak = document.createElement('div');
-        lineBreak.className = 'services-break';
-        overlaySection.appendChild(lineBreak);
+        // Connect button — row 1 cell 2
+        if (isActive && DeviceTracker.CREATE_DIRECT_LINKS) {
+            const name = `${DeviceTracker.AttributePrefixPlayerFor}${fullName}`;
+            StreamClientScrcpy.getPlayers().forEach((playerClass) => {
+                const { playerCodeName, playerFullName } = playerClass;
+                const connectBtn = document.createElement('div');
+                connectBtn.classList.add('desc-block');
+                connectBtn.setAttribute('name', encodeURIComponent(name));
+                connectBtn.setAttribute(DeviceTracker.AttributePlayerFullName, encodeURIComponent(playerFullName));
+                connectBtn.setAttribute(DeviceTracker.AttributePlayerCodeName, encodeURIComponent(playerCodeName));
+                overlaySection.appendChild(connectBtn);
+            });
+        }
 
-        // Shell and list files (from registered tools)
+        // Shell and list files (from registered tools) — row 2
         DeviceTracker.tools.forEach((tool) => {
             const entry = tool.createEntryForDeviceList(device, 'desc-block', this.params);
             if (entry) {
@@ -291,20 +300,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 new ListFilesModal(device.udid, label, this.params);
             });
         });
-
-        // Connect button (last)
-        if (isActive && DeviceTracker.CREATE_DIRECT_LINKS) {
-            const name = `${DeviceTracker.AttributePrefixPlayerFor}${fullName}`;
-            StreamClientScrcpy.getPlayers().forEach((playerClass) => {
-                const { playerCodeName, playerFullName } = playerClass;
-                const connectBtn = document.createElement('div');
-                connectBtn.classList.add('desc-block');
-                connectBtn.setAttribute('name', encodeURIComponent(name));
-                connectBtn.setAttribute(DeviceTracker.AttributePlayerFullName, encodeURIComponent(playerFullName));
-                connectBtn.setAttribute(DeviceTracker.AttributePlayerCodeName, encodeURIComponent(playerCodeName));
-                overlaySection.appendChild(connectBtn);
-            });
-        }
 
         tbody.appendChild(row);
 
