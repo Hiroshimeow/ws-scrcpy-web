@@ -341,3 +341,10 @@ body.list #device_list_menu {
     outline: none;
     border-color: var(--accent-color, #5b9aff);
 }
+
+a.link-stream .kind-icon {
+    margin-left: 6px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}

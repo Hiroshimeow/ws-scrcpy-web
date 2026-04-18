@@ -10,6 +10,7 @@ import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
 import type { Tool } from '../../client/Tool';
 import Util from '../../Util';
 import { html } from '../../ui/HtmlTag';
+import SvgImage from '../../ui/SvgImage';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 
@@ -57,8 +58,17 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         }
     }
 
-    private updateLink(params: { url: string; name: string; fullName: string; udid: string }): void {
-        const { url, name, fullName, udid } = params;
+    private static iconForKind(kind: 'phone' | 'tablet' | 'tv' | undefined) {
+        switch (kind) {
+            case 'tv': return SvgImage.Icon.DEVICE_TV;
+            case 'tablet': return SvgImage.Icon.DEVICE_TABLET;
+            case 'phone': return SvgImage.Icon.DEVICE_PHONE;
+            default: return undefined;
+        }
+    }
+
+    private updateLink(params: { url: string; name: string; fullName: string; udid: string; deviceKind?: 'phone' | 'tablet' | 'tv' }): void {
+        const { url, name, fullName, udid, deviceKind } = params;
         const playerTds = document.getElementsByName(
             encodeURIComponent(`${DeviceTracker.AttributePrefixPlayerFor}${fullName}`),
         );
@@ -84,6 +94,12 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 this.params,
             );
             item.appendChild(link);
+            const iconType = DeviceTracker.iconForKind(deviceKind);
+            if (iconType !== undefined) {
+                const icon = SvgImage.create(iconType);
+                icon.classList.add('kind-icon');
+                link.appendChild(icon);
+            }
         });
     }
 
@@ -301,6 +317,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 name: selectedInterfaceName,
                 fullName,
                 udid: device.udid,
+                deviceKind: device.deviceKind,
             });
         }
 
