@@ -2,6 +2,7 @@
 
 :root {
     --font-size: 14px;
+    --font-mono: Consolas, 'Segoe UI Mono', 'SF Mono', Menlo, 'Liberation Mono', 'DejaVu Sans Mono', monospace;
 }
 
 /* Dark theme (default) */

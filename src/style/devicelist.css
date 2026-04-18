@@ -51,12 +51,12 @@ body.list #device_list_menu {
 
 /* Device list container */
 #devices .device-list {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: var(--font-size);
 }
 
 #devices .device-list button {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: var(--font-size);
     color: var(--button-text-color);
 }
@@ -110,7 +110,7 @@ body.list #device_list_menu {
 }
 
 #devices .device-serial {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
 }
 
@@ -263,7 +263,7 @@ body.list #device_list_menu {
     color: #5b9aff;
     text-decoration: none;
     padding: 0.3rem 0.75rem;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: var(--font-size);
     cursor: pointer;
     display: inline-block;

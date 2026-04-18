@@ -34,7 +34,7 @@
 .home-section {
     padding: 20px;
     margin-bottom: 8px;
-    font-family: monospace;
+    font-family: var(--font-mono);
 }
 
 .home-section h2 {
@@ -106,7 +106,7 @@
 
 .discovery-card-address {
     font-size: 12px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     color: var(--text-color-secondary, #888);
     margin-top: 2px;
 }

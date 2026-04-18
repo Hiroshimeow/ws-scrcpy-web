@@ -103,7 +103,6 @@ export class NetworkDiscoveryPanel {
         const label = nameInput.value.trim();
 
         btn.disabled = true;
-        btn.textContent = 'Connecting...';
 
         try {
             const res = await fetch('/api/devices/connect', {
@@ -113,23 +112,14 @@ export class NetworkDiscoveryPanel {
             });
             const result: ConnectResult = await res.json();
             if (result.success) {
-                btn.textContent = 'Connected';
                 btn.classList.remove('dep-update');
                 btn.classList.add('dep-ok-btn');
                 setTimeout(() => card.remove(), 1500);
             } else {
-                btn.textContent = 'Failed';
                 btn.disabled = false;
-                setTimeout(() => {
-                    btn.textContent = 'Connect';
-                }, 2000);
             }
         } catch {
-            btn.textContent = 'Error';
             btn.disabled = false;
-            setTimeout(() => {
-                btn.textContent = 'Connect';
-            }, 2000);
         }
     }
 }

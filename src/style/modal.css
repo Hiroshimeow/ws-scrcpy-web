@@ -20,7 +20,7 @@ dialog.modal::backdrop {
 
 /* ── Glassmorphism frame ── */
 dialog.modal .modal-frame {
-    font-family: monospace;
+    font-family: var(--font-mono);
     color: var(--text-color, #ddd);
     width: clamp(400px, 50vw, 650px);
     max-height: 80vh;
@@ -42,7 +42,7 @@ dialog.modal .modal-frame {
 dialog.modal .modal-frame button,
 dialog.modal .modal-frame select,
 dialog.modal .modal-frame input {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: var(--font-size);
 }
 
@@ -273,7 +273,7 @@ dialog.modal .modal-advanced-toggle {
     background: transparent;
     border: none;
     width: 100%;
-    font-family: monospace;
+    font-family: var(--font-mono);
 }
 
 dialog.modal .modal-advanced-toggle:hover {

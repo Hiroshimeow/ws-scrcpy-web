@@ -162,7 +162,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 disconnectBtn.className = 'disconnect-btn';
                 disconnectBtn.textContent = 'disconnect';
                 disconnectBtn.addEventListener('click', async () => {
-                    disconnectBtn.textContent = 'disconnecting...';
                     disconnectBtn.disabled = true;
                     try {
                         await fetch('/api/devices/disconnect', {
@@ -171,7 +170,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                             body: JSON.stringify({ address: device.udid }),
                         });
                     } catch {
-                        disconnectBtn.textContent = 'disconnect';
                         disconnectBtn.disabled = false;
                     }
                 });
@@ -197,7 +195,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             sleepBtn.addEventListener('click', async () => {
                 const isAwake = sleepBtn.dataset.awake === 'true';
                 sleepBtn.disabled = true;
-                sleepBtn.textContent = isAwake ? 'turning off...' : 'turning on...';
                 try {
                     const res = await fetch('/api/devices/sleep-wake', {
                         method: 'POST',
