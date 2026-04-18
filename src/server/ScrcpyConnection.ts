@@ -186,11 +186,15 @@ export class ScrcpyConnection extends Mw {
 
         this.launchServer(options);
 
-        // First connect retries while the server is still binding its localabstract;
-        // subsequent connects go through immediately once the listener is up.
-        const first = await this.connectLocalRetry(localPort, 10000);
-        const second = await this.connectLocal(localPort, 5000);
-        const third = await this.connectLocal(localPort, 5000);
+        // Older / slower devices can take a long time to app_process the server
+        // and bind the localabstract socket — the SM-T550 (API 25) needs >60s.
+        // Give the first connect generous runway; later connects resolve fast
+        // once scrcpy-server is accepting.
+        log.info(`Waiting for scrcpy-server to bind localabstract on ${this.serial} (up to 120s)...`);
+        const first = await this.connectLocalRetry(localPort, 120000);
+        log.info(`scrcpy-server bound on ${this.serial}; collecting audio + control sockets`);
+        const second = await this.connectLocal(localPort, 15000);
+        const third = await this.connectLocal(localPort, 15000);
         return [first, second, third];
     }
 
@@ -198,8 +202,15 @@ export class ScrcpyConnection extends Mw {
         const args = serializeOptions(options);
         const cmd = `CLASSPATH=${DEVICE_SERVER_PATH} app_process / ${SERVER_PACKAGE} ${SERVER_VERSION} ${args.join(' ')}`;
         this.serverProcess = this.adbClient.shellSpawn(this.serial, cmd);
-        this.serverProcess.on('exit', () => {
-            log.info(`Server process exited for ${this.serial}`);
+        // Tee scrcpy-server's stdout/stderr into our log so its failure reason is visible.
+        const logLine = (stream: 'stdout' | 'stderr', data: Buffer) => {
+            const text = data.toString('utf-8').trimEnd();
+            if (text) log.info(`[scrcpy-server:${stream}] ${this.serial}: ${text}`);
+        };
+        this.serverProcess.stdout?.on('data', (d) => logLine('stdout', d));
+        this.serverProcess.stderr?.on('data', (d) => logLine('stderr', d));
+        this.serverProcess.on('exit', (code, signal) => {
+            log.info(`Server process exited for ${this.serial} (code=${code}, signal=${signal})`);
             if (!this.released) {
                 this.release();
             }
