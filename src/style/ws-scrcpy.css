@@ -28,24 +28,40 @@
     --svg-checkbox-bg-color: #198754;
 }
 
+/* Stream layout: device-view is a flex row (video | toolbar). Video cell uses
+ * CSS grid so the video-layer and touch-layer stack in the same cell — this
+ * replaces legacy position:absolute layers which broke parent auto-sizing.
+ * DOM order is toolbar-first; the toolbar uses `order: 1` to appear right.
+ *
+ * Defaults deliberately DO NOT use flex:1 — that would force the container to
+ * stretch to max height in fit-content parents (like the ConnectModal frame),
+ * leaving dead space below a smaller canvas. Full-body embed contexts that
+ * need the stream to fill the viewport opt in via body[data-embed-entry]
+ * below. */
 .device-view {
-    z-index: 1;
-    float: right;
-    display: inline-block;
-}
-
-.video-layer {
-    position: absolute;
-    z-index: 0;
-    max-height: 100vh;
-    max-width: calc(100vw - 3.715rem);
+    display: flex;
+    flex-direction: row;
+    min-width: 0;
+    min-height: 0;
 }
 
 .video {
-    float: right;
-    max-height: 100vh;
-    max-width: calc(100vw - 3.715rem);
-    background-color: #000000;
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+    background-color: #000;
+    /* Override inline width/height set by setScreenInfo() with raw device
+     * resolution — lets grid layout + inline max-width/max-height (also set
+     * by the player) control the displayed cell size with correct aspect. */
+    width: auto !important;
+    height: auto !important;
+}
+
+.video-layer {
+    grid-area: 1 / 1;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .control-wrapper > input[type="checkbox"] {
@@ -78,16 +94,25 @@
 }
 
 .touch-layer {
-    position: absolute;
-    z-index: 1;
-    max-height: 100vh;
-    max-width: calc(100vw - 3.715rem);
+    grid-area: 1 / 1;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .control-buttons-list {
-    float: right;
+    flex-shrink: 0;
     width: 3.715rem;
     background-color: var(--control-buttons-bg-color);
+    order: 1;  /* DOM order is toolbar-first, but we want video-left toolbar-right */
+}
+
+/* Embed page (embed.html) marks its body with data-embed-entry and uses flex
+ * layout. Here the stream SHOULD fill the viewport — opt into flex:1 so
+ * device-view stretches and the video cell grows to consume remaining space
+ * after the toolbar. Modal contexts (fit-content frame) deliberately skip this. */
+body[data-embed-entry] .device-view,
+body[data-embed-entry] .video {
+    flex: 1;
 }
 
 .control-button {

@@ -624,9 +624,13 @@ export class StreamClientScrcpy
 
     public getMaxSize(): Size | undefined {
         if (!this.controlButtons) return;
-        const body = document.body;
-        const width = (body.clientWidth - this.controlButtons.clientWidth) & ~15;
-        const height = body.clientHeight & ~15;
+        // Use viewport dimensions, not this.container — at mount time, containers
+        // inside fit-content parents (ConnectModal frame) haven't been sized yet
+        // and would return 0. Viewport is stable and serves as the upper-bound
+        // hint the encoder needs. CSS layout inside .video handles the
+        // container-accurate display sizing.
+        const width = (window.innerWidth - this.controlButtons.clientWidth) & ~15;
+        const height = window.innerHeight & ~15;
         return new Size(width, height);
     }
 
