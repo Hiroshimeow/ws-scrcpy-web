@@ -37,6 +37,7 @@ export class ScrcpyConnection extends Mw {
     private videoReader?: FrameReader;
     private audioReader?: FrameReader;
     private reverseTunnel?: string;
+    private forwardTunnel?: string;
     private serverProcess?: import('child_process').ChildProcess;
     private released = false;
 
@@ -108,20 +109,92 @@ export class ScrcpyConnection extends Mw {
 
     private async start(): Promise<void> {
         const options = this.buildOptions();
-        log.info(`Starting session for ${this.serial} (scid=${options.scid})`);
+
+        // SDK-gated behavior:
+        //  - Reverse-over-TCP is unreliable on Android pre-9 (SDK 28); those devices
+        //    need tunnel_forward=true with host-initiated connections instead.
+        //  - scrcpy audio forwarding requires Android 11+ (SDK 30); force audio off
+        //    on older devices so the server doesn't refuse to start.
+        const sdkInt = await this.getSdkInt();
+        const useTunnelForward = sdkInt > 0 && sdkInt < 28;
+        if (sdkInt > 0 && sdkInt < 30 && options.audio === undefined) {
+            options.audio = false;
+        }
+        if (useTunnelForward) {
+            options.tunnelForward = true;
+        }
+        log.info(
+            `Starting session for ${this.serial} (scid=${options.scid}, sdk=${sdkInt || '?'}, tunnel=${useTunnelForward ? 'forward' : 'reverse'}, audio=${options.audio ?? 'default'})`,
+        );
 
         // 1. Push scrcpy-server binary
         await this.adbClient.push(this.serial, SERVER_FILE, DEVICE_SERVER_PATH);
 
-        // 2. Start local TCP server on ephemeral port
+        // 2. Set up tunnel + launch scrcpy-server + collect 3 sockets.
+        const sockets = useTunnelForward
+            ? await this.startWithForwardTunnel(options)
+            : await this.startWithReverseTunnel(options);
+        this.videoSocket = sockets[0];
+        this.audioSocket = sockets[1];
+        this.controlSocket = sockets[2];
+
+        // 3. Parse initial metadata
+        const metadata = await this.parseMetadata();
+        if (options.videoEncoder) {
+            metadata.videoEncoder = options.videoEncoder;
+        }
+        log.info(`Session ready: ${metadata.deviceName} ${metadata.screenWidth}x${metadata.screenHeight}`);
+
+        // 4. Send metadata to browser
+        this.sendChannel(ChannelId.METADATA, Buffer.from(JSON.stringify(metadata)));
+
+        // 5. Start forwarding
+        this.startForwarding();
+    }
+
+    private async getSdkInt(): Promise<number> {
+        try {
+            const out = await this.adbClient.shell(this.serial, 'getprop ro.build.version.sdk');
+            const n = Number.parseInt(out.trim(), 10);
+            return Number.isFinite(n) ? n : 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    private async startWithReverseTunnel(options: ScrcpyOptions): Promise<net.Socket[]> {
+        // Host listens on an ephemeral port; adb reverses device's localabstract
+        // socket to that port. scrcpy-server connects out (3 sockets) — we accept.
         const { server, port } = await this.createTcpServer();
         this.tcpServer = server;
-
-        // 3. Set up ADB reverse tunnel
         this.reverseTunnel = `localabstract:scrcpy_${options.scid}`;
         await this.adbClient.reverse(this.serial, this.reverseTunnel, `tcp:${port}`);
 
-        // 4. Launch scrcpy-server
+        this.launchServer(options);
+
+        return this.acceptSockets(server, 3, 10000);
+    }
+
+    private async startWithForwardTunnel(options: ScrcpyOptions): Promise<net.Socket[]> {
+        // adb forwards a host port to scrcpy-server's localabstract socket. The
+        // server binds and listens (because tunnel_forward=true); host initiates
+        // the 3 client connections through the forward.
+        const localPort = await this.reserveLocalPort();
+        this.forwardTunnel = `tcp:${localPort}`;
+        const remote = `localabstract:scrcpy_${options.scid}`;
+        await this.adbClient.forward(this.serial, this.forwardTunnel, remote);
+
+        this.launchServer(options);
+
+        // First connect retries while the server is still binding its localabstract;
+        // subsequent connects go through immediately once the listener is up.
+        const first = await this.connectLocalRetry(localPort, 10000);
+        const second = await this.connectLocal(localPort, 5000);
+        const third = await this.connectLocal(localPort, 5000);
+        return [first, second, third];
+    }
+
+    private launchServer(options: ScrcpyOptions): void {
         const args = serializeOptions(options);
         const cmd = `CLASSPATH=${DEVICE_SERVER_PATH} app_process / ${SERVER_PACKAGE} ${SERVER_VERSION} ${args.join(' ')}`;
         this.serverProcess = this.adbClient.shellSpawn(this.serial, cmd);
@@ -131,25 +204,6 @@ export class ScrcpyConnection extends Mw {
                 this.release();
             }
         });
-
-        // 5. Accept 3 TCP connections (video, audio, control) in order
-        const sockets = await this.acceptSockets(server, 3, 10000);
-        this.videoSocket = sockets[0];
-        this.audioSocket = sockets[1];
-        this.controlSocket = sockets[2];
-
-        // 6. Parse initial metadata
-        const metadata = await this.parseMetadata();
-        if (options.videoEncoder) {
-            metadata.videoEncoder = options.videoEncoder;
-        }
-        log.info(`Session ready: ${metadata.deviceName} ${metadata.screenWidth}x${metadata.screenHeight}`);
-
-        // 7. Send metadata to browser
-        this.sendChannel(ChannelId.METADATA, Buffer.from(JSON.stringify(metadata)));
-
-        // 8. Start forwarding
-        this.startForwarding();
     }
 
     private createTcpServer(): Promise<{ server: net.Server; port: number }> {
@@ -161,6 +215,46 @@ export class ScrcpyConnection extends Mw {
             });
             server.on('error', reject);
         });
+    }
+
+    private async reserveLocalPort(): Promise<number> {
+        // Bind briefly to learn a free port, release it so adb forward can take it.
+        // Brief race on localhost is acceptable — ephemeral ports rarely collide.
+        const { server, port } = await this.createTcpServer();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        return port;
+    }
+
+    private connectLocal(port: number, timeoutMs: number): Promise<net.Socket> {
+        return new Promise((resolve, reject) => {
+            const sock = net.createConnection({ host: '127.0.0.1', port });
+            const timer = setTimeout(() => {
+                sock.destroy();
+                reject(new Error(`Timeout connecting to 127.0.0.1:${port}`));
+            }, timeoutMs);
+            sock.once('connect', () => {
+                clearTimeout(timer);
+                resolve(sock);
+            });
+            sock.once('error', (err) => {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
+    }
+
+    private async connectLocalRetry(port: number, maxWaitMs: number): Promise<net.Socket> {
+        const deadline = Date.now() + maxWaitMs;
+        let lastErr: Error | null = null;
+        while (Date.now() < deadline) {
+            try {
+                return await this.connectLocal(port, 1000);
+            } catch (e) {
+                lastErr = e as Error;
+                await new Promise((r) => setTimeout(r, 200));
+            }
+        }
+        throw lastErr ?? new Error(`Timeout connecting to 127.0.0.1:${port}`);
     }
 
     private acceptSockets(server: net.Server, count: number, timeoutMs: number): Promise<net.Socket[]> {
@@ -309,6 +403,9 @@ export class ScrcpyConnection extends Mw {
 
         if (this.reverseTunnel) {
             this.adbClient.removeReverse(this.serial, this.reverseTunnel).catch(() => {});
+        }
+        if (this.forwardTunnel) {
+            this.adbClient.removeForward(this.serial, this.forwardTunnel).catch(() => {});
         }
 
         this.tcpServer?.close();
