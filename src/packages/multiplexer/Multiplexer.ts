@@ -35,7 +35,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
     readonly CLOSING = 2;
     readonly CLOSED = 3;
     public binaryType: BinaryType = 'blob';
-    public readyState: number;
+    public readyState: 0 | 1 | 2 | 3;
     private channels: Map<number, { channel: Multiplexer; emitter: WebsocketEventEmitter }> = new Map();
     private nextId = 0;
     private maxId = 4294967296;
