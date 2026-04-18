@@ -116,6 +116,13 @@ const front: webpack.Configuration = {
         filename: 'bundle.js',
         path: CLIENT_DIST_PATH,
     },
+    // Performance budget tuned for this app's footprint (scrcpy stream stack +
+    // xterm terminal + file manager). Webpack's 244 KiB default targets content
+    // sites; this is a tool app with real reason to be larger.
+    performance: {
+        maxAssetSize: 400_000,
+        maxEntrypointSize: 500_000,
+    },
 };
 
 export const frontend = () => {
@@ -175,6 +182,14 @@ const libraryCommon = {
     },
 };
 
+// Shared performance budget for the library builds — matches the frontend
+// config. Library consumers don't reach xterm through the public API, but
+// webpack still emits the lazy chunk because the code path exists.
+const libraryPerformance: webpack.Configuration['performance'] = {
+    maxAssetSize: 400_000,
+    maxEntrypointSize: 500_000,
+};
+
 const libraryUmd: webpack.Configuration = {
     ...libraryCommon,
     output: {
@@ -183,6 +198,7 @@ const libraryUmd: webpack.Configuration = {
         library: { name: 'WsScrcpy', type: 'umd', export: undefined },
         globalObject: 'globalThis',
     },
+    performance: libraryPerformance,
 };
 
 const libraryEsm: webpack.Configuration = {
@@ -195,6 +211,7 @@ const libraryEsm: webpack.Configuration = {
     },
     module: { rules: esmModuleRules() },
     plugins: [versionDefinePlugin],
+    performance: libraryPerformance,
 };
 
 export const libraryUmdConfig = () => Object.assign({}, common(), libraryUmd);

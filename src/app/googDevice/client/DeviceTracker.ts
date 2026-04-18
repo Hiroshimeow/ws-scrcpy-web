@@ -10,9 +10,6 @@ import { BaseDeviceTracker } from '../../client/BaseDeviceTracker';
 import type { Tool } from '../../client/Tool';
 import Util from '../../Util';
 import { html } from '../../ui/HtmlTag';
-import { ConnectModal } from './ConnectModal';
-import { ListFilesModal } from './ListFilesModal';
-import { ShellModal } from './ShellModal';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 
@@ -279,10 +276,11 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         const shellLink = overlaySection.querySelector('.shell a') as HTMLAnchorElement | null;
         if (shellLink) {
             shellLink.removeAttribute('target');
-            shellLink.addEventListener('click', (e) => {
+            shellLink.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const nameEl = shellLink.closest('.device')?.querySelector('.device-name-text');
                 const label = nameEl?.textContent || device['ro.product.model'] || device.udid;
+                const { ShellModal } = await import('./ShellModal');
                 new ShellModal(device.udid, label, this.params);
             });
         }
@@ -291,10 +289,11 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         const listFilesLinks = overlaySection.querySelectorAll('a.link-list-files') as NodeListOf<HTMLAnchorElement>;
         listFilesLinks.forEach((link) => {
             link.removeAttribute('target');
-            link.addEventListener('click', (e) => {
+            link.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const nameEl = link.closest('.device')?.querySelector('.device-name-text');
                 const label = nameEl?.textContent || device['ro.product.model'] || device.udid;
+                const { ListFilesModal } = await import('./ListFilesModal');
                 new ListFilesModal(device.udid, label, this.params);
             });
         });
@@ -316,7 +315,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         const connectLinks = overlaySection.querySelectorAll('a.link-stream') as NodeListOf<HTMLAnchorElement>;
         connectLinks.forEach((link) => {
             link.removeAttribute('target');
-            link.addEventListener('click', (e) => {
+            link.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const href = link.getAttribute('href');
                 if (!href) return;
@@ -341,6 +340,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 const fitToScreen = playerClass.getFitToScreenStatus(device.udid);
                 player.setVideoSettings(videoSettings, fitToScreen, false);
 
+                const { ConnectModal } = await import('./ConnectModal');
                 new ConnectModal(params, player, fitToScreen, videoSettings, label);
             });
         });

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+- Main frontend bundle (`bundle.js`) dropped from **525 KiB → 162 KiB** (-69%) by converting static imports of `ShellModal`, `ListFilesModal`, and `ConnectModal` to dynamic `await import()` at the click-handler call sites in `DeviceTracker.ts` and `ConfigureScrcpy.ts`. xterm.js (the heaviest dep at ~326 KiB) now loads only when the user clicks the `shell` button — home page initial-paint no longer pays for it. `ConnectModal` and `ListFilesModal` split out similarly. Webpack `performance` budget tuned to 400 KiB asset / 500 KiB entrypoint on both frontend and library configs — the 244 KiB default targets content sites, not a tool app with an embedded streaming stack + terminal + file manager. All 5 webpack configs now build with zero warnings.
+
 ### Added
 - `SECURITY.md` now points to GitHub Security Advisories for private vulnerability reporting
 - `CONTRIBUTING.md` with setup, style guide, and PR expectations

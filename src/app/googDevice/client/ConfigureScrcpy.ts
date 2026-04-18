@@ -10,7 +10,6 @@ import Util from '../../Util';
 import VideoSettings from '../../VideoSettings';
 import { Modal } from '../../ui/Modal';
 import type { DeviceTracker } from './DeviceTracker';
-import { ConnectModal } from './ConnectModal';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
 type Range = {
@@ -676,7 +675,7 @@ export class ConfigureScrcpy extends Modal {
         }
     };
 
-    private openStream = (): void => {
+    private openStream = async (): Promise<void> => {
         // CRITICAL: Read all form values BEFORE close() removes the dialog from DOM
         const videoSettings = this.buildVideoSettings();
         if (!videoSettings || !this.playerName) {
@@ -709,6 +708,7 @@ export class ConfigureScrcpy extends Modal {
             audioCodec,
             encoderName,
         };
+        const { ConnectModal } = await import('./ConnectModal');
         new ConnectModal(params, player, fitToScreen, videoSettings, deviceLabel);
     };
 }
