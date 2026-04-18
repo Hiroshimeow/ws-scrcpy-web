@@ -18,6 +18,7 @@ declare global {
 }
 
 const CODECS = new Set(['h264', 'h265', 'av1']);
+const DEVICE_KINDS = new Set(['phone', 'tablet', 'tv']);
 
 export function parseEmbedParams(params: URLSearchParams): {
     deviceId: string | null;
@@ -48,6 +49,11 @@ export function parseEmbedParams(params: URLSearchParams): {
 
     const codec = params.get('codec');
     if (codec && CODECS.has(codec)) options.codec = codec as StartStreamOptions['codec'];
+
+    const deviceKind = params.get('deviceKind');
+    if (deviceKind && DEVICE_KINDS.has(deviceKind)) {
+        options.deviceKind = deviceKind as StartStreamOptions['deviceKind'];
+    }
 
     readInt('port');
     readInt('bitrate');

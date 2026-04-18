@@ -40,6 +40,14 @@ describe('parseEmbedParams', () => {
         expect(parse('device=x&codec=bogus').options.codec).toBeUndefined();
     });
 
+    it('accepts only phone/tablet/tv for deviceKind; ignores others', () => {
+        expect(parse('device=x&deviceKind=phone').options.deviceKind).toBe('phone');
+        expect(parse('device=x&deviceKind=tablet').options.deviceKind).toBe('tablet');
+        expect(parse('device=x&deviceKind=tv').options.deviceKind).toBe('tv');
+        expect(parse('device=x&deviceKind=watch').options.deviceKind).toBeUndefined();
+        expect(parse('device=x').options.deviceKind).toBeUndefined();
+    });
+
     it('ignores unknown params', () => {
         expect(() => parse('device=x&mystery=42&another=foo')).not.toThrow();
     });
