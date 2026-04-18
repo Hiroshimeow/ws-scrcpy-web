@@ -10,7 +10,9 @@ import { ChannelId } from '../common/ChannelId';
 import { DEVICE_SERVER_PATH, SERVER_PACKAGE, SERVER_VERSION } from '../common/Constants';
 import { AUDIO_DISABLED, AUDIO_ERROR, codecName } from '../common/ScrcpyCodec';
 import { AdbClient } from './AdbClient';
+import { ensureScrcpyServerPushed } from './ensureScrcpyServerPushed';
 import { FrameReader } from './FrameReader';
+import { ControlCenter } from './goog-device/services/ControlCenter';
 import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 import { type ScrcpyOptions, serializeOptions } from './ScrcpyOptions';
@@ -132,8 +134,11 @@ export class ScrcpyConnection extends Mw {
             `Starting session for ${this.serial} (scid=${options.scid}, sdk=${sdkInt || '?'}, tunnel=${useTunnelForward ? 'forward' : 'reverse'}, audio=${options.audio ?? 'default'}, cleanup=${options.cleanup ?? 'default'})`,
         );
 
-        // 1. Push scrcpy-server binary
-        await this.adbClient.push(this.serial, SERVER_FILE, DEVICE_SERVER_PATH);
+        // 1. Push scrcpy-server binary only when the remote copy is missing or
+        //    a different size. Keeping the JAR in place between sessions keeps
+        //    Android's dexopt cache warm and drops ~15s off cold-start on older
+        //    devices.
+        await ensureScrcpyServerPushed(this.adbClient, this.serial, SERVER_FILE);
 
         // 2. Set up tunnel + launch scrcpy-server + collect 3 sockets.
         const sockets = useTunnelForward
@@ -159,6 +164,16 @@ export class ScrcpyConnection extends Mw {
     }
 
     private async getSdkInt(): Promise<number> {
+        // Prefer the value cached on the descriptor by ControlCenter's poll —
+        // saves an adb-shell round-trip per session start.
+        if (ControlCenter.hasInstance()) {
+            const device = ControlCenter.getInstance().getDevice(this.serial);
+            const raw = device?.descriptor['ro.build.version.sdk'];
+            if (raw) {
+                const n = Number.parseInt(raw, 10);
+                if (Number.isFinite(n) && n > 0) return n;
+            }
+        }
         try {
             const out = await this.adbClient.shell(this.serial, 'getprop ro.build.version.sdk');
             const n = Number.parseInt(out.trim(), 10);
@@ -207,11 +222,11 @@ export class ScrcpyConnection extends Mw {
         // scrcpy accepts in order: video → audio (if enabled) → control. Give it
         // a brief beat between connects so each accept/return cycle completes.
         const audioEnabled = options.audio !== false;
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise((r) => setTimeout(r, 100));
         let audioSocket: net.Socket;
         if (audioEnabled) {
             audioSocket = await this.connectLocal(localPort, 15000);
-            await new Promise((r) => setTimeout(r, 250));
+            await new Promise((r) => setTimeout(r, 100));
         } else {
             // audio=false means scrcpy-server skips the audio accept. Feed
             // parseMetadata a synthetic AUDIO_DISABLED 4-byte status so the rest
@@ -246,7 +261,7 @@ export class ScrcpyConnection extends Mw {
                 } catch {
                     // ignore
                 }
-                await new Promise((r) => setTimeout(r, 500));
+                await new Promise((r) => setTimeout(r, 150));
             }
         }
         throw lastErr ?? new Error(`scrcpy-server did not emit handshake byte within ${maxWaitMs}ms`);
