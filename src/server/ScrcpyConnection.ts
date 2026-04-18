@@ -200,6 +200,14 @@ export class ScrcpyConnection extends Mw {
         log.info(`scrcpy-server bound on ${this.serial}; collecting audio + control sockets`);
         const second = await this.connectLocal(localPort, 15000);
         const third = await this.connectLocal(localPort, 15000);
+
+        // In forward-tunnel mode scrcpy-server writes a single dummy 0x00 byte on
+        // each socket before real traffic, to flush adb's forward buffer. Consume
+        // and discard those bytes so parseMetadata sees the real stream header.
+        await this.readExact(first, 1);
+        await this.readExact(second, 1);
+        await this.readExact(third, 1);
+
         return [first, second, third];
     }
 
