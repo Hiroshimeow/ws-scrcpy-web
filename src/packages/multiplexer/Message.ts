@@ -25,15 +25,19 @@ export class Message {
         return new Message(MessageType.CloseChannel, id, buf.buffer);
     }
 
-    public static createBuffer(type: MessageType, channelId: number, data?: ArrayBuffer): Uint8Array {
+    public static createBuffer(
+        type: MessageType,
+        channelId: number,
+        data?: ArrayBuffer | Uint8Array,
+    ): Uint8Array<ArrayBuffer> {
         const result = new Uint8Array(5 + (data ? data.byteLength : 0));
         const view = new DataView(result.buffer);
         view.setUint8(0, type);
         view.setUint32(1, channelId, true);
         if (data?.byteLength) {
-            result.set(new Uint8Array(data), 5);
+            result.set(data instanceof Uint8Array ? data : new Uint8Array(data), 5);
         }
-        return result;
+        return result as Uint8Array<ArrayBuffer>;
     }
 
     public constructor(
@@ -60,7 +64,7 @@ export class Message {
         });
     }
 
-    public toBuffer(): ArrayBuffer {
+    public toBuffer(): Uint8Array<ArrayBuffer> {
         return Message.createBuffer(this.type, this.channelId, this.data);
     }
 }

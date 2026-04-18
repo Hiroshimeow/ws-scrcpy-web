@@ -174,7 +174,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
             if (ws instanceof Multiplexer) {
                 this.storage.forEach((data) => ws.sendData(data));
             } else {
-                this.storage.forEach((data) => ws.send(data));
+                this.storage.forEach((data) => ws.send(data as string | BufferSource | Blob));
             }
             this.storage.length = 0;
         };
@@ -284,7 +284,7 @@ export class Multiplexer extends TypedEmitter<MultiplexerEvents> implements WebS
             if (this.ws instanceof Multiplexer) {
                 this.ws.sendData(data);
             } else {
-                this.ws.send(data);
+                this.ws.send(data as string | BufferSource | Blob);
             }
         } else if (readyState === this.ws.CONNECTING) {
             this.storage.push(data);
