@@ -144,6 +144,7 @@ export class ScrcpyConnection extends Mw {
         this.controlSocket = sockets[2];
 
         // 3. Parse initial metadata
+        log.info(`Parsing stream metadata for ${this.serial}`);
         const metadata = await this.parseMetadata();
         if (options.videoEncoder) {
             metadata.videoEncoder = options.videoEncoder;
@@ -203,12 +204,50 @@ export class ScrcpyConnection extends Mw {
 
         // In forward-tunnel mode scrcpy-server writes a single dummy 0x00 byte on
         // each socket before real traffic, to flush adb's forward buffer. Consume
-        // and discard those bytes so parseMetadata sees the real stream header.
-        await this.readExact(first, 1);
-        await this.readExact(second, 1);
-        await this.readExact(third, 1);
+        // those bytes with a best-effort timeout — if the server version didn't
+        // emit one on a given socket, we move on rather than hang.
+        await this.consumeDummyByte(first, 'video');
+        await this.consumeDummyByte(second, 'audio');
+        await this.consumeDummyByte(third, 'control');
 
         return [first, second, third];
+    }
+
+    private async consumeDummyByte(socket: net.Socket, label: string): Promise<void> {
+        try {
+            const byte = await this.readExactWithTimeout(socket, 1, 10000);
+            log.info(`Consumed dummy byte 0x${byte[0].toString(16).padStart(2, '0')} on ${label} socket for ${this.serial}`);
+        } catch (e: any) {
+            log.info(`No dummy byte on ${label} socket within 10s for ${this.serial} (${e?.message || e}) — proceeding`);
+        }
+    }
+
+    private readExactWithTimeout(socket: net.Socket, size: number, timeoutMs: number): Promise<Buffer> {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                socket.removeListener('data', onData);
+                socket.removeListener('error', onError);
+                reject(new Error(`readExact timeout after ${timeoutMs}ms`));
+            }, timeoutMs);
+            let buffer = Buffer.alloc(0);
+            const onData = (chunk: Buffer) => {
+                buffer = Buffer.concat([buffer, chunk]);
+                if (buffer.length >= size) {
+                    clearTimeout(timer);
+                    socket.removeListener('data', onData);
+                    socket.removeListener('error', onError);
+                    if (buffer.length > size) socket.unshift(buffer.subarray(size));
+                    resolve(buffer.subarray(0, size));
+                }
+            };
+            const onError = (err: Error) => {
+                clearTimeout(timer);
+                socket.removeListener('data', onData);
+                reject(err);
+            };
+            socket.on('data', onData);
+            socket.once('error', onError);
+        });
     }
 
     private launchServer(options: ScrcpyOptions): void {
