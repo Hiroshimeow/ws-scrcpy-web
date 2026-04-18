@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md` with setup, style guide, and PR expectations
 - `CHANGELOG.md` following Keep a Changelog format
 - `repository`, `author`, `bugs`, `homepage`, and `keywords` fields in `package.json`
+- `CommandControlMessage.createGetClipboardCommand(copyKey)` factory with `COPY_KEY_NONE` / `COPY_KEY_COPY` / `COPY_KEY_CUT` constants
 
 ### Changed
 - Personal filesystem paths scrubbed from historical plan documents in `docs/plans/` and `docs/superpowers/plans/`
+- Stream layout in `ws-scrcpy.css` promoted to flex-row (video | toolbar) with CSS grid for canvas-layer stacking — replaces legacy `float: right` + `position: absolute` layout. Redundant `dialog.connect-modal` layout overrides in `modal.css` deleted; modal keeps a targeted canvas-layer cap to fit inside the `95vw × 90vh` frame
 
 ### Fixed
 - Stream library stylesheet (`ws-scrcpy.css`) now self-contains theme variables so `/embed.html` renders back/home/overview buttons correctly in light mode
+- `/embed.html` no longer shows black dead space to the right of the video or below it — stream now fills the viewport via `body[data-embed-entry]` opt-in flex layout. `StreamClientScrcpy.getMaxSize()` now reads `window.innerWidth/Height` directly (not `document.body`), avoiding a zero-sized measurement at mount time when placed inside a `fit-content` modal frame
+- Clipboard GET toolbar button sent the wrong control-message size (1 byte instead of 2 — missing the required `copy_key` byte per scrcpy v3.3.4's `ControlMessageReader.parseGetClipboard`). Alternating GET and SET presses silently misaligned the control stream by one byte, causing scrcpy-server to parse garbage and close the session. Now sends `[type=8, copy_key=0]` per protocol
 
 ## [1.0.0] - 2026-04-17
 

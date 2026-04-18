@@ -189,8 +189,8 @@ Each control message type is identified by its first byte:
 | `TYPE_TOUCH` | `2` | Touch event (32 bytes payload) |
 | `TYPE_SCROLL` | `3` | Scroll event with position |
 | `TYPE_BACK_OR_SCREEN_ON` | `4` | Back button or wake screen |
-| `TYPE_GET_CLIPBOARD` | `8` | Request clipboard content |
-| `TYPE_SET_CLIPBOARD` | `9` | Set clipboard content |
+| `TYPE_GET_CLIPBOARD` | `8` | Request clipboard content (payload: `copy_key` u8) |
+| `TYPE_SET_CLIPBOARD` | `9` | Set clipboard content (payload: sequence u64 BE, paste u8, length u32 BE, text) |
 | `TYPE_UHID_CREATE` | `12` | Create UHID virtual device |
 | `TYPE_UHID_INPUT` | `13` | Send HID input report |
 | `TYPE_UHID_DESTROY` | `14` | Destroy UHID virtual device |
