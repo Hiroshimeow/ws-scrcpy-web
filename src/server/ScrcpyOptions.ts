@@ -13,6 +13,7 @@ export interface ScrcpyOptions {
     sendCodecMeta?: boolean;
     sendFrameMeta?: boolean;
     tunnelForward?: boolean;
+    cleanup?: boolean;
     videoEncoder?: string;
 }
 
@@ -29,6 +30,7 @@ const DEFAULTS: Omit<Required<ScrcpyOptions>, 'scid' | 'videoEncoder'> = {
     sendCodecMeta: true,
     sendFrameMeta: true,
     tunnelForward: false,
+    cleanup: true,
 };
 
 function toSnakeCase(key: string): string {

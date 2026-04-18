@@ -110,11 +110,15 @@ export class ScrcpyConnection extends Mw {
     private async start(): Promise<void> {
         const options = this.buildOptions();
 
-        // SDK-gated behavior:
-        //  - Reverse-over-TCP is unreliable on Android pre-9 (SDK 28); those devices
-        //    need tunnel_forward=true with host-initiated connections instead.
+        // SDK-gated behavior for older Android devices:
+        //  - Reverse-over-TCP is unreliable on pre-9 (SDK 28); those devices need
+        //    tunnel_forward=true with host-initiated connections instead.
         //  - scrcpy audio forwarding requires Android 11+ (SDK 30); force audio off
         //    on older devices so the server doesn't refuse to start.
+        //  - scrcpy-server self-deletes its own JAR at startup by default. On pre-8
+        //    Android (ART class loading is lazier), the JAR vanishes before the
+        //    server class fully resolves and app_process aborts with
+        //    ClassNotFoundException. cleanup=false keeps the JAR around.
         const sdkInt = await this.getSdkInt();
         const useTunnelForward = sdkInt > 0 && sdkInt < 28;
         if (sdkInt > 0 && sdkInt < 30 && options.audio === undefined) {
@@ -122,9 +126,10 @@ export class ScrcpyConnection extends Mw {
         }
         if (useTunnelForward) {
             options.tunnelForward = true;
+            options.cleanup = false;
         }
         log.info(
-            `Starting session for ${this.serial} (scid=${options.scid}, sdk=${sdkInt || '?'}, tunnel=${useTunnelForward ? 'forward' : 'reverse'}, audio=${options.audio ?? 'default'})`,
+            `Starting session for ${this.serial} (scid=${options.scid}, sdk=${sdkInt || '?'}, tunnel=${useTunnelForward ? 'forward' : 'reverse'}, audio=${options.audio ?? 'default'}, cleanup=${options.cleanup ?? 'default'})`,
         );
 
         // 1. Push scrcpy-server binary
