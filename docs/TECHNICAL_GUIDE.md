@@ -47,8 +47,7 @@ src/
 │   │   └── PcmWorklet.ts             # AudioWorklet source (ring buffer, inline as string literal)
 │   ├── interactionHandler/
 │   │   ├── InteractionHandler.ts     # Base: static document.body listeners, touch coordinate math
-│   │   ├── FeaturedInteractionHandler.ts  # Mouse-to-touch mapping, right-click=BACK, scroll
-│   │   └── SimpleInteractionHandler.ts    # Minimal touch handler
+│   │   └── FeaturedInteractionHandler.ts  # Mouse-to-touch mapping, right-click=BACK, scroll
 │   ├── googDevice/
 │   │   ├── client/
 │   │   │   ├── StreamClientScrcpy.ts # Main client: connects demuxer, player, touch, audio, UHID
