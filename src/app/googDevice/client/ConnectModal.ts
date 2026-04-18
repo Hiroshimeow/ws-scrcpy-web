@@ -1,5 +1,5 @@
 import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
-import type BasePlayer from '../../player/BasePlayer';
+import type { BasePlayer } from '../../player/BasePlayer';
 import type VideoSettings from '../../VideoSettings';
 import { Modal } from '../../ui/Modal';
 import { startStream } from '../../public/startStream';

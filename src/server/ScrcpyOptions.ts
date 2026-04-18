@@ -16,7 +16,7 @@ export interface ScrcpyOptions {
     videoEncoder?: string;
 }
 
-const DEFAULTS: Omit<Required<ScrcpyOptions>, 'scid'> = {
+const DEFAULTS: Omit<Required<ScrcpyOptions>, 'scid' | 'videoEncoder'> = {
     videoCodec: 'h264',
     audioCodec: 'opus',
     maxSize: 0,
@@ -38,7 +38,7 @@ function toSnakeCase(key: string): string {
 export function serializeOptions(options: ScrcpyOptions): string[] {
     const args: string[] = [];
     for (const [key, defaultValue] of Object.entries(DEFAULTS)) {
-        const value = (options as Record<string, unknown>)[key];
+        const value = (options as unknown as Record<string, unknown>)[key];
         if (value !== undefined && value !== defaultValue) {
             args.push(`${toSnakeCase(key)}=${value}`);
         }

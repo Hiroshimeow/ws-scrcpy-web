@@ -18,7 +18,7 @@ export class DeviceProbe extends Mw {
         }
         const udid = url.searchParams.get('udid');
         if (!udid) {
-            ws.close(4003, `${TAG} Missing "udid" parameter`);
+            ws.close(4003, '[DeviceProbe] Missing "udid" parameter');
             return;
         }
         return new DeviceProbe(ws, udid);

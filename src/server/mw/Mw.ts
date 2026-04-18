@@ -26,8 +26,9 @@ export abstract class Mw {
     }
 
     protected constructor(protected readonly ws: WS | Multiplexer) {
-        // @ts-expect-error
+        // @ts-expect-error WS | Multiplexer union: both support addEventListener, TS can't unify the signatures
         this.ws.addEventListener('message', this.onSocketMessage.bind(this));
+        // @ts-expect-error WS | Multiplexer union: both support addEventListener, TS can't unify the signatures
         this.ws.addEventListener('close', this.onSocketClose.bind(this));
     }
 

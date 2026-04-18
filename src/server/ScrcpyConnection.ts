@@ -47,7 +47,7 @@ export class ScrcpyConnection extends Mw {
         }
         const udid = url.searchParams.get('udid');
         if (!udid) {
-            ws.close(4003, `${TAG} Missing "udid" parameter`);
+            ws.close(4003, '[ScrcpyConnection] Missing "udid" parameter');
             return;
         }
         const connection = new ScrcpyConnection(ws, udid, url.searchParams);

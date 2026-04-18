@@ -1,5 +1,5 @@
 import type WS from 'ws';
-import { Server as WSServer } from 'ws';
+import { WebSocketServer as WSServer } from 'ws';
 import { Logger } from '../Logger';
 import type { MwFactory } from '../mw/Mw';
 import { HttpServer, type ServerAndPort } from './HttpServer';
