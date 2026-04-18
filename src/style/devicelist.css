@@ -261,7 +261,7 @@ body.list #device_list_menu {
     background-color: transparent;
     color: #5b9aff;
     text-decoration: none;
-    padding: 6px 12px;
+    padding: 0.3rem 0.75rem;
     font-size: var(--font-size);
     cursor: pointer;
     display: inline-block;
