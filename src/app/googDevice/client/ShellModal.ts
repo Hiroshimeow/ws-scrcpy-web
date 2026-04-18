@@ -214,7 +214,7 @@ export class ShellModal extends Modal {
         if (!dims) return;
         const message: MessageXtermClient = {
             id: 1,
-            type: 'resize',
+            type: 'shell',
             data: {
                 type: 'resize',
                 rows: dims.rows,

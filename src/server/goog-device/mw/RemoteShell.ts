@@ -58,9 +58,9 @@ export class RemoteShell extends Mw {
             encoding: null,
         });
         const send = USE_BINARY ? this.bufferUtf8(5) : this.buffer(5);
-        // @ts-expect-error Documentation is incorrect for `encoding: null`
-        term.on('data', send);
-        term.on('exit', (code: number) => {
+        // @ts-expect-error node-pty docs are incorrect for `encoding: null` — data is actually a Buffer, not a string
+        term.onData(send);
+        term.onExit(({ exitCode: code }) => {
             if (code === 0) {
                 this.closeCode = 1000;
             } else {

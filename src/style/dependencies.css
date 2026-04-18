@@ -59,6 +59,7 @@
     border-radius: 6px;
     background: transparent;
     color: #5b9aff;
+    font-family: var(--font-mono);
     font-size: var(--font-size);
     cursor: pointer;
     white-space: nowrap;

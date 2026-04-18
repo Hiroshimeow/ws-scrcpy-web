@@ -74,7 +74,9 @@ export class ShellClient extends ManagerClient<ParamsShell, never> {
         if (!udid || !this.ws || this.ws.readyState !== this.ws.OPEN) {
             return;
         }
-        const { rows, cols } = this.fitAddon.proposeDimensions();
+        const dims = this.fitAddon.proposeDimensions();
+        const rows = dims?.rows ?? 24;
+        const cols = dims?.cols ?? 80;
         const message: MessageXtermClient = {
             id: 1,
             type: 'shell',

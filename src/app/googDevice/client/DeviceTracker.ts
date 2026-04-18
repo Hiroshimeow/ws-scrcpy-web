@@ -57,19 +57,13 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         }
     }
 
-    private updateLink(params: { url: string; name: string; fullName: string; udid: string; store: boolean }): void {
-        const { url, name, fullName, udid, store } = params;
+    private updateLink(params: { url: string; name: string; fullName: string; udid: string }): void {
+        const { url, name, fullName, udid } = params;
         const playerTds = document.getElementsByName(
             encodeURIComponent(`${DeviceTracker.AttributePrefixPlayerFor}${fullName}`),
         );
         if (typeof udid !== 'string') {
             return;
-        }
-        if (store) {
-            const localStorageKey = DeviceTracker.getLocalStorageKey(fullName || '');
-            if (localStorage && name) {
-                localStorage.setItem(localStorageKey, name);
-            }
         }
         const action = ACTION.STREAM_SCRCPY;
         playerTds.forEach((item) => {
@@ -307,7 +301,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                 name: selectedInterfaceName,
                 fullName,
                 udid: device.udid,
-                store: false,
             });
         }
 
