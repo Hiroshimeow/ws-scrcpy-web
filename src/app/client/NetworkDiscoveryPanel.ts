@@ -25,6 +25,7 @@ export class NetworkDiscoveryPanel {
     private chip?: ScanProgressChip;
     private scanWs?: WebSocket;
     private scanSessionHits = new Map<string, HTMLElement>();
+    private defaultInfoText = '';
 
     constructor() {
         this.container = document.createElement('div');
@@ -50,6 +51,7 @@ export class NetworkDiscoveryPanel {
             <div class="empty-state-card discovery-info">Click scan network to find devices. Make sure wireless debugging is enabled on the devices you wish to connect with.</div>
         `;
         this.infoBox = this.container.querySelector('.discovery-info')!;
+        this.defaultInfoText = this.infoBox.textContent ?? '';
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
         this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
@@ -72,6 +74,13 @@ export class NetworkDiscoveryPanel {
     private setInfoText(text: string, error = false): void {
         this.infoBox.textContent = text;
         this.infoBox.style.color = error ? '#f87171' : '';
+    }
+
+    private restoreInfoText(): void {
+        // If a scan error already swapped in error text, don't overwrite it on chip dismiss.
+        if (this.infoBox.style.color === 'rgb(248, 113, 113)') return;
+        this.infoBox.textContent = this.defaultInfoText;
+        this.infoBox.style.color = '';
     }
 
     private async scan(): Promise<void> {
@@ -101,15 +110,18 @@ export class NetworkDiscoveryPanel {
         grid.className = 'discovery-grid';
         this.resultsContainer.appendChild(grid);
 
-        // Mount the chip
+        // Mount the chip into the info box — it replaces the default info text while scanning,
+        // and we restore that text when the chip dismisses (after auto-hide or manual close).
         this.chip?.dismiss();
+        this.infoBox.textContent = '';
         this.chip = new ScanProgressChip({
-            parent: this.container.querySelector('.discovery-header') as HTMLElement,
+            parent: this.infoBox,
             onCancel: () => {
                 if (this.scanWs?.readyState === WebSocket.OPEN) {
                     this.scanWs.send(JSON.stringify({ type: 'scan.cancel' }));
                 }
             },
+            onDismiss: () => this.restoreInfoText(),
         });
 
         // Open the WS

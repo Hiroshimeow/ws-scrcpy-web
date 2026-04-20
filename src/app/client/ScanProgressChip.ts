@@ -3,6 +3,7 @@ export type ChipState = 'scanning' | 'draining' | 'complete' | 'cancelled';
 export interface ScanProgressChipOptions {
     parent: HTMLElement; // mounts inside this element
     onCancel: () => void;
+    onDismiss?: () => void; // fires once when the chip is removed (manual × or auto-hide)
 }
 
 const MIN_DRAIN_DISPLAY_MS = 1200;
@@ -15,13 +16,15 @@ export class ScanProgressChip {
     private autoHideTimer?: number;
     private drainStartedAt?: number;
     private cancelTimer?: number;
+    private dismissed = false;
     private state: ChipState = 'scanning';
 
     constructor(private readonly opts: ScanProgressChipOptions) {
         this.el = document.createElement('div');
         this.el.className = 'scan-progress-chip';
         this.el.style.cssText =
-            'display: flex; align-items: center; gap: 12px; padding: 6px 12px; margin: 6px 0; ' +
+            'display: flex; align-items: center; gap: 12px; padding: 4px 12px; ' +
+            'width: 100%; min-height: 32px; box-sizing: border-box; ' +
             'background: rgba(88,166,255,0.12); border: 1px solid #58a6ff; border-radius: 16px; ' +
             'font-size: 13px; font-family: var(--font-mono, monospace); color: var(--text, #e6edf3);';
 
@@ -86,9 +89,12 @@ export class ScanProgressChip {
     }
 
     dismiss(): void {
+        if (this.dismissed) return;
+        this.dismissed = true;
         if (this.autoHideTimer) clearTimeout(this.autoHideTimer);
         if (this.cancelTimer) clearTimeout(this.cancelTimer);
         this.el.remove();
+        this.opts.onDismiss?.();
     }
 
     private setState(state: ChipState): void {
