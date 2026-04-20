@@ -63,10 +63,10 @@ const scanner = new NetworkScanner({
     adbConnect: (addr: string) => scanAdb.connect(addr),
     adbDisconnect: (addr: string) => scanAdb.disconnect(addr),
     tcpProbe: tcpProbe5555,
-    concurrency: 64,
-    progressInterval: 10,
-    tcpTimeoutMs: 300,
-    adbConnectTimeoutMs: 3000,
+    concurrency: config.scanConcurrency,
+    progressInterval: config.scanProgressInterval,
+    tcpTimeoutMs: config.scanTcpTimeoutMs,
+    adbConnectTimeoutMs: config.scanAdbConnectTimeoutMs,
 });
 ScanMw.setScanner(scanner);
 

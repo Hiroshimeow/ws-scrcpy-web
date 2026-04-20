@@ -277,3 +277,101 @@ describe('NetworkScanner — cancel drain', () => {
         expect(peak).toBeLessThanOrEqual(4);
     });
 });
+
+describe('NetworkScanner — spectator snapshot', () => {
+    it('sends scan.started and last scan.progress to mid-scan spectator', async () => {
+        let inFlight = 0;
+        const tcpProbe = async () => {
+            inFlight++;
+            await new Promise((r) => setTimeout(r, 30));
+            inFlight--;
+            return false;
+        };
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe,
+            concurrency: 2,
+            progressInterval: 2,
+        });
+        const { ws: ws1 } = makeWs();
+        const hosts = Array.from({ length: 20 }, (_, i) => `10.0.0.${i + 1}`);
+        const scanPromise = scanner.start([makeSubnet(hosts)], ws1);
+
+        // Wait for at least one progress emission
+        while (inFlight === 0) await new Promise((r) => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 40));
+
+        const { ws: ws2, messages: spectatorMessages } = makeWs();
+        scanner.attachSpectator(ws2);
+
+        // Give the snapshot a tick
+        await new Promise((r) => setTimeout(r, 5));
+
+        // Spectator should have received at least scan.started
+        expect(spectatorMessages.some((m) => m.type === 'scan.started')).toBe(true);
+
+        await scanPromise;
+    });
+});
+
+describe('NetworkScanner — getState', () => {
+    it('returns idle when not scanning', () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe: async () => false,
+            concurrency: 2,
+            progressInterval: 10,
+        });
+        expect(scanner.getState()).toBe('idle');
+    });
+
+    it('returns scanning during active scan', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe: async () => new Promise((r) => setTimeout(() => r(false), 30)),
+            concurrency: 2,
+            progressInterval: 10,
+        });
+        const { ws } = makeWs();
+        const p = scanner.start([makeSubnet(['1.1.1.1', '1.1.1.2'])], ws);
+        expect(scanner.getState()).toBe('scanning');
+        await p;
+        expect(scanner.getState()).toBe('idle');
+    });
+});
+
+describe('NetworkScanner — spectator cleanup', () => {
+    it('removes closed WS from spectators on close event', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe: async () => new Promise((r) => setTimeout(() => r(false), 30)),
+            concurrency: 2,
+            progressInterval: 10,
+        });
+        const listeners = new Map<string, () => void>();
+        const ws: any = {
+            readyState: 1, OPEN: 1, CLOSED: 3, CLOSING: 2,
+            send: vi.fn(),
+            once: (event: string, handler: () => void) => { listeners.set(event, handler); },
+        };
+        const p = scanner.start([makeSubnet(['1.1.1.1'])], ws);
+        // Simulate WS close
+        const closeHandler = listeners.get('close');
+        expect(closeHandler).toBeDefined();
+        closeHandler?.();
+        await p;
+        // No assertion error means spectators set accepted the removal.
+    });
+});

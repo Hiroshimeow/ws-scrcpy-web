@@ -1,6 +1,6 @@
 import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
-import type { ScanServerMessage } from '../../common/ScanMessage';
+import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
 
 export interface NetworkScannerDeps {
@@ -37,6 +37,8 @@ export class NetworkScanner {
     private spectators = new Set<WS | any>();
     private emittedAddresses = new Set<string>();
     private foundSoFar = 0;
+    private lastStartedMsg: ScanStartedMessage | null = null;
+    private lastProgressMsg: ScanProgressMessage | null = null;
 
     constructor(private readonly deps: NetworkScannerDeps) {}
 
@@ -44,9 +46,27 @@ export class NetworkScanner {
         return this.state !== 'idle';
     }
 
+    getState(): 'idle' | 'scanning' | 'draining' {
+        return this.state;
+    }
+
     attachSpectator(ws: WS | any): void {
         if (this.state === 'idle') return;
         this.spectators.add(ws);
+        // Send snapshot of current state so new spectators aren't stuck on empty chip
+        if (this.lastStartedMsg && ws.readyState === ws.OPEN) {
+            try { ws.send(JSON.stringify(this.lastStartedMsg)); } catch {}
+        }
+        if (this.lastProgressMsg && ws.readyState === ws.OPEN) {
+            try { ws.send(JSON.stringify(this.lastProgressMsg)); } catch {}
+        }
+        if (this.state === 'draining' && ws.readyState === ws.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'scan.draining' })); } catch {}
+        }
+        // Clean up on close to avoid accumulating dead entries during long scans
+        if (typeof ws.once === 'function') {
+            ws.once('close', () => this.spectators.delete(ws));
+        }
     }
 
     cancel(): void {
@@ -62,8 +82,13 @@ export class NetworkScanner {
         this.cancelFlag = false;
         this.emittedAddresses.clear();
         this.foundSoFar = 0;
+        this.lastStartedMsg = null;
+        this.lastProgressMsg = null;
         this.spectators.clear();
         this.spectators.add(ws);
+        if (typeof (ws as any).once === 'function') {
+            (ws as any).once('close', () => this.spectators.delete(ws));
+        }
 
         try {
             const totalHosts = subnets.reduce((sum, s) => sum + s.hostCount, 0);
@@ -91,10 +116,13 @@ export class NetworkScanner {
             })();
 
             await runPromise;
+            // Snapshot cancel state BEFORE awaiting drainWatcher — any late cancel() after
+            // workers completed shouldn't retroactively turn a successful scan into cancelled.
+            const wasCancelled = this.cancelFlag;
             drainWatcherDone = true;
             await drainWatcher;
 
-            if (this.cancelFlag) {
+            if (wasCancelled) {
                 this.emit({ type: 'scan.cancelled', found: this.foundSoFar });
             } else {
                 this.emit({ type: 'scan.complete', found: this.foundSoFar });
@@ -208,6 +236,11 @@ export class NetworkScanner {
     }
 
     protected emit(msg: ScanServerMessage): void {
+        if (msg.type === 'scan.started') {
+            this.lastStartedMsg = msg;
+        } else if (msg.type === 'scan.progress') {
+            this.lastProgressMsg = msg;
+        }
         for (const ws of this.spectators) {
             if (ws.readyState !== ws.OPEN) continue;
             try {
