@@ -65,3 +65,69 @@ describe('ScanNetworkModal — gateway detection UI', () => {
         modal.close();
     });
 });
+
+describe('ScanNetworkModal — row editing', () => {
+    it('renders a pencil (edit) button on every user-added row', async () => {
+        localStorage.setItem('ws-scrcpy-web:scan-subnets', JSON.stringify(['10.0.0.0/24']));
+        const modal = new ScanNetworkModal({
+            gatewaySubnet: { cidr: '192.168.1.0/24', hostCount: 254 },
+            onStartScan: vi.fn(),
+        });
+        await flush();
+        await flush(); // second flush for the async addUserRow
+
+        const list = modal['subnetListEl'];
+        const userRow = [...list.children].find((li) => li.textContent?.includes('10.0.0.0/24')) as HTMLElement;
+        expect(userRow).toBeDefined();
+        const editBtn = userRow.querySelector<HTMLButtonElement>('button[aria-label="edit"]');
+        const removeBtn = userRow.querySelector<HTMLButtonElement>('button[aria-label="remove"]');
+        expect(editBtn).not.toBeNull();
+        expect(removeBtn).not.toBeNull();
+
+        modal.close();
+    });
+
+    it('does NOT render a pencil on the non-removable gateway row', async () => {
+        const modal = new ScanNetworkModal({
+            gatewaySubnet: { cidr: '192.168.1.0/24', hostCount: 254 },
+            onStartScan: vi.fn(),
+        });
+        await flush();
+
+        const list = modal['subnetListEl'];
+        const gatewayRow = [...list.children].find((li) => li.textContent?.includes('detected gateway')) as HTMLElement;
+        expect(gatewayRow).toBeDefined();
+        expect(gatewayRow.querySelector('button[aria-label="edit"]')).toBeNull();
+
+        modal.close();
+    });
+
+    it('updateUserRow replaces a row in place and persists the new value', async () => {
+        localStorage.setItem('ws-scrcpy-web:scan-subnets', JSON.stringify(['10.0.0.0/24', '172.16.0.0/24']));
+        const modal = new ScanNetworkModal({
+            gatewaySubnet: null,
+            onStartScan: vi.fn(),
+        });
+        await flush();
+        await flush();
+
+        const rowsBefore: Array<{ id: string; raw: string }> = modal['rows'].map((r: { id: string; raw: string }) => ({ id: r.id, raw: r.raw }));
+        const firstUserRow = rowsBefore.find((r) => r.raw === '10.0.0.0/24');
+        expect(firstUserRow).toBeDefined();
+        const targetId = firstUserRow!.id;
+        expect(typeof targetId).toBe('string');
+
+        await modal['updateUserRow'](targetId, '192.168.99.0/24');
+
+        const rowsAfter = modal['rows'];
+        // Same position, new value
+        const positionBefore = rowsBefore.findIndex((r) => r.raw === '10.0.0.0/24');
+        expect(rowsAfter[positionBefore].raw).toBe('192.168.99.0/24');
+        expect(rowsAfter.length).toBe(rowsBefore.length);
+        // localStorage persists the new list
+        const persisted = JSON.parse(localStorage.getItem('ws-scrcpy-web:scan-subnets')!);
+        expect(persisted).toEqual(['192.168.99.0/24', '172.16.0.0/24']);
+
+        modal.close();
+    });
+});

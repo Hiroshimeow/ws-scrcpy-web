@@ -4,7 +4,13 @@ import { LargeSubnetWarningModal } from './LargeSubnetWarningModal';
 
 const LS_KEY = 'ws-scrcpy-web:scan-subnets';
 
+let nextRowId = 0;
+function makeRowId(): string {
+    return `row-${++nextRowId}`;
+}
+
 interface SubnetRow {
+    id: string;
     raw: string;
     normalized: string;
     hostCount: number;
@@ -112,6 +118,7 @@ export class ScanNetworkModal extends Modal {
         this.rows = [];
         if (this.opts.gatewaySubnet) {
             this.rows.push({
+                id: makeRowId(),
                 raw: this.opts.gatewaySubnet.cidr,
                 normalized: this.opts.gatewaySubnet.cidr,
                 hostCount: this.opts.gatewaySubnet.hostCount,
@@ -150,6 +157,7 @@ export class ScanNetworkModal extends Modal {
         const r = parseSubnetInput(raw);
         if ('reason' in r) return; // Already validated by AddSubnetModal; defensive skip.
         this.rows.push({
+            id: makeRowId(),
             raw,
             normalized: r.normalized,
             hostCount: r.hostCount,
@@ -161,7 +169,26 @@ export class ScanNetworkModal extends Modal {
         this.updateStartButton();
     }
 
-    private removeRow(idx: number): void {
+    private async updateUserRow(id: string, raw: string): Promise<void> {
+        const idx = this.rows.findIndex((r) => r.id === id);
+        if (idx === -1) return;
+        const { parseSubnetInput } = await import('../../common/SubnetParser');
+        const r = parseSubnetInput(raw);
+        if ('reason' in r) return; // Already validated by AddSubnetModal.
+        this.rows[idx] = {
+            ...this.rows[idx],
+            raw,
+            normalized: r.normalized,
+            hostCount: r.hostCount,
+        };
+        this.saveSubnets();
+        this.renderSubnetList();
+        this.updateStartButton();
+    }
+
+    private removeRowById(id: string): void {
+        const idx = this.rows.findIndex((r) => r.id === id);
+        if (idx === -1) return;
         this.rows.splice(idx, 1);
         this.saveSubnets();
         this.renderSubnetList();
@@ -173,21 +200,32 @@ export class ScanNetworkModal extends Modal {
         this.subnetListEl.innerHTML = '';
         const hasAny = this.rows.length > 0;
         this.emptyNotice.style.display = hasAny ? 'none' : '';
-        for (let i = 0; i < this.rows.length; i++) {
-            const row = this.rows[i];
+        for (const row of this.rows) {
             const li = document.createElement('li');
             li.style.cssText = 'padding: 4px 0; display: flex; justify-content: space-between; align-items: center;';
             const label = document.createElement('span');
             label.textContent = `${row.normalized} — ${row.hostCount.toLocaleString()} host${row.hostCount === 1 ? '' : 's'} (${row.annotation})`;
             li.appendChild(label);
             if (row.removable) {
+                const actions = document.createElement('span');
+                actions.style.cssText = 'display: inline-flex; align-items: center; gap: 4px;';
+
+                const edit = document.createElement('button');
+                edit.textContent = '✎';
+                edit.setAttribute('aria-label', 'edit');
+                edit.title = 'edit subnet';
+                edit.style.cssText = 'background: none; border: none; color: #58a6ff; font-size: 14px; cursor: pointer;';
+                edit.addEventListener('click', () => this.openEditSubnet(row.id, row.raw));
+                actions.appendChild(edit);
+
                 const x = document.createElement('button');
                 x.textContent = '×';
                 x.setAttribute('aria-label', 'remove');
                 x.style.cssText = 'background: none; border: none; color: #f06c75; font-size: 16px; cursor: pointer;';
-                const idx = i;
-                x.addEventListener('click', () => this.removeRow(idx));
-                li.appendChild(x);
+                x.addEventListener('click', () => this.removeRowById(row.id));
+                actions.appendChild(x);
+
+                li.appendChild(actions);
             }
             this.subnetListEl.appendChild(li);
         }
@@ -201,7 +239,15 @@ export class ScanNetworkModal extends Modal {
 
     private openAddSubnet(): void {
         new AddSubnetModal({
-            onAdded: (raw: string) => void this.addUserRow(raw),
+            onSubmit: (raw: string) => void this.addUserRow(raw),
+        });
+    }
+
+    private openEditSubnet(id: string, currentRaw: string): void {
+        new AddSubnetModal({
+            mode: 'edit',
+            initialValue: currentRaw,
+            onSubmit: (raw: string) => void this.updateUserRow(id, raw),
         });
     }
 

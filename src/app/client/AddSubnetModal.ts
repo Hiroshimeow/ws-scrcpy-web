@@ -1,19 +1,27 @@
 import { Modal } from '../ui/Modal';
 import { parseSubnetInput } from '../../common/SubnetParser';
 
+export type AddSubnetMode = 'add' | 'edit';
+
 export interface AddSubnetModalOptions {
-    onAdded: (rawSubnet: string) => void;
+    onSubmit: (rawSubnet: string) => void;
+    mode?: AddSubnetMode;
+    initialValue?: string;
 }
 
 export class AddSubnetModal extends Modal {
     private input!: HTMLInputElement;
     private status!: HTMLDivElement;
     private addBtn!: HTMLButtonElement;
-    private readonly addedCallback: (rawSubnet: string) => void;
+    private readonly submitCallback: (rawSubnet: string) => void;
+    private readonly mode: AddSubnetMode;
+    private readonly initialValue: string;
 
     constructor(options: AddSubnetModalOptions) {
-        super({ title: 'Add Subnet to Scan' });
-        this.addedCallback = options.onAdded;
+        super({ title: options.mode === 'edit' ? 'Edit Subnet' : 'Add Subnet to Scan' });
+        this.submitCallback = options.onSubmit;
+        this.mode = options.mode ?? 'add';
+        this.initialValue = options.initialValue ?? '';
         this.dialog.classList.add('add-subnet-modal');
     }
 
@@ -41,6 +49,11 @@ export class AddSubnetModal extends Modal {
         this.status = document.createElement('div');
         this.status.style.cssText = 'min-height: 18px; margin-top: 8px; font-size: 13px; word-wrap: break-word;';
         container.appendChild(this.status);
+
+        if (this.initialValue) {
+            this.input.value = this.initialValue;
+            this.revalidate();
+        }
     }
 
     protected buildFooter(): HTMLElement | null {
@@ -55,11 +68,13 @@ export class AddSubnetModal extends Modal {
         cancel.textContent = 'cancel';
         cancel.addEventListener('click', () => this.close());
         this.addBtn = document.createElement('button');
-        this.addBtn.textContent = 'add';
+        this.addBtn.textContent = this.mode === 'edit' ? 'save' : 'add';
         this.addBtn.disabled = true;
         this.addBtn.addEventListener('click', () => this.submit());
         footer.appendChild(cancel);
         footer.appendChild(this.addBtn);
+        // Edit mode starts with a valid pre-filled value — re-run validation so the save button enables.
+        if (this.initialValue) this.revalidate();
     }
 
     private revalidate(): void {
@@ -122,7 +137,7 @@ export class AddSubnetModal extends Modal {
         if (!this.input) return;
         const raw = this.input.value.trim();
         if (!raw) return;
-        this.addedCallback(raw);
+        this.submitCallback(raw);
         this.close();
     }
 }
