@@ -107,18 +107,6 @@ function parseRange(input: string): ParsedSubnet | ParseError {
 
     const startNorm = intToIp(ipToInt(startStr));
     const endNorm = intToIp(ipToInt(endIp));
-    const startParts = startNorm.split('.');
-    const endParts = endNorm.split('.');
-    // Same /24 check
-    if (startParts[0] !== endParts[0] || startParts[1] !== endParts[1] || startParts[2] !== endParts[2]) {
-        return {
-            reason:
-                "Range must stay within the same /24 — that's a block of up to 254 hosts " +
-                'where only the last number changes (e.g. 192.168.1.10-50). ' +
-                'For anything larger, switch to CIDR notation like 192.168.1.0/24. ' +
-                CHEAT_SHEET_NOTE,
-        };
-    }
 
     const startInt = ipToInt(startStr);
     const endInt = ipToInt(endIp);
@@ -126,13 +114,31 @@ function parseRange(input: string): ParsedSubnet | ParseError {
         return { reason: `Range start must be ≤ end (got ${startStr} > ${endIp}). ${CHEAT_SHEET_NOTE}` };
     }
 
-    const hostCount = endInt - startInt + 1;
+    const literalCount = endInt - startInt + 1;
+    if (literalCount > 65536) {
+        return {
+            reason:
+                `Range too large — maximum is 65,536 addresses (the size of a /16 CIDR block). ` +
+                `Got ${literalCount.toLocaleString()}. For larger scans, split into multiple entries ` +
+                `or use CIDR notation like 10.0.0.0/16. ` +
+                CHEAT_SHEET_NOTE,
+        };
+    }
+
+    // Skip network/broadcast when the range aligns to a subnet boundary
+    // (first address ending in .0, last ending in .255). Matches CIDR behavior.
+    const skipFirst = (startInt & 0xff) === 0;
+    const skipLast = (endInt & 0xff) === 0xff;
+    const scanStart = skipFirst ? startInt + 1 : startInt;
+    const scanEnd = skipLast ? endInt - 1 : endInt;
+    const hostCount = scanEnd >= scanStart ? scanEnd - scanStart + 1 : 0;
+
     return {
         raw: input,
         normalized: `${startNorm}-${endNorm}`,
         hostCount,
         *hosts() {
-            for (let i = startInt; i <= endInt; i++) {
+            for (let i = scanStart; i <= scanEnd; i++) {
                 yield intToIp(i >>> 0);
             }
         },

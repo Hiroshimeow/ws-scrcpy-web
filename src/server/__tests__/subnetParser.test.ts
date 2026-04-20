@@ -116,17 +116,61 @@ describe('parseSubnetInput — range', () => {
         expect(r.reason).toMatch(/start.*end/i);
     });
 
-    it('rejects cross-/24 range with friendly message', () => {
+    it('accepts cross-/24 range within the 65,536-address cap', () => {
         const r = parseSubnetInput('192.168.1.10-192.168.2.10');
+        if ('reason' in r) throw new Error(r.reason);
+        expect(r.hostCount).toBe(257);
+        expect(r.normalized).toBe('192.168.1.10-192.168.2.10');
+    });
+
+    it('treats a literal /16 range as /16 — skips network and broadcast', () => {
+        const r = parseSubnetInput('10.0.0.0-10.0.255.255');
+        if ('reason' in r) throw new Error(r.reason);
+        expect(r.hostCount).toBe(65534);
+        const hosts = [...r.hosts()];
+        expect(hosts[0]).toBe('10.0.0.1');
+        expect(hosts.at(-1)).toBe('10.0.255.254');
+    });
+
+    it('treats a literal /24 range as /24 — skips network and broadcast', () => {
+        const r = parseSubnetInput('192.168.1.0-192.168.1.255');
+        if ('reason' in r) throw new Error(r.reason);
+        expect(r.hostCount).toBe(254);
+        const hosts = [...r.hosts()];
+        expect(hosts[0]).toBe('192.168.1.1');
+        expect(hosts.at(-1)).toBe('192.168.1.254');
+    });
+
+    it('skips only .0 when range starts at .0 but does not end at .255', () => {
+        const r = parseSubnetInput('10.0.0.0-10.0.0.100');
+        if ('reason' in r) throw new Error(r.reason);
+        expect(r.hostCount).toBe(100);
+        const hosts = [...r.hosts()];
+        expect(hosts[0]).toBe('10.0.0.1');
+        expect(hosts.at(-1)).toBe('10.0.0.100');
+    });
+
+    it('skips only .255 when range ends at .255 but does not start at .0', () => {
+        const r = parseSubnetInput('192.168.1.10-192.168.1.255');
+        if ('reason' in r) throw new Error(r.reason);
+        expect(r.hostCount).toBe(245);
+        const hosts = [...r.hosts()];
+        expect(hosts[0]).toBe('192.168.1.10');
+        expect(hosts.at(-1)).toBe('192.168.1.254');
+    });
+
+    it('rejects range exceeding 65,536 addresses with friendly message', () => {
+        const r = parseSubnetInput('10.0.0.0-10.1.0.0');
         if (!('reason' in r)) throw new Error('expected error');
-        expect(r.reason).toMatch(/same \/24/);
+        expect(r.reason).toMatch(/65,?536/);
         expect(r.reason).toMatch(/CIDR/);
     });
 
-    it('allows range across /24 boundary values (.254 to .255)', () => {
+    it('excludes .255 broadcast when range ends there', () => {
         const r = parseSubnetInput('192.168.1.254-255');
         if ('reason' in r) throw new Error(r.reason);
-        expect(r.hostCount).toBe(2);
+        expect(r.hostCount).toBe(1);
+        expect([...r.hosts()]).toEqual(['192.168.1.254']);
     });
 
     it('rejects range with invalid start IP', () => {
