@@ -1,5 +1,4 @@
 import * as net from 'net';
-import * as zlib from 'zlib';
 import { describe, expect, it } from 'vitest';
 import { buildCnxnPacket, dedupModel, parseCnxnReply, probeAdb } from '../network/AdbHandshakeProbe';
 
@@ -7,13 +6,19 @@ const A_CNXN = 0x4e584e43;
 const A_AUTH = 0x48545541;
 const HEADER_SIZE = 24;
 
+function adbChecksum(buf: Buffer): number {
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum = (sum + buf[i]) >>> 0;
+    return sum;
+}
+
 function buildReply(command: number, payload: Buffer): Buffer {
     const header = Buffer.alloc(HEADER_SIZE);
     header.writeUInt32LE(command, 0);
     header.writeUInt32LE(0x01000000, 4);
-    header.writeUInt32LE(0x00040000, 8);
+    header.writeUInt32LE(0x00001000, 8);
     header.writeUInt32LE(payload.length, 12);
-    header.writeUInt32LE(zlib.crc32(payload), 16);
+    header.writeUInt32LE(adbChecksum(payload), 16);
     header.writeUInt32LE((command ^ 0xffffffff) >>> 0, 20);
     return Buffer.concat([header, payload]);
 }
@@ -39,6 +44,26 @@ describe('buildCnxnPacket', () => {
         const dataLen = pkt.readUInt32LE(12);
         const banner = pkt.slice(HEADER_SIZE, HEADER_SIZE + dataLen).toString('utf8');
         expect(banner.startsWith('host::')).toBe(true);
+    });
+
+    it('data_check field is an unsigned byte-sum of the payload (NOT CRC32)', () => {
+        // Older adbd (protocol V1) validates this checksum strictly; sending
+        // CRC32 instead of byte-sum would cause silent packet drops.
+        const pkt = buildCnxnPacket();
+        const dataLen = pkt.readUInt32LE(12);
+        const payload = pkt.slice(HEADER_SIZE, HEADER_SIZE + dataLen);
+        const dataCheck = pkt.readUInt32LE(16);
+        expect(dataCheck).toBe(adbChecksum(payload));
+    });
+
+    it('data_length does not include a trailing null terminator', () => {
+        // Real adb sends "host::" with banner.length() (C++ string), which
+        // excludes the null. Some older adbd implementations reject banners
+        // whose data_length includes the terminator.
+        const pkt = buildCnxnPacket();
+        const dataLen = pkt.readUInt32LE(12);
+        const lastByte = pkt[HEADER_SIZE + dataLen - 1];
+        expect(lastByte).not.toBe(0);
     });
 });
 
@@ -83,9 +108,9 @@ describe('parseCnxnReply', () => {
         const header = Buffer.alloc(HEADER_SIZE);
         header.writeUInt32LE(A_CNXN, 0);
         header.writeUInt32LE(0x01000000, 4);
-        header.writeUInt32LE(0x00040000, 8);
+        header.writeUInt32LE(0x00001000, 8);
         header.writeUInt32LE(payload.length, 12);
-        header.writeUInt32LE(zlib.crc32(payload), 16);
+        header.writeUInt32LE(adbChecksum(payload), 16);
         header.writeUInt32LE(0xdeadbeef, 20); // bad magic
         const reply = Buffer.concat([header, payload]);
         const r = parseCnxnReply(reply);

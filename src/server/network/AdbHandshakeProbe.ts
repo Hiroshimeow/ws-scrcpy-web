@@ -5,7 +5,6 @@
 // never involved — this is pure socket protocol, no state mutation.
 
 import * as net from 'net';
-import * as zlib from 'zlib';
 import { Logger } from '../Logger';
 
 const log = Logger.for('AdbHandshakeProbe');
@@ -17,7 +16,21 @@ const A_AUTH_MAGIC = (A_AUTH ^ 0xffffffff) >>> 0;
 const ADB_VERSION = 0x01000000; // protocol version 1 — widest compatibility
 const ADB_MAX_DATA = 0x00001000; // 4KB — MAX_PAYLOAD_V1 from Android adb source; widest compat
 const HEADER_SIZE = 24;
-const HOST_BANNER = Buffer.from('host::features=shell_v2\0', 'utf8');
+// Real adb sends just "host::" with no trailing null and no features — keep it
+// minimal so older adbd implementations that parse strictly don't balk.
+const HOST_BANNER = Buffer.from('host::', 'utf8');
+
+// ADB's data_check is a simple unsigned 32-bit byte SUM of the payload, NOT CRC32.
+// Older adbd (protocol V1, pre-Android 6) validates this strictly and silently
+// drops packets whose checksum doesn't match. Newer adbd (V2) ignores the field
+// but still accepts a correct sum — so the byte-sum approach works everywhere.
+function adbChecksum(payload: Buffer): number {
+    let sum = 0;
+    for (let i = 0; i < payload.length; i++) {
+        sum = (sum + payload[i]) >>> 0;
+    }
+    return sum;
+}
 
 export interface AdbHandshakeResult {
     isAdb: boolean;
@@ -31,7 +44,7 @@ export function buildCnxnPacket(): Buffer {
     header.writeUInt32LE(ADB_VERSION, 4);
     header.writeUInt32LE(ADB_MAX_DATA, 8);
     header.writeUInt32LE(payload.length, 12);
-    header.writeUInt32LE(zlib.crc32(payload), 16);
+    header.writeUInt32LE(adbChecksum(payload), 16);
     header.writeUInt32LE(A_CNXN_MAGIC, 20);
     return Buffer.concat([header, payload]);
 }
