@@ -177,6 +177,7 @@ export class NetworkScanner {
         let checked = 0;
         const tcpTimeout = this.deps.tcpTimeoutMs ?? 300;
         const adbTimeout = this.deps.adbConnectTimeoutMs ?? 3000;
+        log.info(`TCP pool setup: hostList.length=${hostList.length}, concurrency=${this.deps.concurrency}, tcpTimeoutMs=${tcpTimeout}, adbTimeoutMs=${adbTimeout}, first=${hostList[0]}, last=${hostList.at(-1)}`);
 
         let cursor = 0;
         const nextHost = (): string | null => {
@@ -254,10 +255,13 @@ export class NetworkScanner {
         };
 
         const workers: Promise<void>[] = [];
-        for (let i = 0; i < Math.min(this.deps.concurrency, Math.max(hostList.length, 1)); i++) {
+        const workerCount = Math.min(this.deps.concurrency, Math.max(hostList.length, 1));
+        log.info(`spawning ${workerCount} workers`);
+        for (let i = 0; i < workerCount; i++) {
             workers.push(worker());
         }
         await Promise.all([mdnsPromise, ...workers]);
+        log.info(`TCP pool done: checked=${checked}/${totalHosts}, foundSoFar=${this.foundSoFar}`);
     }
 
     private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {
