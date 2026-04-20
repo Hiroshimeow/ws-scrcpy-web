@@ -6,8 +6,8 @@ import { Device } from '../Device';
 
 import Timeout = NodeJS.Timeout;
 
-import * as crypto from 'node:crypto';
-import * as os from 'node:os';
+import * as crypto from 'crypto';
+import * as os from 'os';
 import { ControlCenterCommand } from '../../../common/ControlCenterCommand';
 import { DeviceState } from '../../../common/DeviceState';
 import { BaseControlCenter } from '../../services/BaseControlCenter';

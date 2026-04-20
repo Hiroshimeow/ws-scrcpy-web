@@ -29,7 +29,7 @@ export abstract class BaseCanvasBasedPlayer extends BasePlayer {
         while (!gl && index++ < validContextNames.length) {
             try {
                 gl = testCanvas.getContext(validContextNames[index]);
-            } catch (_error: any) {
+            } catch (error: any) {
                 gl = null;
             }
         }

@@ -1,5 +1,5 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const DEFAULT_PATH = path.resolve(__dirname, '..', 'device-labels.json');
 
@@ -51,7 +51,7 @@ export class DeviceLabelStore {
 
     private save(): void {
         try {
-            fs.writeFileSync(this.filePath, `${JSON.stringify(this.labels, null, 2)}\n`);
+            fs.writeFileSync(this.filePath, JSON.stringify(this.labels, null, 2) + '\n');
         } catch {
             // If we can't write, don't crash the server
         }

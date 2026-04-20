@@ -1,5 +1,5 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type ChildProcess, execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,7 +25,7 @@ export function parseMdnsOutput(output: string): MdnsDevice[] {
         if (colonIdx === -1) continue;
         const address = addressPort.substring(0, colonIdx);
         const port = parseInt(addressPort.substring(colonIdx + 1), 10);
-        if (Number.isNaN(port)) continue;
+        if (isNaN(port)) continue;
         results.push({ name: name.trim(), service: service.trim(), address, port });
     }
     return results;

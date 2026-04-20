@@ -67,9 +67,7 @@ body.list #device_list_menu {
     border-radius: 8px;
     padding: 8px;
     background: var(--device-list-default-color);
-    transition:
-        border-color 0.15s,
-        box-shadow 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 #devices .device-list div.device:hover {
@@ -276,6 +274,7 @@ body.list #device_list_menu {
     background-color: var(--device-list-hover-color);
 }
 
+
 /* Tracker block — inherits grid layout so device cards flow correctly */
 #devices .device-list > div {
     display: grid;
@@ -295,7 +294,7 @@ body.list #device_list_menu {
 /* Device name row — inline label editor */
 #devices .device-name-cell {
     position: relative;
-    padding-right: 28px;
+    padding-right: 28px !important;
 }
 
 #devices .device-name-text {

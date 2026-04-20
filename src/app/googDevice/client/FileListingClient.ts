@@ -153,7 +153,7 @@ export class FileListingClient extends ManagerClient<ParamsFileListing, never> i
                     let anchor: HTMLElement | undefined;
                     if (entryIdString) {
                         const entryId = Number.parseInt(entryIdString, 10);
-                        if (!Number.isNaN(entryId) && this.entries[entryId]) {
+                        if (!isNaN(entryId) && this.entries[entryId]) {
                             entry = this.entries[entryId];
                             anchor = e.target;
                         }
@@ -552,7 +552,7 @@ export class FileListingClient extends ManagerClient<ParamsFileListing, never> i
             this.cleanProgress(el);
         }
         let name: string;
-        if (download.entry?.isFile()) {
+        if (download.entry && download.entry.isFile()) {
             name = download.entry.name;
         } else {
             // we always should have `download.entry` and never be here

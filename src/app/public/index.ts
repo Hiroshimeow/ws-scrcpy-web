@@ -15,7 +15,7 @@ import { WebCodecsPlayer } from '../player/WebCodecsPlayer';
 StreamClientScrcpy.registerPlayer(WebCodecsPlayer);
 
 export { startStream } from './startStream';
-export type { StartStreamOptions, StreamHandle, StreamInfo } from './types';
+export type { StartStreamOptions, StreamInfo, StreamHandle } from './types';
 
 // Injected at build time via webpack DefinePlugin
 declare const __WSSCRCPY_VERSION__: string;

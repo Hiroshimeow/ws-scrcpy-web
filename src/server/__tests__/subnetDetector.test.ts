@@ -1,14 +1,12 @@
-import type * as os from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
-import { __internals, detectSubnet } from '../network/SubnetDetector';
+import type * as os from 'os';
+import { detectSubnet, __internals } from '../network/SubnetDetector';
 
 describe('SubnetDetector', () => {
     it('returns null when no interfaces and no gateway', async () => {
         const result = await detectSubnet({
             getInterfaces: () => ({}),
-            runCommand: async () => {
-                throw new Error('no route');
-            },
+            runCommand: async () => { throw new Error('no route'); },
             platform: 'linux',
         });
         expect(result).toBeNull();
@@ -16,22 +14,18 @@ describe('SubnetDetector', () => {
 
     it('falls back to interface when gateway detection fails', async () => {
         const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
-            eth0: [
-                {
-                    address: '192.168.86.50',
-                    netmask: '255.255.255.0',
-                    family: 'IPv4',
-                    mac: 'aa:bb:cc:dd:ee:ff',
-                    internal: false,
-                    cidr: '192.168.86.50/24',
-                },
-            ],
+            eth0: [{
+                address: '192.168.86.50',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: '192.168.86.50/24',
+            }],
         };
         const result = await detectSubnet({
             getInterfaces: () => interfaces,
-            runCommand: async () => {
-                throw new Error('no gateway');
-            },
+            runCommand: async () => { throw new Error('no gateway'); },
             platform: 'linux',
         });
         expect(result).not.toBeNull();
@@ -42,16 +36,14 @@ describe('SubnetDetector', () => {
 
     it('uses gateway detection on Linux (ip route)', async () => {
         const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
-            eth0: [
-                {
-                    address: '192.168.1.42',
-                    netmask: '255.255.255.0',
-                    family: 'IPv4',
-                    mac: 'aa:bb:cc:dd:ee:ff',
-                    internal: false,
-                    cidr: '192.168.1.42/24',
-                },
-            ],
+            eth0: [{
+                address: '192.168.1.42',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: '192.168.1.42/24',
+            }],
         };
         const runCommand = vi.fn(async (cmd: string) => {
             if (cmd.startsWith('ip route show default')) {
@@ -73,33 +65,27 @@ describe('SubnetDetector', () => {
 
     it('skips internal and non-IPv4 interfaces in fallback', async () => {
         const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
-            lo: [
-                {
-                    address: '127.0.0.1',
-                    netmask: '255.0.0.0',
-                    family: 'IPv4',
-                    mac: '00:00:00:00:00:00',
-                    internal: true,
-                    cidr: '127.0.0.1/8',
-                },
-            ],
-            eth0: [
-                {
-                    address: 'fe80::1',
-                    netmask: 'ffff:ffff:ffff:ffff::',
-                    family: 'IPv6',
-                    mac: 'aa:bb:cc:dd:ee:ff',
-                    internal: false,
-                    cidr: 'fe80::1/64',
-                    scopeid: 0,
-                },
-            ],
+            lo: [{
+                address: '127.0.0.1',
+                netmask: '255.0.0.0',
+                family: 'IPv4',
+                mac: '00:00:00:00:00:00',
+                internal: true,
+                cidr: '127.0.0.1/8',
+            }],
+            eth0: [{
+                address: 'fe80::1',
+                netmask: 'ffff:ffff:ffff:ffff::',
+                family: 'IPv6',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: 'fe80::1/64',
+                scopeid: 0,
+            }],
         };
         const result = await detectSubnet({
             getInterfaces: () => interfaces,
-            runCommand: async () => {
-                throw new Error('no gateway');
-            },
+            runCommand: async () => { throw new Error('no gateway'); },
             platform: 'linux',
         });
         expect(result).toBeNull();
@@ -107,32 +93,26 @@ describe('SubnetDetector', () => {
 
     it('prefers smallest netmask when multiple RFC1918 interfaces match', async () => {
         const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
-            eth0: [
-                {
-                    address: '192.168.1.5',
-                    netmask: '255.255.255.0', // /24
-                    family: 'IPv4',
-                    mac: 'aa:bb:cc:dd:ee:ff',
-                    internal: false,
-                    cidr: '192.168.1.5/24',
-                },
-            ],
-            eth1: [
-                {
-                    address: '10.0.0.5',
-                    netmask: '255.255.0.0', // /16
-                    family: 'IPv4',
-                    mac: '11:22:33:44:55:66',
-                    internal: false,
-                    cidr: '10.0.0.5/16',
-                },
-            ],
+            eth0: [{
+                address: '192.168.1.5',
+                netmask: '255.255.255.0', // /24
+                family: 'IPv4',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: '192.168.1.5/24',
+            }],
+            eth1: [{
+                address: '10.0.0.5',
+                netmask: '255.255.0.0', // /16
+                family: 'IPv4',
+                mac: '11:22:33:44:55:66',
+                internal: false,
+                cidr: '10.0.0.5/16',
+            }],
         };
         const result = await detectSubnet({
             getInterfaces: () => interfaces,
-            runCommand: async () => {
-                throw new Error('no gateway');
-            },
+            runCommand: async () => { throw new Error('no gateway'); },
             platform: 'linux',
         });
         expect(result?.cidr).toBe('10.0.0.0/16');

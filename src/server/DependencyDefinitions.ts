@@ -1,10 +1,9 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-
-import os from 'node:os';
-// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-import { execFile } from 'child_process';
+import os from 'os';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import path from 'path';
+// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
+import { execFile } from 'child_process';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { promisify } from 'util';
 import { SERVER_VERSION } from '../common/Constants';

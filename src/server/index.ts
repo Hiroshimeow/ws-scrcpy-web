@@ -1,18 +1,18 @@
-import * as net from 'node:net';
-import * as readline from 'node:readline';
-import { AdbClient } from './AdbClient';
-import { DependencyApi } from './api/DependencyApi';
-import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
+import * as readline from 'readline';
+import * as net from 'net';
 import { Config } from './Config';
 import { DependencyManager } from './DependencyManager';
-import { DeviceProbe } from './DeviceProbe';
 import { Logger } from './Logger';
+import { DeviceProbe } from './DeviceProbe';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
 import { ScanMw } from './mw/ScanMw';
 import { WebsocketMultiplexer } from './mw/WebsocketMultiplexer';
-import { NetworkScanner } from './network/NetworkScanner';
 import { ScrcpyConnection } from './ScrcpyConnection';
+import { AdbClient } from './AdbClient';
+import { NetworkScanner } from './network/NetworkScanner';
+import { DependencyApi } from './api/DependencyApi';
+import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
 import { HttpServer } from './services/HttpServer';
 import type { Service, ServiceClass } from './services/Service';
 import { WebSocketServer } from './services/WebSocketServer';
@@ -44,11 +44,7 @@ function tcpProbe5555(host: string, port: number, timeoutMs: number): Promise<bo
         const done = (open: boolean) => {
             if (settled) return;
             settled = true;
-            try {
-                socket.destroy();
-            } catch {
-                /* ignore */
-            }
+            try { socket.destroy(); } catch { /* ignore */ }
             resolve(open);
         };
         socket.setTimeout(timeoutMs);
@@ -127,9 +123,7 @@ loadGoogModules()
         process.on('SIGTERM', exit);
 
         // Kick off initial dependency check in background (don't block startup)
-        depManager
-            .checkAll()
-            .catch((err: Error) => Logger.for('DependencyManager').error('Initial check failed:', err.message));
+        depManager.checkAll().catch((err: Error) => Logger.for('DependencyManager').error('Initial check failed:', err.message));
     })
     .catch((error) => {
         Logger.for('Server').error(error.message);

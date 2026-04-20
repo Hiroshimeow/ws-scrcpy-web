@@ -18,8 +18,7 @@ export class AddSubnetModal extends Modal {
 
     protected buildBody(container: HTMLElement): void {
         const help = document.createElement('p');
-        help.textContent =
-            'Accepted formats: CIDR (192.168.2.0/24), single IP (192.168.2.5), or range (192.168.2.10-50).';
+        help.textContent = 'Accepted formats: CIDR (192.168.2.0/24), single IP (192.168.2.5), or range (192.168.2.10-50).';
         help.style.cssText = 'margin: 0 0 12px; color: var(--muted, #8b949e); font-size: 13px;';
         container.appendChild(help);
 
@@ -68,10 +67,10 @@ export class AddSubnetModal extends Modal {
                 this.addBtn.disabled = true;
             } else {
                 const label = r.normalized.includes('/32')
-                    ? '✓ single host'
+                    ? `✓ single host`
                     : r.normalized.includes('-')
-                      ? `✓ range, ${r.hostCount} host${r.hostCount === 1 ? '' : 's'}`
-                      : `✓ CIDR, ${r.hostCount} host${r.hostCount === 1 ? '' : 's'}`;
+                        ? `✓ range, ${r.hostCount} host${r.hostCount === 1 ? '' : 's'}`
+                        : `✓ CIDR, ${r.hostCount} host${r.hostCount === 1 ? '' : 's'}`;
                 this.status.textContent = label;
                 this.status.style.color = '#8ad67a';
                 this.addBtn.disabled = false;

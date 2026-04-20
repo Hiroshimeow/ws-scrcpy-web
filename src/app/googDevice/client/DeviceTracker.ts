@@ -13,6 +13,7 @@ import { html } from '../../ui/HtmlTag';
 import SvgImage from '../../ui/SvgImage';
 import { StreamClientScrcpy } from './StreamClientScrcpy';
 
+
 export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never> {
     public static readonly ACTION = ACTION.GOOG_DEVICE_LIST;
     public static readonly CREATE_DIRECT_LINKS = true;
@@ -59,24 +60,14 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
 
     private static iconForKind(kind: 'phone' | 'tablet' | 'tv' | undefined) {
         switch (kind) {
-            case 'tv':
-                return SvgImage.Icon.DEVICE_TV;
-            case 'tablet':
-                return SvgImage.Icon.DEVICE_TABLET;
-            case 'phone':
-                return SvgImage.Icon.DEVICE_PHONE;
-            default:
-                return undefined;
+            case 'tv': return SvgImage.Icon.DEVICE_TV;
+            case 'tablet': return SvgImage.Icon.DEVICE_TABLET;
+            case 'phone': return SvgImage.Icon.DEVICE_PHONE;
+            default: return undefined;
         }
     }
 
-    private updateLink(params: {
-        url: string;
-        name: string;
-        fullName: string;
-        udid: string;
-        deviceKind?: 'phone' | 'tablet' | 'tv';
-    }): void {
+    private updateLink(params: { url: string; name: string; fullName: string; udid: string; deviceKind?: 'phone' | 'tablet' | 'tv' }): void {
         const { url, name, fullName, udid, deviceKind } = params;
         const playerTds = document.getElementsByName(
             encodeURIComponent(`${DeviceTracker.AttributePrefixPlayerFor}${fullName}`),
@@ -374,7 +365,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
         DeviceTracker.instancesByUrl.delete(this.url.toString());
         if (!DeviceTracker.instancesByUrl.size) {
             const holder = document.getElementById(BaseDeviceTracker.HOLDER_ELEMENT_ID);
-            if (holder?.parentElement) {
+            if (holder && holder.parentElement) {
                 holder.parentElement.removeChild(holder);
             }
         }
@@ -403,8 +394,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
 
             const pencilBtn = document.createElement('button');
             pencilBtn.className = 'device-name-edit-btn';
-            pencilBtn.innerHTML =
-                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+            pencilBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
             pencilBtn.title = 'Edit device name';
             pencilBtn.addEventListener('click', () => renderEdit(label));
             cell.appendChild(pencilBtn);
@@ -422,8 +412,7 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
 
             const saveBtn = document.createElement('button');
             saveBtn.className = 'device-name-edit-btn';
-            saveBtn.innerHTML =
-                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+            saveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
             saveBtn.title = 'Save';
             const save = async () => {
                 const newLabel = input.value.trim();

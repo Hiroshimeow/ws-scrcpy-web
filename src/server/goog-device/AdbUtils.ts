@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import AdbProtocol from '../../common/AdbProtocol';
 import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
@@ -146,14 +146,10 @@ export class AdbUtils {
     public static async pipePullFileToStream(serial: string, pathString: string, stream: Multiplexer): Promise<void> {
         try {
             // Use adb exec-out to stream binary file content
-            const { stdout } = await execFileAsync(
-                Config.getInstance().adbPath,
-                ['-s', serial, 'exec-out', `cat "${pathString}"`],
-                {
-                    maxBuffer: 50 * 1024 * 1024,
-                    encoding: 'buffer',
-                },
-            );
+            const { stdout } = await execFileAsync(Config.getInstance().adbPath, ['-s', serial, 'exec-out', `cat "${pathString}"`], {
+                maxBuffer: 50 * 1024 * 1024,
+                encoding: 'buffer',
+            });
             const data = stdout as unknown as Buffer;
             // Send in chunks of 64KB (matches ADB sync protocol typical chunk size)
             const CHUNK_SIZE = 64 * 1024;

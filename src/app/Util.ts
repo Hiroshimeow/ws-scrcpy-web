@@ -26,7 +26,7 @@ export default class Util {
     }
 
     public static escapeUdid(udid: string): string {
-        return `udid_${udid.replace(/[. :]/g, '_')}`;
+        return 'udid_' + udid.replace(/[. :]/g, '_');
     }
 
     public static parse(params: URLSearchParams, name: string, required?: boolean): string | null {
@@ -56,7 +56,7 @@ export default class Util {
             return 0;
         }
         const int = Number.parseInt(value, 10);
-        if (Number.isNaN(int)) {
+        if (isNaN(int)) {
             return 0;
         }
         return int;
@@ -95,7 +95,7 @@ export default class Util {
             input = input[input.length - 1];
         }
         const int = Number.parseInt(input, 10);
-        if (Number.isNaN(int)) {
+        if (isNaN(int)) {
             return undefined;
         }
         return int;
@@ -121,7 +121,7 @@ export default class Util {
             window.addEventListener('testPassive', null, opts);
             // @ts-expect-error
             window.removeEventListener('testPassive', null, opts);
-        } catch (_error: any) {}
+        } catch (error: any) {}
 
         return (Util.supportsPassiveValue = supportsPassive);
 

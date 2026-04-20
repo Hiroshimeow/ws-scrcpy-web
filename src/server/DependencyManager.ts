@@ -1,22 +1,21 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-
-import fs from 'node:fs';
-// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-import { execFile } from 'child_process';
+import fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import os from 'os';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import path from 'path';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-import type { Writable } from 'stream';
+import { execFile } from 'child_process';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { pipeline } from 'stream/promises';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { promisify } from 'util';
+// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
+import { Writable } from 'stream';
+import { DependencyStatus, compareVersions } from '../common/DependencyTypes';
 import type { DependencyInfo, UpdateResult } from '../common/DependencyTypes';
-import { compareVersions, DependencyStatus } from '../common/DependencyTypes';
-import type { DependencyDefinition } from './DependencyDefinitions';
 import { getDependencyDefinitions, getPlatform } from './DependencyDefinitions';
+import type { DependencyDefinition } from './DependencyDefinitions';
 
 const execFileAsync = promisify(execFile);
 
@@ -185,7 +184,7 @@ export class DependencyManager {
 
     private async install(
         name: string,
-        _def: DependencyDefinition,
+        def: DependencyDefinition,
         downloadPath: string,
         version: string,
         tmpDir: string,
@@ -209,7 +208,7 @@ export class DependencyManager {
 
     private async installNodejs(
         downloadPath: string,
-        _version: string,
+        version: string,
         tmpDir: string,
         platform: 'win32' | 'linux',
     ): Promise<void> {
@@ -254,7 +253,11 @@ export class DependencyManager {
         }
     }
 
-    private async installAdb(downloadPath: string, tmpDir: string, platform: 'win32' | 'linux'): Promise<void> {
+    private async installAdb(
+        downloadPath: string,
+        tmpDir: string,
+        platform: 'win32' | 'linux',
+    ): Promise<void> {
         const destDir = path.join(this.depsPath, 'adb');
         fs.mkdirSync(destDir, { recursive: true });
 
@@ -289,7 +292,11 @@ export class DependencyManager {
         fs.copyFileSync(downloadPath, destFile);
     }
 
-    private async extractZip(zipPath: string, destDir: string, platform: 'win32' | 'linux'): Promise<void> {
+    private async extractZip(
+        zipPath: string,
+        destDir: string,
+        platform: 'win32' | 'linux',
+    ): Promise<void> {
         if (platform === 'win32') {
             await execFileAsync('powershell', [
                 '-NoProfile',

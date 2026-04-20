@@ -1,4 +1,4 @@
-import type * as http from 'node:http';
+import type * as http from 'http';
 import type WS from 'ws';
 import type { Multiplexer } from '../../packages/multiplexer/Multiplexer';
 import type { Message } from '../../types/Message';

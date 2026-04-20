@@ -1,6 +1,6 @@
 import type WS from 'ws';
-import type { ScanServerMessage } from '../../common/ScanMessage';
 import type { ParsedSubnet } from '../../common/SubnetParser';
+import type { ScanServerMessage } from '../../common/ScanMessage';
 
 function parseSerialFromMdnsName(name: string, service: string): string {
     let serial = name.startsWith('adb-') ? name.slice(4) : name;
@@ -113,7 +113,9 @@ export class NetworkScanner {
     }
 
     protected async runTracks(subnets: ParsedSubnet[], totalHosts: number): Promise<void> {
-        const connectedAddresses = new Set((await this.deps.adbDevices()).map((d) => d.serial));
+        const connectedAddresses = new Set(
+            (await this.deps.adbDevices()).map((d) => d.serial),
+        );
 
         // Track A: mDNS — synchronous (adb returns all at once)
         const mdnsPromise = (async () => {
@@ -198,13 +200,7 @@ export class NetworkScanner {
         await Promise.all([mdnsPromise, ...workers]);
     }
 
-    private emitHit(partial: {
-        source: 'mdns' | 'tcp';
-        address: string;
-        serial: string;
-        name: string;
-        label?: string;
-    }): void {
+    private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {
         if (this.emittedAddresses.has(partial.address)) return;
         this.emittedAddresses.add(partial.address);
         this.foundSoFar++;

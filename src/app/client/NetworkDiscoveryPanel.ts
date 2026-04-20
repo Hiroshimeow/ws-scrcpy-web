@@ -1,8 +1,8 @@
 // src/app/client/NetworkDiscoveryPanel.ts
 
-import { SCAN_WS_PATH, type ScanServerMessage } from '../../common/ScanMessage';
 import { ScanNetworkModal } from './ScanNetworkModal';
 import { ScanProgressChip } from './ScanProgressChip';
+import { SCAN_WS_PATH, type ScanServerMessage } from '../../common/ScanMessage';
 
 interface ConnectResult {
     success: boolean;
@@ -53,12 +53,10 @@ export class NetworkDiscoveryPanel {
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
         this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
-        this.container
-            .querySelector('.discovery-manual-close')!
-            .addEventListener('click', () => this.toggleManualForm(false));
-        this.container
-            .querySelector('.discovery-manual-connect')!
-            .addEventListener('click', () => this.manualConnect());
+        this.container.querySelector('.discovery-manual-close')!.addEventListener('click', () =>
+            this.toggleManualForm(false),
+        );
+        this.container.querySelector('.discovery-manual-connect')!.addEventListener('click', () => this.manualConnect());
         for (const selector of ['.discovery-manual-address', '.discovery-manual-port', '.discovery-manual-label']) {
             const input = this.container.querySelector(selector) as HTMLInputElement;
             input.addEventListener('keydown', (e) => {
@@ -82,7 +80,7 @@ export class NetworkDiscoveryPanel {
         try {
             const res = await fetch('/api/devices/scan/subnet');
             const detected = await res.json();
-            if (detected?.cidr) {
+            if (detected && detected.cidr) {
                 gateway = { cidr: detected.cidr, hostCount: detected.hostCount };
             }
         } catch {

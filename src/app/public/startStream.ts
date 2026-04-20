@@ -1,8 +1,8 @@
-import { ACTION } from '../../common/Action';
-import type { ParamsStreamScrcpy } from '../../types/ParamsStreamScrcpy';
 import { StreamClientScrcpy } from '../googDevice/client/StreamClientScrcpy';
-import Size from '../Size';
 import VideoSettings from '../VideoSettings';
+import Size from '../Size';
+import type { ParamsStreamScrcpy } from '../../types/ParamsStreamScrcpy';
+import { ACTION } from '../../common/Action';
 import type { StartStreamOptions, StreamHandle, StreamInfo } from './types';
 
 /**
@@ -23,7 +23,11 @@ interface StreamClientInstanceHooks {
     onErrorReceived?: (err: Error) => void;
 }
 
-export function startStream(container: HTMLElement, deviceId: string, options: StartStreamOptions = {}): StreamHandle {
+export function startStream(
+    container: HTMLElement,
+    deviceId: string,
+    options: StartStreamOptions = {},
+): StreamHandle {
     if (!deviceId || typeof deviceId !== 'string') {
         throw new Error('startStream: deviceId is required');
     }

@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process';
-import * as os from 'node:os';
-import { promisify } from 'node:util';
+import { execFile } from 'child_process';
+import * as os from 'os';
+import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,7 +49,7 @@ async function detectViaGateway(deps: DetectorDeps): Promise<DetectedSubnet | nu
         const ifaceName = m[1];
         // Hygiene: interface names are typically [a-zA-Z0-9:._-]; reject anything weirder
         // to avoid any surprises in how the name is passed to execFile.
-        if (!/^[\w:.-]+$/.test(ifaceName)) return null;
+        if (!/^[\w:.\-]+$/.test(ifaceName)) return null;
         const addr = await deps.runCommand(`ip -o -4 addr show dev ${ifaceName}`);
         const cidrM = addr.match(/inet (\d+\.\d+\.\d+\.\d+\/\d+)/);
         if (!cidrM) return null;

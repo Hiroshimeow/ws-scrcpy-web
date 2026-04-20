@@ -32,7 +32,7 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
     protected openNewConnection(): Multiplexer | WebSocket {
         if (this.ws && this.ws.readyState === this.ws.OPEN) {
             this.ws.close();
-            this.ws = undefined;
+            delete this.ws;
         }
         const url = this.url.toString();
         if (this.supportMultiplexing()) {

@@ -159,7 +159,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
                 return output
                     .split(' ')
                     .map((pid) => Number.parseInt(pid, 10))
-                    .filter((num) => !Number.isNaN(num));
+                    .filter((num) => !isNaN(num));
             })
             .catch(() => {
                 return [];
@@ -176,7 +176,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
                 .filter((item) => item.length);
             if (cols[cols.length - 1] === processName) {
                 const pid = Number.parseInt(cols[1], 10);
-                if (!Number.isNaN(pid)) {
+                if (!isNaN(pid)) {
                     list.push(pid);
                 }
             }
@@ -342,7 +342,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
         }
         if (!this.throttleTimeoutId) {
             this.throttleTimeoutId = setTimeout(() => {
-                this.throttleTimeoutId = undefined;
+                delete this.throttleTimeoutId;
                 this.emitUpdate(false);
             }, THROTTLE - time);
         }

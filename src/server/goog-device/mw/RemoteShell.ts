@@ -1,6 +1,6 @@
-import * as os from 'node:os';
 import type { IPty } from 'node-pty';
 import * as pty from 'node-pty';
+import * as os from 'os';
 import type WS from 'ws';
 import { ACTION } from '../../../common/Action';
 import { ChannelCode } from '../../../common/ChannelCode';
@@ -45,7 +45,7 @@ export class RemoteShell extends Mw {
 
     public createTerminal(params: XtermServiceParameters): IPty {
         const env = Object.assign({}, process.env) as any;
-        env.COLORTERM = 'truecolor';
+        env['COLORTERM'] = 'truecolor';
         const { cols = 80, rows = 24 } = params;
         const cwd = process.cwd();
         const file = OS_WINDOWS ? 'adb.exe' : 'adb';

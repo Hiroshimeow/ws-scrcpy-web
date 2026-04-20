@@ -1,16 +1,16 @@
 import '../../../style/listfiles.css';
-import { ACTION } from '../../../common/Action';
 import Protocol from '../../../common/AdbProtocol';
+import { ACTION } from '../../../common/Action';
 import { ChannelCode } from '../../../common/ChannelCode';
 import { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import { BinaryWriter } from '../../BinaryWriter';
-import { ManagerClient } from '../../client/ManagerClient';
-import { basename, resolve } from '../../pathUtils';
 import { Modal } from '../../ui/Modal';
 import { Entry } from '../Entry';
+import { createFileIconForEntry } from './FileIconUtils';
 import { AdbkitFilePushStream } from '../filePush/AdbkitFilePushStream';
 import FilePushHandler, { type DragAndPushListener, type PushUpdateParams } from '../filePush/FilePushHandler';
-import { createFileIconForEntry } from './FileIconUtils';
+import { ManagerClient } from '../../client/ManagerClient';
+import { basename, resolve } from '../../pathUtils';
 
 const TAG = '[ListFilesModal]';
 const ICON_SIZE_KEY = 'file-browser-icon-size';
@@ -212,11 +212,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         this.uploads.clear();
 
         // Close the FSLS channel
-        if (
-            this.fsChannel &&
-            (this.fsChannel.readyState === this.fsChannel.OPEN ||
-                this.fsChannel.readyState === this.fsChannel.CONNECTING)
-        ) {
+        if (this.fsChannel && (this.fsChannel.readyState === this.fsChannel.OPEN || this.fsChannel.readyState === this.fsChannel.CONNECTING)) {
             this.fsChannel.close();
         }
         this.fsChannel = undefined;
@@ -297,7 +293,9 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         const note = document.createElement('div');
         note.className = 'list-files-size-picker-note';
         const updateNote = (): void => {
-            note.textContent = saveCheck.checked ? 'uncheck and click ok to clear saved preference' : '';
+            note.textContent = saveCheck.checked
+                ? 'uncheck and click ok to clear saved preference'
+                : '';
         };
         saveCheck.addEventListener('change', updateNote);
         updateNote();
@@ -443,9 +441,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         // Command sub-channels (STAT/LIST/RECV) are created on THIS channel.
         const initChannel = (): void => {
             const initData = this.getChannelInitData();
-            console.log(TAG, 'wsUrl:', this.wsUrl, 'mux readyState:', this.multiplexer?.readyState, 'sockets:', [
-                ...ManagerClient.sockets.keys(),
-            ]);
+            console.log(TAG, 'wsUrl:', this.wsUrl, 'mux readyState:', this.multiplexer?.readyState, 'sockets:', [...ManagerClient.sockets.keys()]);
             this.fsChannel = this.multiplexer!.createChannel(initData);
 
             console.log(TAG, 'FSLS channel created, readyState:', this.fsChannel.readyState);
@@ -518,15 +514,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private loadDirectory(path: string): void {
-        console.log(
-            TAG,
-            'loadDirectory:',
-            path,
-            'fsChannel:',
-            !!this.fsChannel,
-            'readyState:',
-            this.fsChannel?.readyState,
-        );
+        console.log(TAG, 'loadDirectory:', path, 'fsChannel:', !!this.fsChannel, 'readyState:', this.fsChannel?.readyState);
         if (!this.fsChannel || this.fsChannel.readyState !== this.fsChannel.OPEN) {
             console.log(TAG, 'loadDirectory BAILED — fsChannel not ready');
             return;
@@ -550,16 +538,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
     }
 
     private sendCommand(cmd: string, path: string, entry?: Entry, pathToLoadAfter = ''): void {
-        console.log(
-            TAG,
-            'sendCommand:',
-            cmd,
-            path,
-            'fsChannel:',
-            !!this.fsChannel,
-            'readyState:',
-            this.fsChannel?.readyState,
-        );
+        console.log(TAG, 'sendCommand:', cmd, path, 'fsChannel:', !!this.fsChannel, 'readyState:', this.fsChannel?.readyState);
         if (!this.fsChannel) {
             console.log(TAG, 'sendCommand BAILED — no fsChannel');
             return;
@@ -581,52 +560,49 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             console.log(TAG, 'Sub-channel created for', cmd, 'readyState:', channel.readyState);
             this.channels.add(channel);
 
-            const download: Download = {
-                cmd,
-                receivedBytes: 0,
-                path,
-                entry,
-                chunks: [],
-                pathToLoadAfter,
-            };
-            this.downloads.set(channel, download);
+        const download: Download = {
+            cmd,
+            receivedBytes: 0,
+            path,
+            entry,
+            chunks: [],
+            pathToLoadAfter,
+        };
+        this.downloads.set(channel, download);
 
-            const onMessage = (event: MessageEvent): void => {
-                this.handleReply(channel, event);
-            };
-            const onClose = (): void => {
-                const dl = this.downloads.get(channel);
-                this.channels.delete(channel);
-                this.downloads.delete(channel);
-                channel.removeEventListener('message', onMessage);
-                channel.removeEventListener('close', onClose);
+        const onMessage = (event: MessageEvent): void => {
+            this.handleReply(channel, event);
+        };
+        const onClose = (): void => {
+            const dl = this.downloads.get(channel);
+            this.channels.delete(channel);
+            this.downloads.delete(channel);
+            channel.removeEventListener('message', onMessage);
+            channel.removeEventListener('close', onClose);
 
-                // For directory listings (LIST command), the server closes the channel after
-                // all DENT entries (no DONE message). Render the listing — even if empty.
-                // Only trigger for LIST, not STAT (STAT close is just a transition step).
-                if (dl?.cmd === Protocol.LIST) {
-                    this.entries = this.pendingEntries.slice();
-                    this.pendingEntries = [];
-                    this.currentPath = dl?.path ?? this.currentPath;
-                    console.log(
-                        TAG,
-                        'Channel closed: directory listing complete,',
-                        this.entries.length,
-                        'entries for path:',
-                        this.currentPath,
-                    );
-                    this.applyFilterAndSort();
-                    this.renderBreadcrumbs();
-                    this.renderFileList();
-                    this.updateFooterInfo();
-                }
-            };
-            channel.addEventListener('message', onMessage);
-            channel.addEventListener('close', onClose);
+            // For directory listings (LIST command), the server closes the channel after
+            // all DENT entries (no DONE message). Render the listing — even if empty.
+            // Only trigger for LIST, not STAT (STAT close is just a transition step).
+            if (dl?.cmd === Protocol.LIST) {
+                this.entries = this.pendingEntries.slice();
+                this.pendingEntries = [];
+                this.currentPath = dl?.path ?? this.currentPath;
+                console.log(TAG, 'Channel closed: directory listing complete,', this.entries.length, 'entries for path:', this.currentPath);
+                this.applyFilterAndSort();
+                this.renderBreadcrumbs();
+                this.renderFileList();
+                this.updateFooterInfo();
+            }
+        };
+        channel.addEventListener('message', onMessage);
+        channel.addEventListener('close', onClose);
         } catch (err) {
             console.error(TAG, 'Failed to create sub-channel:', err);
         }
     }
+
+    private requireClean = false;
+    private requestedPath = '';
     private pendingEntries: Entry[] = [];
 
     private handleReply(channel: Multiplexer, e: MessageEvent): void {
@@ -652,20 +628,14 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             }
             case Protocol.DONE: {
                 const download = this.downloads.get(channel);
-                if (download?.entry?.isFile()) {
+                if (download && download.entry && download.entry.isFile()) {
                     // File download complete
                     this.finishFileDownload(channel);
                 } else {
                     // Directory listing complete
                     this.entries = this.pendingEntries.slice();
                     this.pendingEntries = [];
-                    console.log(
-                        TAG,
-                        'DONE: directory listing complete,',
-                        this.entries.length,
-                        'entries for path:',
-                        download?.path,
-                    );
+                    console.log(TAG, 'DONE: directory listing complete,', this.entries.length, 'entries for path:', download?.path);
                     this.currentPath = download?.path ?? this.currentPath;
                     this.applyFilterAndSort();
                     this.renderBreadcrumbs();
@@ -753,7 +723,9 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
 
         // Clean progress bar
         if (download.entry) {
-            const rowEl = this.fileListBody?.querySelector(`[data-path="${CSS.escape(download.path)}"]`) as HTMLElement;
+            const rowEl = this.fileListBody?.querySelector(
+                `[data-path="${CSS.escape(download.path)}"]`,
+            ) as HTMLElement;
             if (rowEl) {
                 const progressEl = rowEl.querySelector('.list-files-progress') as HTMLElement;
                 if (progressEl) {
@@ -868,7 +840,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
             } else {
                 seg.className = 'list-files-breadcrumb-segment';
                 seg.textContent = part;
-                const targetPath = `/${parts.slice(0, i + 1).join('/')}`;
+                const targetPath = '/' + parts.slice(0, i + 1).join('/');
                 seg.addEventListener('click', () => this.loadDirectory(targetPath));
             }
             this.breadcrumbBar!.appendChild(seg);
@@ -976,8 +948,7 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
 
         const delBtn = document.createElement('button');
         delBtn.className = 'list-files-action-btn list-files-action-delete';
-        delBtn.innerHTML =
-            '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+        delBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
         delBtn.title = 'delete';
         delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1062,10 +1033,8 @@ export class ListFilesModal extends Modal implements DragAndPushListener {
         // Download disabled when ANY directory is selected (can't download dirs over ADB)
         const canDownload = hasSelection && !hasDirSelection;
 
-        const delBtn = this.getDeleteBtn();
-        if (delBtn) delBtn.disabled = !hasSelection;
-        const dlBtn = this.getDownloadBtn();
-        if (dlBtn) dlBtn.disabled = !canDownload;
+        const delBtn = this.getDeleteBtn(); if (delBtn) delBtn.disabled = !hasSelection;
+        const dlBtn = this.getDownloadBtn(); if (dlBtn) dlBtn.disabled = !canDownload;
 
         this.updateFooterInfo();
     }

@@ -1,4 +1,4 @@
-import type * as https from 'node:https';
+import type * as https from 'https';
 
 export type OperatingSystem = 'android';
 

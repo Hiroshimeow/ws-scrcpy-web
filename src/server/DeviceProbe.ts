@@ -7,8 +7,8 @@ import { DEVICE_SERVER_PATH, SERVER_PACKAGE, SERVER_VERSION } from '../common/Co
 import type { ProbeResult } from '../common/ProbeResult';
 import { AdbClient } from './AdbClient';
 import { ensureScrcpyServerPushed } from './ensureScrcpyServerPushed';
+import { parseWmSize, parseWmDensity } from './goog-device/wmParsers';
 import { ControlCenter } from './goog-device/services/ControlCenter';
-import { parseWmDensity, parseWmSize } from './goog-device/wmParsers';
 import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 import { parseScrcpyEncoderList } from './scrcpyEncoderList';

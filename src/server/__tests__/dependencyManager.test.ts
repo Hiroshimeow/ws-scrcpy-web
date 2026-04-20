@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DependencyStatus } from '../../common/DependencyTypes';
 import { DependencyManager } from '../DependencyManager';
+import { DependencyStatus } from '../../common/DependencyTypes';
 
 describe('DependencyManager', () => {
     it('initializes with all dependencies in unknown state', () => {
