@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPlatform, getArch, getDependencyDefinitions } from '../DependencyDefinitions';
+import { getArch, getDependencyDefinitions, getPlatform } from '../DependencyDefinitions';
 
 describe('getPlatform', () => {
     it('returns win32 or linux based on os.platform()', () => {

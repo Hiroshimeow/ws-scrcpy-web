@@ -1,4 +1,4 @@
-import * as os from 'os';
+import * as os from 'node:os';
 import { Logger } from './Logger';
 
 const log = Logger.for('Server');
@@ -39,12 +39,12 @@ export class Utils {
             encodeURI(`${proto}://${os.hostname()}:${port}${pathname}`),
             encodeURI(`${proto}://localhost:${port}${pathname}`),
         ];
-        log.info('Listening on:\n\t' + nameList.join(' '));
+        log.info(`Listening on:\n\t${nameList.join(' ')}`);
         if (ipv4List.length) {
-            log.info('\t' + ipv4List.join(' '));
+            log.info(`\t${ipv4List.join(' ')}`);
         }
         if (ipv6List.length) {
-            log.info('\t' + ipv6List.join(' '));
+            log.info(`\t${ipv6List.join(' ')}`);
         }
     }
 }

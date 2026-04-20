@@ -1,4 +1,4 @@
-import { Readable, type ReadableOptions } from 'stream';
+import { Readable, type ReadableOptions } from 'node:stream';
 
 export class ReadStream extends Readable {
     private _bytesRead = 0;

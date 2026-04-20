@@ -1,8 +1,8 @@
-import type { IncomingMessage, ServerResponse } from 'http';
-import * as http from 'http';
-import * as https from 'https';
-import path from 'path';
-import * as process from 'process';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import path from 'node:path';
+import * as process from 'node:process';
 import { TypedEmitter } from '../../common/TypedEmitter';
 import { Config } from '../Config';
 import { EnvName } from '../EnvName';

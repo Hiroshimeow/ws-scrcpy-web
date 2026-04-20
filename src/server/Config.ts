@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as process from 'process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as process from 'node:process';
 import type { ServerItem } from '../types/Configuration';
 import { EnvName } from './EnvName';
 
@@ -36,7 +36,7 @@ export class Config {
 
     private static buildServers(fileConfig: FlatConfig): ServerItem[] {
         // Env var PORT takes highest priority
-        const envPort = process.env['PORT'];
+        const envPort = process.env.PORT;
         const port = envPort ? Number.parseInt(envPort, 10) : (fileConfig.port ?? DEFAULT_PORT);
 
         if (fileConfig.server && fileConfig.server.length > 0) {
@@ -86,10 +86,12 @@ export class Config {
             const servers = Config.buildServers(fileConfig);
 
             // ADB_PATH env var overrides file config, which overrides default
-            const adbPath = process.env['ADB_PATH'] ?? fileConfig.adbPath ?? DEFAULT_ADB_PATH;
+            const adbPath = process.env.ADB_PATH ?? fileConfig.adbPath ?? DEFAULT_ADB_PATH;
 
-            const dependenciesPath = process.env['DEPS_PATH'] ?? fileConfig.dependenciesPath
-                ?? path.resolve(path.dirname(process.argv[1] || '.'), '..', 'dependencies');
+            const dependenciesPath =
+                process.env.DEPS_PATH ??
+                fileConfig.dependenciesPath ??
+                path.resolve(path.dirname(process.argv[1] || '.'), '..', 'dependencies');
 
             this.instance = new Config(servers, adbPath, dependenciesPath);
         }

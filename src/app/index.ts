@@ -1,10 +1,10 @@
 import '../style/app.css';
 import '../style/home.css';
 import '../style/dependencies.css';
-import { HostTracker } from './client/HostTracker';
 import { DependencyPanel } from './client/DependencyPanel';
+import { HostTracker } from './client/HostTracker';
 import { NetworkDiscoveryPanel } from './client/NetworkDiscoveryPanel';
-import { initTheme, createThemeToggle } from './client/ThemeToggle';
+import { createThemeToggle, initTheme } from './client/ThemeToggle';
 import type { Tool } from './client/Tool';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 

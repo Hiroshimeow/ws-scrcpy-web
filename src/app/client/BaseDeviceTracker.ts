@@ -1,5 +1,5 @@
-import type { EventMap } from '../../common/TypedEmitter';
 import { DeviceState } from '../../common/DeviceState';
+import type { EventMap } from '../../common/TypedEmitter';
 import type { BaseDeviceDescriptor } from '../../types/BaseDeviceDescriptor';
 import type { HostItem } from '../../types/Configuration';
 import type { DeviceTrackerEvent } from '../../types/DeviceTrackerEvent';
@@ -31,12 +31,7 @@ export abstract class BaseDeviceTracker<DD extends BaseDeviceDescriptor, TE exte
         this.tools.add(tool);
     }
 
-    public static buildUrl(item: {
-        secure: boolean;
-        hostname: string;
-        port: number;
-        pathname?: string;
-    }): URL {
+    public static buildUrl(item: { secure: boolean; hostname: string; port: number; pathname?: string }): URL {
         const { secure, port, hostname } = item;
         const pathname = item.pathname ?? '/';
         const protocol = secure ? 'wss:' : 'ws:';

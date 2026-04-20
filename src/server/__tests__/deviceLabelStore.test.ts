@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DeviceLabelStore } from '../DeviceLabelStore';
 
@@ -7,12 +7,16 @@ const TEST_FILE = path.resolve(__dirname, '..', '..', '..', 'test-device-labels.
 
 describe('DeviceLabelStore', () => {
     beforeEach(() => {
-        try { fs.unlinkSync(TEST_FILE); } catch {}
+        try {
+            fs.unlinkSync(TEST_FILE);
+        } catch {}
         DeviceLabelStore.resetInstance();
     });
 
     afterEach(() => {
-        try { fs.unlinkSync(TEST_FILE); } catch {}
+        try {
+            fs.unlinkSync(TEST_FILE);
+        } catch {}
     });
 
     it('returns undefined for unknown serial', () => {
@@ -30,11 +34,11 @@ describe('DeviceLabelStore', () => {
         const store = DeviceLabelStore.getInstance(TEST_FILE);
         store.set('SERIAL1', 'Living Room TV');
         const raw = JSON.parse(fs.readFileSync(TEST_FILE, 'utf-8'));
-        expect(raw['SERIAL1']).toBe('Living Room TV');
+        expect(raw.SERIAL1).toBe('Living Room TV');
     });
 
     it('loads existing file on init', () => {
-        fs.writeFileSync(TEST_FILE, JSON.stringify({ 'S1': 'TV' }));
+        fs.writeFileSync(TEST_FILE, JSON.stringify({ S1: 'TV' }));
         const store = DeviceLabelStore.getInstance(TEST_FILE);
         expect(store.get('S1')).toBe('TV');
     });
@@ -50,7 +54,7 @@ describe('DeviceLabelStore', () => {
         const store = DeviceLabelStore.getInstance(TEST_FILE);
         store.set('S1', 'TV1');
         store.set('S2', 'TV2');
-        expect(store.getAll()).toEqual({ 'S1': 'TV1', 'S2': 'TV2' });
+        expect(store.getAll()).toEqual({ S1: 'TV1', S2: 'TV2' });
     });
 
     it('handles missing file gracefully', () => {

@@ -166,12 +166,18 @@ export class DependencyPanel {
 
     private statusLabel(dep: DependencyInfo): string {
         switch (dep.status) {
-            case 'up-to-date': return '<span class="dep-badge dep-ok">Up to date</span>';
-            case 'update-available': return '<span class="dep-badge dep-warn">Update available</span>';
-            case 'checking': return '<span class="dep-badge dep-info">Checking...</span>';
-            case 'updating': return '<span class="dep-badge dep-info">Updating...</span>';
-            case 'error': return `<span class="dep-badge dep-error" title="${dep.errorMessage || ''}">Error</span>`;
-            default: return '<span class="dep-badge dep-unknown">Unknown</span>';
+            case 'up-to-date':
+                return '<span class="dep-badge dep-ok">Up to date</span>';
+            case 'update-available':
+                return '<span class="dep-badge dep-warn">Update available</span>';
+            case 'checking':
+                return '<span class="dep-badge dep-info">Checking...</span>';
+            case 'updating':
+                return '<span class="dep-badge dep-info">Updating...</span>';
+            case 'error':
+                return `<span class="dep-badge dep-error" title="${dep.errorMessage || ''}">Error</span>`;
+            default:
+                return '<span class="dep-badge dep-unknown">Unknown</span>';
         }
     }
 

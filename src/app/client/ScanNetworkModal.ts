@@ -72,7 +72,8 @@ export class ScanNetworkModal extends Modal {
         container.appendChild(this.emptyNotice);
 
         this.subnetListEl = document.createElement('ul');
-        this.subnetListEl.style.cssText = 'list-style: none; padding: 0; margin: 8px 0; font-family: var(--font-mono, monospace); font-size: 13px;';
+        this.subnetListEl.style.cssText =
+            'list-style: none; padding: 0; margin: 8px 0; font-family: var(--font-mono, monospace); font-size: 13px;';
         container.appendChild(this.subnetListEl);
 
         const addBtn = document.createElement('button');
@@ -83,7 +84,8 @@ export class ScanNetworkModal extends Modal {
 
         const cheatLink = document.createElement('p');
         cheatLink.style.cssText = 'font-size: 12px; color: var(--muted, #8b949e);';
-        cheatLink.innerHTML = 'New to CIDR? See the <a href="help/subnets.html" target="_blank" rel="noopener">subnet cheat sheet</a>.';
+        cheatLink.innerHTML =
+            'New to CIDR? See the <a href="help/subnets.html" target="_blank" rel="noopener">subnet cheat sheet</a>.';
         container.appendChild(cheatLink);
     }
 

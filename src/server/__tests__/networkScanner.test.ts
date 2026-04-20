@@ -1,21 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NetworkScanner } from '../network/NetworkScanner';
-import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage } from '../../common/ScanMessage';
+import type { ParsedSubnet } from '../../common/SubnetParser';
+import { NetworkScanner } from '../network/NetworkScanner';
 
 function makeSubnet(hosts: string[]): ParsedSubnet {
     return {
         raw: 'test',
         normalized: `test/${hosts.length}`,
         hostCount: hosts.length,
-        *hosts() { for (const h of hosts) yield h; },
+        *hosts() {
+            for (const h of hosts) yield h;
+        },
     };
 }
 
 function makeWs(): { ws: any; messages: ScanServerMessage[] } {
     const messages: ScanServerMessage[] = [];
     const ws = {
-        readyState: 1, OPEN: 1, CLOSED: 3, CLOSING: 2,
+        readyState: 1,
+        OPEN: 1,
+        CLOSED: 3,
+        CLOSING: 2,
         send: (data: string) => messages.push(JSON.parse(data)),
         close: vi.fn(),
     };
@@ -79,7 +84,7 @@ describe('NetworkScanner — TCP track', () => {
     it('emits scan.hit for TCP-confirmed devices', async () => {
         const tcpProbe = vi.fn(async (host: string) => host === '1.1.1.2');
         const adbConnect = vi.fn(async (addr: string) =>
-            addr === '1.1.1.2:5555' ? 'connected to 1.1.1.2:5555' : 'failed to connect'
+            addr === '1.1.1.2:5555' ? 'connected to 1.1.1.2:5555' : 'failed to connect',
         );
         const adbDisconnect = vi.fn(async () => 'disconnected');
 

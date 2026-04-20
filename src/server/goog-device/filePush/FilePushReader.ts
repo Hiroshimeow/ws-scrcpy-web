@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { CommandControlMessage, FilePushState } from '../../../app/controlMessage/CommandControlMessage';
 import { FilePushResponseStatus } from '../../../app/googDevice/filePush/FilePushResponseStatus';
 import { AdbClient } from '../../AdbClient';
@@ -121,7 +121,7 @@ export class FilePushReader {
                     return;
                 }
                 const { chunk } = command;
-                if (!chunk || !chunk.length) {
+                if (!chunk?.length) {
                     this.closeWithError(FilePushResponseStatus.ERROR_INCORRECT_SIZE);
                     return;
                 }
@@ -157,7 +157,10 @@ export class FilePushReader {
                     await this.adbClient.push(this.serial, this.tempFilePath, this.fileName);
                     this.sendResponse(FilePushResponseStatus.NO_ERROR);
                 } catch (error: any) {
-                    Logger.for('FilePushReader').error(`Push error (${this.serial} | ${this.fileName}):`, error.message);
+                    Logger.for('FilePushReader').error(
+                        `Push error (${this.serial} | ${this.fileName}):`,
+                        error.message,
+                    );
                     this.closeWithError(FilePushResponseStatus.ERROR_OTHER, error.message);
                     return;
                 } finally {

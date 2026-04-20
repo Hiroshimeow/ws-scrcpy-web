@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
-import { Modal, type ModalOptions } from '../Modal';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Modal } from '../Modal';
 
 // jsdom doesn't implement showModal/close — stub them
 beforeEach(() => {
@@ -67,8 +67,8 @@ class FooterModal extends Modal {
 describe('Modal base class', () => {
     it('creates a <dialog> element with modal class', () => {
         const modal = new TestModal({ title: 'test' });
-        expect(modal['dialog'].tagName).toBe('DIALOG');
-        expect(modal['dialog'].classList.contains('modal')).toBe(true);
+        expect(modal.dialog.tagName).toBe('DIALOG');
+        expect(modal.dialog.classList.contains('modal')).toBe(true);
         modal.close();
     });
 
@@ -81,14 +81,14 @@ describe('Modal base class', () => {
     it('calls buildBody during construction', () => {
         const modal = new TestModal({ title: 'test' });
         // buildBody appends a <p> to the body — verify it's present
-        const body = modal['dialog'].querySelector('.modal-body');
+        const body = modal.dialog.querySelector('.modal-body');
         expect(body?.querySelector('p')?.textContent).toBe('test content');
         modal.close();
     });
 
     it('sets the title text', () => {
         const modal = new TestModal({ title: 'my device' });
-        const titleEl = modal['dialog'].querySelector('.modal-title');
+        const titleEl = modal.dialog.querySelector('.modal-title');
         expect(titleEl?.textContent).toBe('my device');
         modal.close();
     });
@@ -96,7 +96,7 @@ describe('Modal base class', () => {
     it('has a close button in the header', () => {
         const modal = new TestModal({ title: 'test' });
         // Close button is the last .modal-close element (theme toggle is first)
-        const closeBtns = modal['dialog'].querySelectorAll('.modal-close');
+        const closeBtns = modal.dialog.querySelectorAll('.modal-close');
         const closeBtn = closeBtns[closeBtns.length - 1];
         expect(closeBtn).not.toBeNull();
         expect(closeBtn?.textContent).toBe('\u00d7');
@@ -105,7 +105,7 @@ describe('Modal base class', () => {
 
     it('builds DOM structure: dialog > modal-frame > header + body', () => {
         const modal = new TestModal({ title: 'test' });
-        const frame = modal['dialog'].querySelector('.modal-frame');
+        const frame = modal.dialog.querySelector('.modal-frame');
         expect(frame).not.toBeNull();
         expect(frame?.querySelector('.modal-header')).not.toBeNull();
         expect(frame?.querySelector('.modal-body')).not.toBeNull();
@@ -114,7 +114,7 @@ describe('Modal base class', () => {
 
     it('appends footer when buildFooter returns an element', () => {
         const modal = new FooterModal({ title: 'test' });
-        const footer = modal['dialog'].querySelector('.modal-footer');
+        const footer = modal.dialog.querySelector('.modal-footer');
         expect(footer).not.toBeNull();
         expect(footer?.textContent).toBe('footer content');
         modal.close();
@@ -122,7 +122,7 @@ describe('Modal base class', () => {
 
     it('does not append footer when buildFooter returns null', () => {
         const modal = new TestModal({ title: 'test' });
-        const footer = modal['dialog'].querySelector('.modal-footer');
+        const footer = modal.dialog.querySelector('.modal-footer');
         expect(footer).toBeNull();
         modal.close();
     });
@@ -138,7 +138,7 @@ describe('Modal dismiss behavior — defaults', () => {
     it('close() removes dialog from DOM after transition', () => {
         vi.useFakeTimers();
         const modal = new TestModal({ title: 'test' });
-        const dialog = modal['dialog'];
+        const dialog = modal.dialog;
         expect(document.body.contains(dialog)).toBe(true);
         modal.close();
         // Still in DOM immediately (waiting for transition)
@@ -167,7 +167,7 @@ describe('Modal dismiss behavior — defaults', () => {
         const onClose = vi.fn();
         const modal = new TestModal({ title: 'test', onClose });
         const cancelEvent = new Event('cancel', { cancelable: true });
-        modal['dialog'].dispatchEvent(cancelEvent);
+        modal.dialog.dispatchEvent(cancelEvent);
         expect(cancelEvent.defaultPrevented).toBe(true);
         expect(onClose).toHaveBeenCalledWith(undefined);
     });
@@ -176,8 +176,8 @@ describe('Modal dismiss behavior — defaults', () => {
         const onClose = vi.fn();
         const modal = new TestModal({ title: 'test', onClose });
         const clickEvent = new MouseEvent('click', { bubbles: true });
-        Object.defineProperty(clickEvent, 'target', { value: modal['dialog'] });
-        modal['dialog'].dispatchEvent(clickEvent);
+        Object.defineProperty(clickEvent, 'target', { value: modal.dialog });
+        modal.dialog.dispatchEvent(clickEvent);
         expect(onClose).toHaveBeenCalledWith(undefined);
     });
 
@@ -185,8 +185,8 @@ describe('Modal dismiss behavior — defaults', () => {
         const onClose = vi.fn();
         const modal = new TestModal({ title: 'test', onClose });
         const clickEvent = new MouseEvent('click', { bubbles: true });
-        Object.defineProperty(clickEvent, 'target', { value: modal['frameEl'] });
-        modal['dialog'].dispatchEvent(clickEvent);
+        Object.defineProperty(clickEvent, 'target', { value: modal.frameEl });
+        modal.dialog.dispatchEvent(clickEvent);
         expect(onClose).not.toHaveBeenCalled();
         modal.close();
     });
@@ -197,7 +197,7 @@ describe('Modal dismiss behavior — overrides', () => {
         const onClose = vi.fn();
         const modal = new StickyModal({ title: 'test', onClose });
         const cancelEvent = new Event('cancel', { cancelable: true });
-        modal['dialog'].dispatchEvent(cancelEvent);
+        modal.dialog.dispatchEvent(cancelEvent);
         expect(modal.escapeCalled).toBe(true);
         expect(onClose).not.toHaveBeenCalled();
         modal.close();
@@ -207,8 +207,8 @@ describe('Modal dismiss behavior — overrides', () => {
         const onClose = vi.fn();
         const modal = new StickyModal({ title: 'test', onClose });
         const clickEvent = new MouseEvent('click', { bubbles: true });
-        Object.defineProperty(clickEvent, 'target', { value: modal['dialog'] });
-        modal['dialog'].dispatchEvent(clickEvent);
+        Object.defineProperty(clickEvent, 'target', { value: modal.dialog });
+        modal.dialog.dispatchEvent(clickEvent);
         expect(modal.backdropCalled).toBe(true);
         expect(onClose).not.toHaveBeenCalled();
         modal.close();
@@ -217,7 +217,7 @@ describe('Modal dismiss behavior — overrides', () => {
     it('subclass can override X button behavior', () => {
         const modal = new StickyModal({ title: 'test' });
         // Close button is the last .modal-close (theme toggle is first)
-        const closeBtns = modal['dialog'].querySelectorAll('.modal-close');
+        const closeBtns = modal.dialog.querySelectorAll('.modal-close');
         const closeBtn = closeBtns[closeBtns.length - 1] as HTMLElement;
         closeBtn.click();
         expect(modal.closeButtonCalled).toBe(true);
@@ -233,7 +233,7 @@ describe('Modal onBeforeClose', () => {
                 container.textContent = 'track';
             }
             protected onBeforeClose(): void {
-                order.push(document.body.contains(this['dialog']) ? 'cleanup-while-attached' : 'cleanup-while-detached');
+                order.push(document.body.contains(this.dialog) ? 'cleanup-while-attached' : 'cleanup-while-detached');
             }
         }
 

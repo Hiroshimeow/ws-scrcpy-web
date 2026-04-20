@@ -7,8 +7,6 @@ import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import { Attribute } from '../../Attribute';
 import { AudioPlayer } from '../../audio/AudioPlayer';
 import { BaseClient } from '../../client/BaseClient';
-import { HostTracker } from '../../client/HostTracker';
-import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
 import type { ControlMessage } from '../../controlMessage/ControlMessage';
 import type { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
 import type { DisplayInfo } from '../../DisplayInfo';
@@ -194,7 +192,15 @@ export class StreamClientScrcpy
         deviceKind?: 'phone' | 'tablet' | 'tv',
     ): { instance: StreamClientScrcpy; stop: () => void } {
         const params = query instanceof URLSearchParams ? StreamClientScrcpy.parseParameters(query) : query;
-        const instance = new StreamClientScrcpy(params, player, fitToScreen, videoSettings, container, onDisconnect, deviceKind);
+        const instance = new StreamClientScrcpy(
+            params,
+            player,
+            fitToScreen,
+            videoSettings,
+            container,
+            onDisconnect,
+            deviceKind,
+        );
         return { instance, stop: () => instance.stopStream() };
     }
 
@@ -205,11 +211,18 @@ export class StreamClientScrcpy
         videoSettings?: VideoSettings,
         private readonly container?: HTMLElement,
         private readonly onDisconnectCallback?: () => void,
-        private readonly deviceKind?: 'phone' | 'tablet' | 'tv',
+        readonly deviceKind?: 'phone' | 'tablet' | 'tv',
     ) {
         super(params);
         const { udid, player: playerName } = this.params;
-        this.startStream({ udid, player, playerName, fitToScreen: fitToScreen ?? params.fitToScreen, videoSettings, deviceKind });
+        this.startStream({
+            udid,
+            player,
+            playerName,
+            fitToScreen: fitToScreen ?? params.fitToScreen,
+            videoSettings,
+            deviceKind,
+        });
     }
 
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {
@@ -369,7 +382,14 @@ export class StreamClientScrcpy
         }
     };
 
-    public async startStream({ udid, player, playerName, videoSettings, fitToScreen, deviceKind }: StartParams): Promise<void> {
+    public async startStream({
+        udid,
+        player,
+        playerName,
+        videoSettings,
+        fitToScreen,
+        deviceKind,
+    }: StartParams): Promise<void> {
         this.isStopping = false;
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
@@ -677,7 +697,7 @@ export class StreamClientScrcpy
     private static onConfigureStreamClick = (event: MouseEvent): void => {
         const button = event.currentTarget as HTMLAnchorElement;
         const udid = Util.parseStringEnv(button.getAttribute(Attribute.UDID) || '');
-        const fullName = button.getAttribute(Attribute.FULL_NAME);
+        const _fullName = button.getAttribute(Attribute.FULL_NAME);
         const secure = Util.parseBooleanEnv(button.getAttribute(Attribute.SECURE) || undefined) || false;
         const hostname = Util.parseStringEnv(button.getAttribute(Attribute.HOSTNAME) || undefined) || '';
         const port = Util.parseIntEnv(button.getAttribute(Attribute.PORT) || undefined);

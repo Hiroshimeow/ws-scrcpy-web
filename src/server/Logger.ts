@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
 // After webpack build, __dirname = dist/. One level up = project root.
@@ -28,7 +28,7 @@ function timestamp(): string {
 function writeToFile(line: string): void {
     rotateIfNeeded();
     try {
-        fs.appendFileSync(LOG_FILE, line + '\n');
+        fs.appendFileSync(LOG_FILE, `${line}\n`);
     } catch {
         // If we can't write to the log file, don't crash the server
     }

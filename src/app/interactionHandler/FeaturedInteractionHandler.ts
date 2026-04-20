@@ -141,13 +141,17 @@ export class FeaturedInteractionHandler extends InteractionHandler {
                 event.stopPropagation();
                 return;
             }
-            if (window['WheelEvent'] && event instanceof WheelEvent) {
+            if (window.WheelEvent && event instanceof WheelEvent) {
                 if (this._dpadMode) {
                     messages = this.buildDpadScrollEvent(event);
                 } else {
                     messages = this.buildScrollEvent(event, screenInfo);
                 }
-            } else if (this._dpadMode && event.button === 0 && (event.type === 'mousedown' || event.type === 'mouseup')) {
+            } else if (
+                this._dpadMode &&
+                event.button === 0 &&
+                (event.type === 'mousedown' || event.type === 'mouseup')
+            ) {
                 // D-pad mode: left-click → DPAD_CENTER
                 const action = event.type === 'mousedown' ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP;
                 this.listener.sendMessage(new KeyCodeControlMessage(action, KeyEvent.KEYCODE_DPAD_CENTER, 0, 0));
@@ -161,7 +165,7 @@ export class FeaturedInteractionHandler extends InteractionHandler {
             if (this.over) {
                 this.lastPosition = event;
             }
-        } else if (window['TouchEvent'] && event instanceof TouchEvent) {
+        } else if (window.TouchEvent && event instanceof TouchEvent) {
             // TODO: Research drag from out of the target inside it
             if (event.target !== this.tag) {
                 return;

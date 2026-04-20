@@ -18,8 +18,8 @@ export interface StartStreamOptions {
     maxSize?: number;
 
     // Features
-    audio?: boolean;      // default true
-    keyboard?: boolean;   // default true
+    audio?: boolean; // default true
+    keyboard?: boolean; // default true
 
     /**
      * Android device kind. When provided, seeds the stream toolbar's

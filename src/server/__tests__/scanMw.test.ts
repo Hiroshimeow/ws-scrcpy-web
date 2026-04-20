@@ -1,10 +1,9 @@
+import * as http from 'node:http';
 import { describe, expect, it } from 'vitest';
-import * as http from 'http';
-import { WebSocketServer } from 'ws';
-import WebSocket from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
+import { SCAN_WS_PATH } from '../../common/ScanMessage';
 import { ScanMw } from '../mw/ScanMw';
 import { NetworkScanner } from '../network/NetworkScanner';
-import { SCAN_WS_PATH } from '../../common/ScanMessage';
 
 async function collectMessages(ws: WebSocket, until: (msg: any) => boolean): Promise<any[]> {
     return new Promise((resolve, reject) => {

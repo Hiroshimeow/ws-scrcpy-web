@@ -287,7 +287,7 @@ export abstract class InteractionHandler {
             if (!previous) {
                 if (
                     (originalEvent instanceof MouseEvent && originalEvent.buttons) ||
-                    (window['TouchEvent'] && originalEvent instanceof TouchEvent)
+                    (window.TouchEvent && originalEvent instanceof TouchEvent)
                 ) {
                     console.warn(logPrefix, 'Received ACTION_MOVE while there are no DOWN stored');
                     const emulated = InteractionHandler.createEmulatedMessage(MotionEvent.ACTION_DOWN, message);
@@ -459,7 +459,7 @@ export abstract class InteractionHandler {
         const logPrefix = `${TAG}[formatTouchEvent]`;
         const messages: TouchControlMessage[] = [];
         const touches = e.changedTouches;
-        if (touches && touches.length) {
+        if (touches?.length) {
             for (let i = 0, l = touches.length; i < l; i++) {
                 const touch = touches[i];
                 const pointerId = InteractionHandler.getPointerId(e.type, touch.identifier);
