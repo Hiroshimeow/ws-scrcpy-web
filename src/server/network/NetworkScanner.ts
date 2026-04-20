@@ -2,6 +2,14 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage } from '../../common/ScanMessage';
 
+function parseSerialFromMdnsName(name: string, service: string): string {
+    let serial = name.startsWith('adb-') ? name.slice(4) : name;
+    if (service.includes('tls-connect') && serial.includes('-')) {
+        serial = serial.substring(0, serial.lastIndexOf('-'));
+    }
+    return serial;
+}
+
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
     adbMdnsServices: () => Promise<{ name: string; service: string; address: string; port: number }[]>;
@@ -73,11 +81,27 @@ export class NetworkScanner {
                 startedAt: Date.now(),
             });
 
-            await this.runTracks(subnets, totalHosts);
+            const runPromise = this.runTracks(subnets, totalHosts);
+
+            // Watch for cancel flag: emit scan.draining as soon as it's set, while workers still in flight.
+            let drainWatcherDone = false;
+            const drainWatcher = (async () => {
+                while (!this.cancelFlag) {
+                    // Exit as soon as runTracks finishes (normal completion path)
+                    if (drainWatcherDone) return;
+                    await new Promise((r) => setTimeout(r, 10));
+                }
+                if (this.cancelFlag && this.state === 'scanning') {
+                    this.state = 'draining';
+                    this.emit({ type: 'scan.draining' });
+                }
+            })();
+
+            await runPromise;
+            drainWatcherDone = true;
+            await drainWatcher;
 
             if (this.cancelFlag) {
-                this.state = 'draining';
-                this.emit({ type: 'scan.draining' });
                 this.emit({ type: 'scan.cancelled', found: this.foundSoFar });
             } else {
                 this.emit({ type: 'scan.complete', found: this.foundSoFar });
@@ -93,8 +117,28 @@ export class NetworkScanner {
             (await this.deps.adbDevices()).map((d) => d.serial),
         );
 
-        // mDNS track handled in Task 6.
-        // TCP track:
+        // Track A: mDNS — synchronous (adb returns all at once)
+        const mdnsPromise = (async () => {
+            try {
+                const hits = await this.deps.adbMdnsServices();
+                for (const hit of hits) {
+                    if (this.cancelFlag) break;
+                    if (!hit.service.includes('_adb') || hit.service.includes('pairing')) continue;
+                    const address = `${hit.address}:${hit.port}`;
+                    if (connectedAddresses.has(address)) continue;
+                    this.emitHit({
+                        source: 'mdns',
+                        address,
+                        serial: parseSerialFromMdnsName(hit.name, hit.service),
+                        name: hit.name,
+                    });
+                }
+            } catch {
+                // mDNS track failed — silent; TCP track continues
+            }
+        })();
+
+        // Track B: TCP (existing pool logic)
         const hostList: string[] = [];
         for (const subnet of subnets) {
             for (const host of subnet.hosts()) hostList.push(host);
@@ -104,7 +148,6 @@ export class NetworkScanner {
         const tcpTimeout = this.deps.tcpTimeoutMs ?? 300;
         const adbTimeout = this.deps.adbConnectTimeoutMs ?? 3000;
 
-        const workers: Promise<void>[] = [];
         let cursor = 0;
         const nextHost = (): string | null => {
             if (this.cancelFlag) return null;
@@ -116,6 +159,7 @@ export class NetworkScanner {
             const address = `${host}:5555`;
             try {
                 if (connectedAddresses.has(address)) return;
+                if (this.emittedAddresses.has(address)) return; // mDNS already claimed
                 const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
                 if (!open) return;
                 const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
@@ -128,7 +172,7 @@ export class NetworkScanner {
                     name: address,
                 });
             } catch {
-                // Silent probe failure
+                // Silent
             }
         };
 
@@ -149,10 +193,11 @@ export class NetworkScanner {
             }
         };
 
-        for (let i = 0; i < Math.min(this.deps.concurrency, hostList.length); i++) {
+        const workers: Promise<void>[] = [];
+        for (let i = 0; i < Math.min(this.deps.concurrency, Math.max(hostList.length, 1)); i++) {
             workers.push(worker());
         }
-        await Promise.all(workers);
+        await Promise.all([mdnsPromise, ...workers]);
     }
 
     private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {

@@ -184,3 +184,96 @@ describe('NetworkScanner — TCP track', () => {
         expect(maxObserved).toBeLessThanOrEqual(3);
     });
 });
+
+describe('NetworkScanner — mDNS track', () => {
+    it('emits mDNS hits alongside TCP hits', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [
+                { name: 'adb-SERIAL1', service: '_adb-tls-connect._tcp.', address: '1.1.1.5', port: 5555 },
+            ],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe: async () => false,
+            concurrency: 4,
+            progressInterval: 10,
+        });
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet([])], ws);
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({ source: 'mdns', address: '1.1.1.5:5555' });
+    });
+
+    it('dedupes mDNS + TCP hits for same address (first wins)', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [
+                { name: 'adb-SERIAL1', service: '_adb-tls-connect._tcp.', address: '1.1.1.5', port: 5555 },
+            ],
+            adbConnect: async () => 'connected',
+            adbDisconnect: async () => '',
+            tcpProbe: async (h: string) => h === '1.1.1.5',
+            concurrency: 2,
+            progressInterval: 1,
+        });
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['1.1.1.5'])], ws);
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+        // mDNS runs concurrently with TCP; it usually wins because tcpProbe is awaited first
+        expect(hits[0]).toMatchObject({ source: 'mdns', serial: 'SERIAL1' });
+    });
+
+    it('skips mDNS hits already in adb devices', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [{ serial: '1.1.1.5:5555', state: 'device' }],
+            adbMdnsServices: async () => [
+                { name: 'adb-SERIAL1', service: '_adb-tls-connect._tcp.', address: '1.1.1.5', port: 5555 },
+            ],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe: async () => false,
+            concurrency: 2,
+            progressInterval: 1,
+        });
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet([])], ws);
+        expect(messages.filter((m) => m.type === 'scan.hit')).toHaveLength(0);
+    });
+});
+
+describe('NetworkScanner — cancel drain', () => {
+    it('drains in-flight probes after cancel', async () => {
+        let inFlight = 0;
+        let peak = 0;
+        const tcpProbe = async () => {
+            inFlight++;
+            peak = Math.max(peak, inFlight);
+            await new Promise((r) => setTimeout(r, 20));
+            inFlight--;
+            return false;
+        };
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'failed',
+            adbDisconnect: async () => '',
+            tcpProbe,
+            concurrency: 4,
+            progressInterval: 100,
+        });
+        const { ws, messages } = makeWs();
+        const hosts = Array.from({ length: 100 }, (_, i) => `10.0.0.${i + 1}`);
+        const p = scanner.start([makeSubnet(hosts)], ws);
+        setTimeout(() => scanner.cancel(), 5);
+        await p;
+
+        const hasDraining = messages.some((m) => m.type === 'scan.draining');
+        const hasCancelled = messages.some((m) => m.type === 'scan.cancelled');
+        expect(hasDraining).toBe(true);
+        expect(hasCancelled).toBe(true);
+        // In-flight peak limited by concurrency
+        expect(peak).toBeLessThanOrEqual(4);
+    });
+});
