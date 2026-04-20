@@ -63,6 +63,7 @@ const scanner = new NetworkScanner({
     adbMdnsServices: () => scanAdb.mdnsServices(),
     adbConnect: (addr: string) => scanAdb.connect(addr),
     adbDisconnect: (addr: string) => scanAdb.disconnect(addr),
+    adbShell: (serial: string, cmd: string) => scanAdb.shell(serial, cmd),
     tcpProbe: tcpProbe5555,
     labelFor: (serial: string) => DeviceLabelStore.getInstance().get(serial),
     concurrency: config.scanConcurrency,

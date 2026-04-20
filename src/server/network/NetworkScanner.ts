@@ -8,6 +8,9 @@ export interface NetworkScannerDeps {
     adbMdnsServices: () => Promise<{ name: string; service: string; address: string; port: number }[]>;
     adbConnect: (address: string) => Promise<string>;
     adbDisconnect: (address: string) => Promise<string>;
+    /** Run an adb shell command against a connected device. Used by the TCP track to
+     *  fetch the real serial via `getprop ro.serialno` after confirming connectivity. */
+    adbShell?: (serial: string, command: string) => Promise<string>;
     tcpProbe: (host: string, port: number, timeoutMs: number) => Promise<boolean>;
     /** Look up a saved label by device serial. Returns undefined when no label stored. */
     labelFor?: (serial: string) => string | undefined;
@@ -187,11 +190,23 @@ export class NetworkScanner {
                 if (!open) return;
                 const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
                 if (!connectOutput.toLowerCase().includes('connected')) return;
+                // Fetch the real serial while the device is still connected, so label
+                // lookup works and Connect later persists under the right key.
+                let serial = address;
+                if (this.deps.adbShell) {
+                    try {
+                        const out = await withTimeout(this.deps.adbShell(address, 'getprop ro.serialno'), 2000);
+                        const trimmed = out.trim();
+                        if (trimmed) serial = trimmed;
+                    } catch {
+                        // Leave serial as address fallback
+                    }
+                }
                 await withTimeout(this.deps.adbDisconnect(address), 2000).catch(() => {});
                 this.emitHit({
                     source: 'tcp',
                     address,
-                    serial: address,
+                    serial,
                     name: address,
                 });
             } catch {

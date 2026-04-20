@@ -105,6 +105,60 @@ describe('NetworkScanner — TCP track', () => {
         expect(adbDisconnect).toHaveBeenCalledWith('1.1.1.2:5555');
     });
 
+    it('queries real serial via adbShell when provided', async () => {
+        const adbShell = vi.fn(async (addr: string, cmd: string) => {
+            expect(cmd).toBe('getprop ro.serialno');
+            expect(addr).toBe('1.1.1.2:5555');
+            return 'REALSERIAL123\n';
+        });
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'connected',
+            adbDisconnect: async () => 'disconnected',
+            adbShell,
+            tcpProbe: async (h: string) => h === '1.1.1.2',
+            labelFor: (serial: string) => (serial === 'REALSERIAL123' ? 'My Phone' : undefined),
+            concurrency: 2,
+            progressInterval: 1,
+        });
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['1.1.1.1', '1.1.1.2'])], ws);
+
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({
+            source: 'tcp',
+            address: '1.1.1.2:5555',
+            serial: 'REALSERIAL123',
+            label: 'My Phone',
+        });
+        expect(adbShell).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to address as serial when adbShell throws', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [],
+            adbConnect: async () => 'connected',
+            adbDisconnect: async () => 'disconnected',
+            adbShell: async () => { throw new Error('timeout'); },
+            tcpProbe: async (h: string) => h === '2.2.2.2',
+            concurrency: 2,
+            progressInterval: 1,
+        });
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['2.2.2.2'])], ws);
+
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({
+            source: 'tcp',
+            address: '2.2.2.2:5555',
+            serial: '2.2.2.2:5555',
+        });
+    });
+
     it('emits scan.progress at the configured interval', async () => {
         const scanner = new NetworkScanner({
             adbDevices: async () => [],
