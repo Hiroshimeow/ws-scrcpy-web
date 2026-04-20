@@ -16,6 +16,20 @@ export interface NetworkScannerDeps {
 
 type State = 'idle' | 'scanning' | 'draining';
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 export class NetworkScanner {
     private state: State = 'idle';
     private cancelFlag = false;
@@ -74,9 +88,85 @@ export class NetworkScanner {
         }
     }
 
-    // Scaffold stub — Task 5 implements TCP probe pool + adb-confirm; Task 6 adds mDNS track.
-    protected async runTracks(_subnets: ParsedSubnet[], _totalHosts: number): Promise<void> {
-        // No-op scaffold. Tasks 5/6 will replace this body.
+    protected async runTracks(subnets: ParsedSubnet[], totalHosts: number): Promise<void> {
+        const connectedAddresses = new Set(
+            (await this.deps.adbDevices()).map((d) => d.serial),
+        );
+
+        // mDNS track handled in Task 6.
+        // TCP track:
+        const hostList: string[] = [];
+        for (const subnet of subnets) {
+            for (const host of subnet.hosts()) hostList.push(host);
+        }
+
+        let checked = 0;
+        const tcpTimeout = this.deps.tcpTimeoutMs ?? 300;
+        const adbTimeout = this.deps.adbConnectTimeoutMs ?? 3000;
+
+        const workers: Promise<void>[] = [];
+        let cursor = 0;
+        const nextHost = (): string | null => {
+            if (this.cancelFlag) return null;
+            if (cursor >= hostList.length) return null;
+            return hostList[cursor++];
+        };
+
+        const probeOne = async (host: string): Promise<void> => {
+            const address = `${host}:5555`;
+            try {
+                if (connectedAddresses.has(address)) return;
+                const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
+                if (!open) return;
+                const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
+                if (!connectOutput.toLowerCase().includes('connected')) return;
+                await withTimeout(this.deps.adbDisconnect(address), 2000).catch(() => {});
+                this.emitHit({
+                    source: 'tcp',
+                    address,
+                    serial: address,
+                    name: address,
+                });
+            } catch {
+                // Silent probe failure
+            }
+        };
+
+        const worker = async (): Promise<void> => {
+            for (;;) {
+                const host = nextHost();
+                if (host === null) return;
+                await probeOne(host);
+                checked++;
+                if (checked % this.deps.progressInterval === 0 || checked === totalHosts) {
+                    this.emit({
+                        type: 'scan.progress',
+                        checked,
+                        total: totalHosts,
+                        foundSoFar: this.foundSoFar,
+                    });
+                }
+            }
+        };
+
+        for (let i = 0; i < Math.min(this.deps.concurrency, hostList.length); i++) {
+            workers.push(worker());
+        }
+        await Promise.all(workers);
+    }
+
+    private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {
+        if (this.emittedAddresses.has(partial.address)) return;
+        this.emittedAddresses.add(partial.address);
+        this.foundSoFar++;
+        this.emit({
+            type: 'scan.hit',
+            source: partial.source,
+            address: partial.address,
+            serial: partial.serial,
+            name: partial.name,
+            label: partial.label ?? '',
+        });
     }
 
     protected emit(msg: ScanServerMessage): void {
