@@ -2,6 +2,9 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
+import { Logger } from '../Logger';
+
+const log = Logger.for('NetworkScanner');
 
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
@@ -142,6 +145,7 @@ export class NetworkScanner {
         const connectedAddresses = new Set(
             (await this.deps.adbDevices()).map((d) => d.serial),
         );
+        log.info(`scan start: ${totalHosts} TCP hosts across ${subnets.length} subnet(s); already-connected: ${[...connectedAddresses].join(', ') || '(none)'}`);
 
         // Track A: mDNS — synchronous (adb returns all at once)
         const mdnsPromise = (async () => {
@@ -184,12 +188,29 @@ export class NetworkScanner {
         const probeOne = async (host: string): Promise<void> => {
             const address = `${host}:5555`;
             try {
-                if (connectedAddresses.has(address)) return;
-                if (this.emittedAddresses.has(address)) return; // mDNS already claimed
+                if (connectedAddresses.has(address)) {
+                    log.info(`skip ${address}: already in adb devices`);
+                    return;
+                }
+                if (this.emittedAddresses.has(address)) {
+                    log.info(`skip ${address}: mDNS already emitted`);
+                    return;
+                }
                 const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
                 if (!open) return;
-                const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
-                if (!connectOutput.toLowerCase().includes('connected')) return;
+                log.info(`TCP open ${address}`);
+                let connectOutput: string;
+                try {
+                    connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
+                } catch (err) {
+                    log.info(`adb connect ${address} threw: ${(err as Error).message}`);
+                    return;
+                }
+                log.info(`adb connect ${address} -> ${JSON.stringify(connectOutput.trim())}`);
+                if (!connectOutput.toLowerCase().includes('connected')) {
+                    log.info(`adb connect ${address} did not include 'connected' — dropped`);
+                    return;
+                }
                 // Fetch the real serial while the device is still connected, so label
                 // lookup works and Connect later persists under the right key.
                 let serial = address;
@@ -198,19 +219,20 @@ export class NetworkScanner {
                         const out = await withTimeout(this.deps.adbShell(address, 'getprop ro.serialno'), 2000);
                         const trimmed = out.trim();
                         if (trimmed) serial = trimmed;
-                    } catch {
-                        // Leave serial as address fallback
+                    } catch (err) {
+                        log.info(`getprop ${address} failed: ${(err as Error).message} — using address as serial`);
                     }
                 }
                 await withTimeout(this.deps.adbDisconnect(address), 2000).catch(() => {});
+                log.info(`emit TCP hit ${address} (serial=${serial})`);
                 this.emitHit({
                     source: 'tcp',
                     address,
                     serial,
                     name: address,
                 });
-            } catch {
-                // Silent
+            } catch (err) {
+                log.info(`probeOne ${address} threw: ${(err as Error).message}`);
             }
         };
 
