@@ -26,9 +26,8 @@ describe('ScanMw integration', () => {
         const scanner = new NetworkScanner({
             adbDevices: async () => [],
             adbMdnsServices: async () => [],
-            adbConnect: async () => 'failed',
-            adbDisconnect: async () => '',
             tcpProbe: async () => false,
+            adbHandshakeProbe: async () => ({ isAdb: false }),
             concurrency: 4,
             progressInterval: 10,
         });
@@ -60,9 +59,8 @@ describe('ScanMw integration', () => {
         const scanner = new NetworkScanner({
             adbDevices: async () => [],
             adbMdnsServices: async () => [],
-            adbConnect: async () => 'failed',
-            adbDisconnect: async () => '',
             tcpProbe: async () => false,
+            adbHandshakeProbe: async () => ({ isAdb: false }),
             concurrency: 4,
             progressInterval: 10,
         });

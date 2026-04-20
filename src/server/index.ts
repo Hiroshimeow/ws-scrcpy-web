@@ -12,6 +12,8 @@ import { ScrcpyConnection } from './ScrcpyConnection';
 import { AdbClient } from './AdbClient';
 import { DeviceLabelStore } from './DeviceLabelStore';
 import { NetworkScanner } from './network/NetworkScanner';
+import { probeAdb } from './network/AdbHandshakeProbe';
+import { resolveMac } from './network/MacResolver';
 import { DependencyApi } from './api/DependencyApi';
 import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
 import { HttpServer } from './services/HttpServer';
@@ -61,15 +63,14 @@ const scanAdb = new AdbClient(config.adbPath);
 const scanner = new NetworkScanner({
     adbDevices: () => scanAdb.devices(),
     adbMdnsServices: () => scanAdb.mdnsServices(),
-    adbConnect: (addr: string) => scanAdb.connect(addr),
-    adbDisconnect: (addr: string) => scanAdb.disconnect(addr),
-    adbShell: (serial: string, cmd: string) => scanAdb.shell(serial, cmd),
     tcpProbe: tcpProbe5555,
-    labelFor: (serial: string) => DeviceLabelStore.getInstance().get(serial),
+    adbHandshakeProbe: probeAdb,
+    resolveMac,
+    labelFor: (key: string) => DeviceLabelStore.getInstance().get(key),
     concurrency: config.scanConcurrency,
     progressInterval: config.scanProgressInterval,
     tcpTimeoutMs: config.scanTcpTimeoutMs,
-    adbConnectTimeoutMs: config.scanAdbConnectTimeoutMs,
+    handshakeTimeoutMs: config.scanAdbConnectTimeoutMs,
 });
 ScanMw.setScanner(scanner);
 

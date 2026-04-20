@@ -2,39 +2,26 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
+import type { AdbHandshakeResult } from './AdbHandshakeProbe';
 
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
     adbMdnsServices: () => Promise<{ name: string; service: string; address: string; port: number }[]>;
-    adbConnect: (address: string) => Promise<string>;
-    adbDisconnect: (address: string) => Promise<string>;
-    /** Run an adb shell command against a connected device. Used by the TCP track to
-     *  fetch the real serial via `getprop ro.serialno` after confirming connectivity. */
-    adbShell?: (serial: string, command: string) => Promise<string>;
     tcpProbe: (host: string, port: number, timeoutMs: number) => Promise<boolean>;
-    /** Look up a saved label by device serial. Returns undefined when no label stored. */
-    labelFor?: (serial: string) => string | undefined;
+    /** Raw ADB CNXN handshake probe — confirms a port-5555 endpoint is really ADB
+     *  without touching the adb server (port 5037). Returns { isAdb, model? }. */
+    adbHandshakeProbe: (host: string, port: number, timeoutMs: number) => Promise<AdbHandshakeResult>;
+    /** Resolve an IPv4 to its MAC via ARP cache. Returns null when ARP has no entry. */
+    resolveMac?: (ip: string) => Promise<string | null>;
+    /** Look up a saved label by device identifier (serial OR MAC). */
+    labelFor?: (key: string) => string | undefined;
     concurrency: number;
     progressInterval: number;
     tcpTimeoutMs?: number;
-    adbConnectTimeoutMs?: number;
+    handshakeTimeoutMs?: number;
 }
 
 type State = 'idle' | 'scanning' | 'draining';
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    let timer: NodeJS.Timeout | undefined;
-    try {
-        return await Promise.race([
-            promise,
-            new Promise<T>((_, reject) => {
-                timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
-            }),
-        ]);
-    } finally {
-        if (timer) clearTimeout(timer);
-    }
-}
 
 export class NetworkScanner {
     private state: State = 'idle';
@@ -152,11 +139,12 @@ export class NetworkScanner {
                     if (!hit.service.includes('_adb') || hit.service.includes('pairing')) continue;
                     const address = `${hit.address}:${hit.port}`;
                     if (connectedAddresses.has(address)) continue;
+                    const serial = parseSerialFromMdnsName(hit.name, hit.service);
                     this.emitHit({
                         source: 'mdns',
                         address,
-                        serial: parseSerialFromMdnsName(hit.name, hit.service),
-                        name: hit.name,
+                        serial,
+                        name: `adb-${serial}`,
                     });
                 }
             } catch {
@@ -172,7 +160,7 @@ export class NetworkScanner {
 
         let checked = 0;
         const tcpTimeout = this.deps.tcpTimeoutMs ?? 300;
-        const adbTimeout = this.deps.adbConnectTimeoutMs ?? 3000;
+        const handshakeTimeout = this.deps.handshakeTimeoutMs ?? 2000;
 
         let cursor = 0;
         const nextHost = (): string | null => {
@@ -188,26 +176,17 @@ export class NetworkScanner {
                 if (this.emittedAddresses.has(address)) return; // mDNS already claimed
                 const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
                 if (!open) return;
-                const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
-                if (!connectOutput.toLowerCase().includes('connected')) return;
-                // Fetch the real serial while the device is still connected, so label
-                // lookup works and Connect later persists under the right key.
-                let serial = address;
-                if (this.deps.adbShell) {
-                    try {
-                        const out = await withTimeout(this.deps.adbShell(address, 'getprop ro.serialno'), 2000);
-                        const trimmed = out.trim();
-                        if (trimmed) serial = trimmed;
-                    } catch {
-                        // Leave serial as address fallback
-                    }
-                }
-                await withTimeout(this.deps.adbDisconnect(address), 2000).catch(() => {});
+                // Raw CNXN handshake — confirms ADB without touching adb server (port 5037).
+                const handshake = await this.deps.adbHandshakeProbe(host, 5555, handshakeTimeout);
+                if (!handshake.isAdb) return;
+                // ARP cache is freshly populated from the TCP + handshake traffic.
+                const mac = this.deps.resolveMac ? await this.deps.resolveMac(host) : null;
                 this.emitHit({
                     source: 'tcp',
                     address,
-                    serial,
-                    name: address,
+                    serial: address,
+                    name: handshake.model ?? '',
+                    mac,
                 });
             } catch {
                 // Silent probe failure
@@ -238,21 +217,25 @@ export class NetworkScanner {
         await Promise.all([mdnsPromise, ...workers]);
     }
 
-    private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {
+    private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; mac?: string | null; label?: string }): void {
         if (this.emittedAddresses.has(partial.address)) return;
         this.emittedAddresses.add(partial.address);
         this.foundSoFar++;
-        // Prefer explicit label, then label-store lookup by serial (only meaningful for
-        // mDNS hits where serial is authoritative; TCP hits currently pass IP:port as
-        // serial, which won't match stored entries until Connect fires and persists).
-        const label = partial.label ?? (this.deps.labelFor ? this.deps.labelFor(partial.serial) : undefined) ?? '';
+        // Label precedence: explicit > MAC lookup > serial lookup > ''.
+        // MAC-first helps TCP hits (where `serial` is address-as-placeholder);
+        // serial-fallback catches mDNS hits (where serial is authoritative).
+        let label = partial.label;
+        if (label === undefined && this.deps.labelFor) {
+            if (partial.mac) label = this.deps.labelFor(partial.mac);
+            if (label === undefined) label = this.deps.labelFor(partial.serial);
+        }
         this.emit({
             type: 'scan.hit',
             source: partial.source,
             address: partial.address,
             serial: partial.serial,
             name: partial.name,
-            label,
+            label: label ?? '',
         });
     }
 
