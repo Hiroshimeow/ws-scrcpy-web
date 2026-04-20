@@ -1,5 +1,4 @@
 import * as readline from 'readline';
-import * as net from 'net';
 import { Config } from './Config';
 import { DependencyManager } from './DependencyManager';
 import { Logger } from './Logger';
@@ -41,29 +40,10 @@ const discoveryApi = new DeviceDiscoveryApi();
 HttpServer.addApiHandler(discoveryApi);
 
 // Wire the scanner singleton
-function tcpProbe5555(host: string, port: number, timeoutMs: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-        const socket = new net.Socket();
-        let settled = false;
-        const done = (open: boolean) => {
-            if (settled) return;
-            settled = true;
-            try { socket.destroy(); } catch { /* ignore */ }
-            resolve(open);
-        };
-        socket.setTimeout(timeoutMs);
-        socket.once('connect', () => done(true));
-        socket.once('timeout', () => done(false));
-        socket.once('error', () => done(false));
-        socket.connect(port, host);
-    });
-}
-
 const scanAdb = new AdbClient(config.adbPath);
 const scanner = new NetworkScanner({
     adbDevices: () => scanAdb.devices(),
     adbMdnsServices: () => scanAdb.mdnsServices(),
-    tcpProbe: tcpProbe5555,
     adbHandshakeProbe: probeAdb,
     resolveMac,
     labelFor: (key: string) => DeviceLabelStore.getInstance().get(key),

@@ -2,25 +2,26 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
-import { Logger } from '../Logger';
 import type { AdbHandshakeResult } from './AdbHandshakeProbe';
-
-const log = Logger.for('NetworkScanner');
 
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
     adbMdnsServices: () => Promise<{ name: string; service: string; address: string; port: number }[]>;
-    tcpProbe: (host: string, port: number, timeoutMs: number) => Promise<boolean>;
-    /** Raw ADB CNXN handshake probe — confirms a port-5555 endpoint is really ADB
-     *  without touching the adb server (port 5037). Returns { isAdb, model? }. */
-    adbHandshakeProbe: (host: string, port: number, timeoutMs: number) => Promise<AdbHandshakeResult>;
+    /** Single-connection ADB CNXN handshake probe. Takes two timeouts — the first
+     *  is for the TCP connect phase (fast-fail on closed ports), the second for
+     *  the CNXN/AUTH reply after connect succeeds. Returns { isAdb, model? }.
+     *  Using one socket instead of separate tcpProbe + handshake avoids a race
+     *  with embedded adbd stacks that reject back-to-back connections. */
+    adbHandshakeProbe: (host: string, port: number, connectTimeoutMs: number, replyTimeoutMs: number) => Promise<AdbHandshakeResult>;
     /** Resolve an IPv4 to its MAC via ARP cache. Returns null when ARP has no entry. */
     resolveMac?: (ip: string) => Promise<string | null>;
     /** Look up a saved label by device identifier (serial OR MAC). */
     labelFor?: (key: string) => string | undefined;
     concurrency: number;
     progressInterval: number;
+    /** TCP connect timeout for the probe (fast-fail on closed port). Default 300ms. */
     tcpTimeoutMs?: number;
+    /** Reply timeout after CNXN is sent, for the device's CNXN/AUTH response. Default 5000ms. */
     handshakeTimeoutMs?: number;
 }
 
@@ -177,16 +178,13 @@ export class NetworkScanner {
             try {
                 if (connectedAddresses.has(address)) return;
                 if (this.emittedAddresses.has(address)) return; // mDNS already claimed
-                const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
-                if (!open) return;
-                log.info(`TCP open ${address}`);
-                // Raw CNXN handshake — confirms ADB without touching adb server (port 5037).
-                const handshake = await this.deps.adbHandshakeProbe(host, 5555, handshakeTimeout);
-                log.info(`handshake ${address} -> isAdb=${handshake.isAdb} model=${JSON.stringify(handshake.model)}`);
+                // Single-connection probe: TCP connect + CNXN handshake in one socket.
+                // Returns isAdb=false on connect timeout (closed port) or reply timeout,
+                // isAdb=true when the device's CNXN or AUTH reply arrives.
+                const handshake = await this.deps.adbHandshakeProbe(host, 5555, tcpTimeout, handshakeTimeout);
                 if (!handshake.isAdb) return;
-                // ARP cache is freshly populated from the TCP + handshake traffic.
+                // ARP cache is freshly populated from the handshake's TCP traffic.
                 const mac = this.deps.resolveMac ? await this.deps.resolveMac(host) : null;
-                log.info(`mac ${address} -> ${mac}`);
                 this.emitHit({
                     source: 'tcp',
                     address,
@@ -194,8 +192,8 @@ export class NetworkScanner {
                     name: handshake.model ?? '',
                     mac,
                 });
-            } catch (err) {
-                log.info(`probeOne ${address} threw: ${(err as Error).message}`);
+            } catch {
+                // Silent probe failure
             }
         };
 

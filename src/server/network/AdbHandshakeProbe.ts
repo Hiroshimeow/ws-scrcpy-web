@@ -5,9 +5,6 @@
 // never involved — this is pure socket protocol, no state mutation.
 
 import * as net from 'net';
-import { Logger } from '../Logger';
-
-const log = Logger.for('AdbHandshakeProbe');
 
 const A_CNXN = 0x4e584e43; // "CNXN"
 const A_AUTH = 0x48545541; // "AUTH"
@@ -115,7 +112,23 @@ export function dedupModel(s: string): string {
     return trimmed.replace(/\b(\w[\w-]*)(\s+\1\b)+/gi, '$1');
 }
 
-export function probeAdb(host: string, port: number, timeoutMs: number): Promise<AdbHandshakeResult> {
+/**
+ * Single-connection ADB CNXN probe. Combines TCP connect-check and protocol
+ * handshake into one socket. Two timeouts:
+ *   - connectTimeoutMs: fast-fail on closed ports
+ *   - replyTimeoutMs: time allowed AFTER connect for the device's CNXN/AUTH reply
+ *
+ * Using a single socket avoids the back-to-back-connection pattern that some
+ * embedded adbd stacks silently reject — they ignore new connections while
+ * still cleaning up the previous one (verified empirically on a Samsung
+ * SM-T550 tablet: double-connect silent, single-connect produces AUTH reply).
+ */
+export function probeAdb(
+    host: string,
+    port: number,
+    connectTimeoutMs: number,
+    replyTimeoutMs: number,
+): Promise<AdbHandshakeResult> {
     return new Promise<AdbHandshakeResult>((resolve) => {
         const socket = new net.Socket();
         const chunks: Buffer[] = [];
@@ -128,22 +141,14 @@ export function probeAdb(host: string, port: number, timeoutMs: number): Promise
             try { socket.destroy(); } catch { /* ignore */ }
             resolve(result);
         };
-        // Manual timer rather than socket.setTimeout — reliable regardless of
-        // socket state (half-closed, idle, etc.).
-        timer = setTimeout(() => done({ isAdb: false }), timeoutMs);
-        socket.once('error', (err) => {
-            log.info(`probe ${host}:${port} error: ${err.message}`);
-            done({ isAdb: false });
-        });
-        socket.once('end', () => {
-            log.info(`probe ${host}:${port} end; bytes received=${Buffer.concat(chunks).length}`);
-            done(parseCnxnReply(Buffer.concat(chunks)));
-        });
+        // Phase 1: connect timeout. Short (fast-fail on closed ports).
+        timer = setTimeout(() => done({ isAdb: false }), connectTimeoutMs);
+        socket.once('error', () => done({ isAdb: false }));
+        socket.once('end', () => done(parseCnxnReply(Buffer.concat(chunks))));
         socket.once('close', () => done(parseCnxnReply(Buffer.concat(chunks))));
         socket.on('data', (chunk) => {
             chunks.push(chunk);
             const all = Buffer.concat(chunks);
-            log.info(`probe ${host}:${port} rx ${chunk.length} bytes (total ${all.length}); first 32: ${all.slice(0, Math.min(32, all.length)).toString('hex')}`);
             if (all.length >= HEADER_SIZE) {
                 const dataLen = all.readUInt32LE(12);
                 if (all.length >= HEADER_SIZE + dataLen) {
@@ -152,10 +157,11 @@ export function probeAdb(host: string, port: number, timeoutMs: number): Promise
             }
         });
         socket.once('connect', () => {
-            // Disable Nagle — our 30-byte CNXN should hit the wire immediately
-            // so older embedded adbd stacks see it without waiting for a flush.
+            // Phase 2: switch to reply timeout. Longer to allow the device's
+            // adbd to build and send its CNXN/AUTH banner.
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => done({ isAdb: false }), replyTimeoutMs);
             try { socket.setNoDelay(true); } catch { /* ignore */ }
-            log.info(`probe ${host}:${port} connected; sending CNXN`);
             socket.write(buildCnxnPacket());
         });
         socket.connect(port, host);

@@ -200,7 +200,7 @@ describe('probeAdb (integration)', () => {
         await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
         const port = (server.address() as net.AddressInfo).port;
         try {
-            const result = await probeAdb('127.0.0.1', port, 2000);
+            const result = await probeAdb('127.0.0.1', port, 500, 2000);
             expect(result.isAdb).toBe(true);
             expect(result.model).toBe('SM-T550');
         } finally {
@@ -210,7 +210,7 @@ describe('probeAdb (integration)', () => {
 
     it('returns isAdb=false on connection refused', async () => {
         // Port chosen unlikely to be listening
-        const result = await probeAdb('127.0.0.1', 59999, 500);
+        const result = await probeAdb('127.0.0.1', 59999, 500, 500);
         expect(result.isAdb).toBe(false);
     });
 
@@ -222,7 +222,7 @@ describe('probeAdb (integration)', () => {
         await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
         const port = (server.address() as net.AddressInfo).port;
         try {
-            const result = await probeAdb('127.0.0.1', port, 2000);
+            const result = await probeAdb('127.0.0.1', port, 500, 2000);
             expect(result.isAdb).toBe(false);
         } finally {
             await closeServer(server, sockets);
@@ -236,7 +236,7 @@ describe('probeAdb (integration)', () => {
         await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
         const port = (server.address() as net.AddressInfo).port;
         try {
-            const result = await probeAdb('127.0.0.1', port, 200);
+            const result = await probeAdb('127.0.0.1', port, 500, 200);
             expect(result.isAdb).toBe(false);
         } finally {
             await closeServer(server, sockets);

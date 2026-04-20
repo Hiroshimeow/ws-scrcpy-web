@@ -27,7 +27,6 @@ function baseDeps(overrides: Partial<NetworkScannerDeps> = {}): NetworkScannerDe
     return {
         adbDevices: async () => [],
         adbMdnsServices: async () => [],
-        tcpProbe: async () => false,
         adbHandshakeProbe: async () => ({ isAdb: false }),
         concurrency: 4,
         progressInterval: 10,
@@ -56,7 +55,7 @@ describe('NetworkScanner — lifecycle', () => {
 
     it('rejects concurrent start calls', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => new Promise((r) => setTimeout(() => r(false), 50)),
+            adbHandshakeProbe: async () => new Promise((r) => setTimeout(() => r({ isAdb: false }), 50)),
         }));
         const { ws } = makeWs();
         const p1 = scanner.start([makeSubnet(['1.1.1.1'])], ws);
@@ -68,7 +67,6 @@ describe('NetworkScanner — lifecycle', () => {
 describe('NetworkScanner — TCP track', () => {
     it('emits scan.hit for handshake-confirmed devices', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async (h: string) => h === '1.1.1.2',
             adbHandshakeProbe: async (h: string) => h === '1.1.1.2' ? { isAdb: true, model: 'SM-T550' } : { isAdb: false },
             progressInterval: 1,
         }));
@@ -88,7 +86,6 @@ describe('NetworkScanner — TCP track', () => {
 
     it('uses empty name when handshake banner has no model', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => true,
             adbHandshakeProbe: async () => ({ isAdb: true }),
             progressInterval: 1,
         }));
@@ -100,7 +97,6 @@ describe('NetworkScanner — TCP track', () => {
 
     it('drops hits when handshake says not ADB', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => true,
             adbHandshakeProbe: async () => ({ isAdb: false }),
             progressInterval: 1,
         }));
@@ -109,21 +105,21 @@ describe('NetworkScanner — TCP track', () => {
         expect(messages.filter((m) => m.type === 'scan.hit')).toHaveLength(0);
     });
 
-    it('does not call handshake when TCP probe returns false', async () => {
-        const handshake = vi.fn(async () => ({ isAdb: true }));
+    it('passes both timeouts to handshake probe', async () => {
+        const calls: Array<{ connect: number; reply: number }> = [];
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => false,
-            adbHandshakeProbe: handshake,
+            adbHandshakeProbe: async (_h, _p, c, r) => { calls.push({ connect: c, reply: r }); return { isAdb: false }; },
+            tcpTimeoutMs: 250,
+            handshakeTimeoutMs: 4000,
             progressInterval: 1,
         }));
         const { ws } = makeWs();
-        await scanner.start([makeSubnet(['1.1.1.1', '1.1.1.2'])], ws);
-        expect(handshake).not.toHaveBeenCalled();
+        await scanner.start([makeSubnet(['1.1.1.1'])], ws);
+        expect(calls[0]).toEqual({ connect: 250, reply: 4000 });
     });
 
     it('resolves MAC and looks up label by MAC', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => true,
             adbHandshakeProbe: async () => ({ isAdb: true, model: 'Pixel 3' }),
             resolveMac: async (ip: string) => ip === '1.1.1.2' ? 'aa:bb:cc:dd:ee:ff' : null,
             labelFor: (k: string) => (k === 'aa:bb:cc:dd:ee:ff' ? 'Jamies Pixel' : undefined),
@@ -141,7 +137,6 @@ describe('NetworkScanner — TCP track', () => {
 
     it('falls back to labelFor(serial) when MAC lookup misses', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => true,
             adbHandshakeProbe: async () => ({ isAdb: true }),
             resolveMac: async () => 'aa:bb:cc:dd:ee:ff',
             labelFor: (k: string) => (k === '1.1.1.2:5555' ? 'Serial Match' : undefined),
@@ -155,7 +150,6 @@ describe('NetworkScanner — TCP track', () => {
 
     it('emits empty label when neither MAC nor serial matches', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => true,
             adbHandshakeProbe: async () => ({ isAdb: true }),
             resolveMac: async () => null,
             labelFor: () => undefined,
@@ -168,7 +162,6 @@ describe('NetworkScanner — TCP track', () => {
 
     it('emits scan.progress at the configured interval', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => false,
             progressInterval: 2,
             concurrency: 2,
         }));
@@ -180,17 +173,18 @@ describe('NetworkScanner — TCP track', () => {
     });
 
     it('skips addresses already in adb devices', async () => {
-        const tcpProbe = vi.fn(async () => true);
+        const callHosts: string[] = [];
         const scanner = new NetworkScanner(baseDeps({
             adbDevices: async () => [{ serial: '1.1.1.1:5555', state: 'device' }],
-            adbHandshakeProbe: async () => ({ isAdb: true }),
-            tcpProbe,
+            adbHandshakeProbe: async (h: string) => { callHosts.push(h); return { isAdb: true }; },
             progressInterval: 1,
             concurrency: 2,
         }));
         const { ws, messages } = makeWs();
         await scanner.start([makeSubnet(['1.1.1.1', '1.1.1.2'])], ws);
-        expect(tcpProbe).not.toHaveBeenCalledWith('1.1.1.1', expect.anything(), expect.anything());
+        // handshake should have been called for .2 but not .1
+        expect(callHosts).toContain('1.1.1.2');
+        expect(callHosts).not.toContain('1.1.1.1');
         const hits = messages.filter((m) => m.type === 'scan.hit');
         expect(hits.every((h: any) => h.address !== '1.1.1.1:5555')).toBe(true);
     });
@@ -198,15 +192,14 @@ describe('NetworkScanner — TCP track', () => {
     it('respects concurrency bound', async () => {
         let current = 0;
         let maxObserved = 0;
-        const tcpProbe = async () => {
-            current++;
-            if (current > maxObserved) maxObserved = current;
-            await new Promise((r) => setTimeout(r, 10));
-            current--;
-            return false;
-        };
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe,
+            adbHandshakeProbe: async () => {
+                current++;
+                if (current > maxObserved) maxObserved = current;
+                await new Promise((r) => setTimeout(r, 10));
+                current--;
+                return { isAdb: false };
+            },
             concurrency: 3,
             progressInterval: 100,
         }));
@@ -254,8 +247,7 @@ describe('NetworkScanner — mDNS track', () => {
             adbMdnsServices: async () => [
                 { name: 'adb-SERIAL1', service: '_adb-tls-connect._tcp.', address: '1.1.1.5', port: 5555 },
             ],
-            tcpProbe: async (h: string) => h === '1.1.1.5',
-            adbHandshakeProbe: async () => ({ isAdb: true, model: 'Pixel' }),
+            adbHandshakeProbe: async (h: string) => h === '1.1.1.5' ? { isAdb: true, model: 'Pixel' } : { isAdb: false },
             progressInterval: 1,
             concurrency: 2,
         }));
@@ -285,15 +277,14 @@ describe('NetworkScanner — cancel drain', () => {
     it('drains in-flight probes after cancel', async () => {
         let peak = 0;
         let inFlight = 0;
-        const tcpProbe = async () => {
-            inFlight++;
-            peak = Math.max(peak, inFlight);
-            await new Promise((r) => setTimeout(r, 20));
-            inFlight--;
-            return false;
-        };
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe,
+            adbHandshakeProbe: async () => {
+                inFlight++;
+                peak = Math.max(peak, inFlight);
+                await new Promise((r) => setTimeout(r, 20));
+                inFlight--;
+                return { isAdb: false };
+            },
             concurrency: 4,
             progressInterval: 100,
         }));
@@ -312,14 +303,13 @@ describe('NetworkScanner — cancel drain', () => {
 describe('NetworkScanner — spectator snapshot', () => {
     it('sends scan.started and last scan.progress to mid-scan spectator', async () => {
         let inFlight = 0;
-        const tcpProbe = async () => {
-            inFlight++;
-            await new Promise((r) => setTimeout(r, 30));
-            inFlight--;
-            return false;
-        };
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe,
+            adbHandshakeProbe: async () => {
+                inFlight++;
+                await new Promise((r) => setTimeout(r, 30));
+                inFlight--;
+                return { isAdb: false };
+            },
             concurrency: 2,
             progressInterval: 2,
         }));
@@ -347,7 +337,7 @@ describe('NetworkScanner — getState', () => {
 
     it('returns scanning during active scan', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => new Promise((r) => setTimeout(() => r(false), 30)),
+            adbHandshakeProbe: async () => new Promise((r) => setTimeout(() => r({ isAdb: false }), 30)),
             concurrency: 2,
         }));
         const { ws } = makeWs();
@@ -361,7 +351,7 @@ describe('NetworkScanner — getState', () => {
 describe('NetworkScanner — spectator cleanup', () => {
     it('removes closed WS from spectators on close event', async () => {
         const scanner = new NetworkScanner(baseDeps({
-            tcpProbe: async () => new Promise((r) => setTimeout(() => r(false), 30)),
+            adbHandshakeProbe: async () => new Promise((r) => setTimeout(() => r({ isAdb: false }), 30)),
             concurrency: 2,
         }));
         const listeners = new Map<string, () => void>();
