@@ -6,13 +6,16 @@
 
 import * as net from 'net';
 import * as zlib from 'zlib';
+import { Logger } from '../Logger';
+
+const log = Logger.for('AdbHandshakeProbe');
 
 const A_CNXN = 0x4e584e43; // "CNXN"
 const A_AUTH = 0x48545541; // "AUTH"
 const A_CNXN_MAGIC = (A_CNXN ^ 0xffffffff) >>> 0;
 const A_AUTH_MAGIC = (A_AUTH ^ 0xffffffff) >>> 0;
 const ADB_VERSION = 0x01000000; // protocol version 1 — widest compatibility
-const ADB_MAX_DATA = 0x00040000; // 256KB max payload
+const ADB_MAX_DATA = 0x00001000; // 4KB — MAX_PAYLOAD_V1 from Android adb source; widest compat
 const HEADER_SIZE = 24;
 const HOST_BANNER = Buffer.from('host::features=shell_v2\0', 'utf8');
 
@@ -104,12 +107,19 @@ export function probeAdb(host: string, port: number, timeoutMs: number): Promise
         // Manual timer rather than socket.setTimeout — reliable regardless of
         // socket state (half-closed, idle, etc.).
         timer = setTimeout(() => done({ isAdb: false }), timeoutMs);
-        socket.once('error', () => done({ isAdb: false }));
-        socket.once('end', () => done(parseCnxnReply(Buffer.concat(chunks))));
+        socket.once('error', (err) => {
+            log.info(`probe ${host}:${port} error: ${err.message}`);
+            done({ isAdb: false });
+        });
+        socket.once('end', () => {
+            log.info(`probe ${host}:${port} end; bytes received=${Buffer.concat(chunks).length}`);
+            done(parseCnxnReply(Buffer.concat(chunks)));
+        });
         socket.once('close', () => done(parseCnxnReply(Buffer.concat(chunks))));
         socket.on('data', (chunk) => {
             chunks.push(chunk);
             const all = Buffer.concat(chunks);
+            log.info(`probe ${host}:${port} rx ${chunk.length} bytes (total ${all.length}); first 32: ${all.slice(0, Math.min(32, all.length)).toString('hex')}`);
             if (all.length >= HEADER_SIZE) {
                 const dataLen = all.readUInt32LE(12);
                 if (all.length >= HEADER_SIZE + dataLen) {
@@ -118,6 +128,7 @@ export function probeAdb(host: string, port: number, timeoutMs: number): Promise
             }
         });
         socket.once('connect', () => {
+            log.info(`probe ${host}:${port} connected; sending CNXN`);
             socket.write(buildCnxnPacket());
         });
         socket.connect(port, host);

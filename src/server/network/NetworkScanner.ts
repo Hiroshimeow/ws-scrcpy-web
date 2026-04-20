@@ -2,7 +2,10 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
+import { Logger } from '../Logger';
 import type { AdbHandshakeResult } from './AdbHandshakeProbe';
+
+const log = Logger.for('NetworkScanner');
 
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
@@ -176,11 +179,14 @@ export class NetworkScanner {
                 if (this.emittedAddresses.has(address)) return; // mDNS already claimed
                 const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
                 if (!open) return;
+                log.info(`TCP open ${address}`);
                 // Raw CNXN handshake — confirms ADB without touching adb server (port 5037).
                 const handshake = await this.deps.adbHandshakeProbe(host, 5555, handshakeTimeout);
+                log.info(`handshake ${address} -> isAdb=${handshake.isAdb} model=${JSON.stringify(handshake.model)}`);
                 if (!handshake.isAdb) return;
                 // ARP cache is freshly populated from the TCP + handshake traffic.
                 const mac = this.deps.resolveMac ? await this.deps.resolveMac(host) : null;
+                log.info(`mac ${address} -> ${mac}`);
                 this.emitHit({
                     source: 'tcp',
                     address,
@@ -188,8 +194,8 @@ export class NetworkScanner {
                     name: handshake.model ?? '',
                     mac,
                 });
-            } catch {
-                // Silent probe failure
+            } catch (err) {
+                log.info(`probeOne ${address} threw: ${(err as Error).message}`);
             }
         };
 
