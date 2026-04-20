@@ -117,6 +117,107 @@ describe('SubnetDetector', () => {
         });
         expect(result?.cidr).toBe('10.0.0.0/16');
     });
+
+    it('picks the real-gateway default route on Windows with multiple defaults (skips On-link)', async () => {
+        // Real `route print -4` output from a machine with a static-IP adapter (no
+        // gateway, 192.168.87.3) plus a DHCP adapter with a real gateway (192.168.86.1).
+        // Windows lists BOTH as default routes — the On-link one must be filtered out.
+        const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
+            '10 Gbps Adapter': [{
+                address: '192.168.87.3',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'c8:7f:54:67:f3:39',
+                internal: false,
+                cidr: '192.168.87.3/24',
+            }],
+            'vEthernet (LAN)': [{
+                address: '192.168.86.3',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'c8:7f:54:67:ee:d6',
+                internal: false,
+                cidr: '192.168.86.3/24',
+            }],
+        };
+        const routeOutput = [
+            '===========================================================================',
+            'IPv4 Route Table',
+            '===========================================================================',
+            'Active Routes:',
+            'Network Destination        Netmask          Gateway       Interface  Metric',
+            '          0.0.0.0          0.0.0.0         On-link         192.168.87.3    271',
+            '          0.0.0.0          0.0.0.0     192.168.86.1      192.168.86.3     25',
+            '         10.5.0.0      255.255.0.0         On-link          10.5.0.2    261',
+            '===========================================================================',
+        ].join('\n');
+        const result = await detectSubnet({
+            getInterfaces: () => interfaces,
+            runCommand: async () => routeOutput,
+            platform: 'win32',
+        });
+        expect(result?.cidr).toBe('192.168.86.0/24');
+        expect(result?.source).toBe('gateway');
+        expect(result?.interfaceName).toBe('vEthernet (LAN)');
+    });
+
+    it('returns null on Windows when all default routes are On-link', async () => {
+        const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
+            eth0: [{
+                address: '192.168.87.3',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: '192.168.87.3/24',
+            }],
+        };
+        const routeOutput = [
+            'Active Routes:',
+            '          0.0.0.0          0.0.0.0         On-link         192.168.87.3    271',
+        ].join('\n');
+        const result = await detectSubnet({
+            getInterfaces: () => interfaces,
+            runCommand: async () => routeOutput,
+            platform: 'win32',
+        });
+        // Gateway detection returns null (no real default); interface fallback then
+        // returns the only RFC1918 interface available.
+        expect(result?.source).toBe('interface');
+        expect(result?.cidr).toBe('192.168.87.0/24');
+    });
+
+    it('skips 0.0.0.0 gateway on Linux and picks real gateway', async () => {
+        const interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = {
+            eth0: [{
+                address: '192.168.1.42',
+                netmask: '255.255.255.0',
+                family: 'IPv4',
+                mac: 'aa:bb:cc:dd:ee:ff',
+                internal: false,
+                cidr: '192.168.1.42/24',
+            }],
+        };
+        const runCommand = async (cmd: string) => {
+            if (cmd.startsWith('ip route show default')) {
+                return [
+                    'default via 0.0.0.0 dev eth1 metric 500',
+                    'default via 192.168.1.1 dev eth0 metric 100',
+                ].join('\n');
+            }
+            if (cmd.startsWith('ip -o -4 addr show dev eth0')) {
+                return '2: eth0    inet 192.168.1.42/24 brd 192.168.1.255 scope global eth0';
+            }
+            throw new Error(`unexpected: ${cmd}`);
+        };
+        const result = await detectSubnet({
+            getInterfaces: () => interfaces,
+            runCommand,
+            platform: 'linux',
+        });
+        expect(result?.cidr).toBe('192.168.1.0/24');
+        expect(result?.source).toBe('gateway');
+    });
 });
 
 describe('SubnetDetector internals', () => {

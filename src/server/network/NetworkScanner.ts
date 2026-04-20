@@ -2,9 +2,6 @@ import type WS from 'ws';
 import type { ParsedSubnet } from '../../common/SubnetParser';
 import type { ScanServerMessage, ScanStartedMessage, ScanProgressMessage } from '../../common/ScanMessage';
 import { parseSerialFromMdnsName } from '../AdbClient';
-import { Logger } from '../Logger';
-
-const log = Logger.for('NetworkScanner');
 
 export interface NetworkScannerDeps {
     adbDevices: () => Promise<{ serial: string; state: string }[]>;
@@ -145,7 +142,6 @@ export class NetworkScanner {
         const connectedAddresses = new Set(
             (await this.deps.adbDevices()).map((d) => d.serial),
         );
-        log.info(`scan start: ${totalHosts} TCP hosts across ${subnets.length} subnet(s); already-connected: ${[...connectedAddresses].join(', ') || '(none)'}`);
 
         // Track A: mDNS — synchronous (adb returns all at once)
         const mdnsPromise = (async () => {
@@ -177,7 +173,6 @@ export class NetworkScanner {
         let checked = 0;
         const tcpTimeout = this.deps.tcpTimeoutMs ?? 300;
         const adbTimeout = this.deps.adbConnectTimeoutMs ?? 3000;
-        log.info(`TCP pool setup: hostList.length=${hostList.length}, concurrency=${this.deps.concurrency}, tcpTimeoutMs=${tcpTimeout}, adbTimeoutMs=${adbTimeout}, first=${hostList[0]}, last=${hostList.at(-1)}`);
 
         let cursor = 0;
         const nextHost = (): string | null => {
@@ -189,29 +184,12 @@ export class NetworkScanner {
         const probeOne = async (host: string): Promise<void> => {
             const address = `${host}:5555`;
             try {
-                if (connectedAddresses.has(address)) {
-                    log.info(`skip ${address}: already in adb devices`);
-                    return;
-                }
-                if (this.emittedAddresses.has(address)) {
-                    log.info(`skip ${address}: mDNS already emitted`);
-                    return;
-                }
+                if (connectedAddresses.has(address)) return;
+                if (this.emittedAddresses.has(address)) return; // mDNS already claimed
                 const open = await this.deps.tcpProbe(host, 5555, tcpTimeout);
                 if (!open) return;
-                log.info(`TCP open ${address}`);
-                let connectOutput: string;
-                try {
-                    connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
-                } catch (err) {
-                    log.info(`adb connect ${address} threw: ${(err as Error).message}`);
-                    return;
-                }
-                log.info(`adb connect ${address} -> ${JSON.stringify(connectOutput.trim())}`);
-                if (!connectOutput.toLowerCase().includes('connected')) {
-                    log.info(`adb connect ${address} did not include 'connected' — dropped`);
-                    return;
-                }
+                const connectOutput = await withTimeout(this.deps.adbConnect(address), adbTimeout);
+                if (!connectOutput.toLowerCase().includes('connected')) return;
                 // Fetch the real serial while the device is still connected, so label
                 // lookup works and Connect later persists under the right key.
                 let serial = address;
@@ -220,20 +198,19 @@ export class NetworkScanner {
                         const out = await withTimeout(this.deps.adbShell(address, 'getprop ro.serialno'), 2000);
                         const trimmed = out.trim();
                         if (trimmed) serial = trimmed;
-                    } catch (err) {
-                        log.info(`getprop ${address} failed: ${(err as Error).message} — using address as serial`);
+                    } catch {
+                        // Leave serial as address fallback
                     }
                 }
                 await withTimeout(this.deps.adbDisconnect(address), 2000).catch(() => {});
-                log.info(`emit TCP hit ${address} (serial=${serial})`);
                 this.emitHit({
                     source: 'tcp',
                     address,
                     serial,
                     name: address,
                 });
-            } catch (err) {
-                log.info(`probeOne ${address} threw: ${(err as Error).message}`);
+            } catch {
+                // Silent probe failure
             }
         };
 
@@ -255,13 +232,10 @@ export class NetworkScanner {
         };
 
         const workers: Promise<void>[] = [];
-        const workerCount = Math.min(this.deps.concurrency, Math.max(hostList.length, 1));
-        log.info(`spawning ${workerCount} workers`);
-        for (let i = 0; i < workerCount; i++) {
+        for (let i = 0; i < Math.min(this.deps.concurrency, Math.max(hostList.length, 1)); i++) {
             workers.push(worker());
         }
         await Promise.all([mdnsPromise, ...workers]);
-        log.info(`TCP pool done: checked=${checked}/${totalHosts}, foundSoFar=${this.foundSoFar}`);
     }
 
     private emitHit(partial: { source: 'mdns' | 'tcp'; address: string; serial: string; name: string; label?: string }): void {

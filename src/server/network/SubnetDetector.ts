@@ -43,28 +43,57 @@ export async function detectSubnet(deps: DetectorDeps = DEFAULT_DEPS): Promise<D
 
 async function detectViaGateway(deps: DetectorDeps): Promise<DetectedSubnet | null> {
     if (deps.platform === 'linux') {
+        // `ip route show default` may emit multiple lines on multi-homed hosts.
+        // Skip any line whose gateway is 0.0.0.0 (not a real gateway — the adapter
+        // is not truly connected to anything routable). Pick lowest-metric survivor.
         const route = await deps.runCommand('ip route show default');
-        const m = route.match(/default via [\d.]+ dev (\S+)/);
-        if (!m) return null;
-        const ifaceName = m[1];
-        // Hygiene: interface names are typically [a-zA-Z0-9:._-]; reject anything weirder
-        // to avoid any surprises in how the name is passed to execFile.
-        if (!/^[\w:.\-]+$/.test(ifaceName)) return null;
-        const addr = await deps.runCommand(`ip -o -4 addr show dev ${ifaceName}`);
+        let bestIface: string | null = null;
+        let bestMetric = Number.POSITIVE_INFINITY;
+        for (const line of route.split('\n')) {
+            const lineMatch = line.match(/default\s+via\s+(\d+\.\d+\.\d+\.\d+)\s+dev\s+(\S+)/);
+            if (!lineMatch) continue;
+            const gateway = lineMatch[1];
+            const ifaceName = lineMatch[2];
+            if (gateway === '0.0.0.0') continue;
+            if (!/^[\w:.\-]+$/.test(ifaceName)) continue;
+            const metricMatch = line.match(/\bmetric\s+(\d+)/);
+            const metric = metricMatch ? Number.parseInt(metricMatch[1], 10) : 0;
+            if (metric < bestMetric) {
+                bestMetric = metric;
+                bestIface = ifaceName;
+            }
+        }
+        if (!bestIface) return null;
+        const addr = await deps.runCommand(`ip -o -4 addr show dev ${bestIface}`);
         const cidrM = addr.match(/inet (\d+\.\d+\.\d+\.\d+\/\d+)/);
         if (!cidrM) return null;
-        return fromCidrString(cidrM[1], 'gateway', ifaceName);
+        return fromCidrString(cidrM[1], 'gateway', bestIface);
     }
 
     if (deps.platform === 'win32') {
+        // `route print -4` lists a default route (0.0.0.0/0) for every adapter —
+        // even those without a real gateway, which show "On-link" in the gateway
+        // column. Only accept rows whose gateway is a real IP (not On-link,
+        // not 0.0.0.0), then pick the lowest-metric survivor.
         const output = await deps.runCommand('route print -4');
-        const m = output.match(/^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+\S+\s+(\S+)\s+\d+/m);
-        if (!m) return null;
-        const gatewayIfaceIp = m[1];
+        const defaultRouteRe = /^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)\s+(\S+)\s+(\d+)/gm;
+        const candidates: { ifaceIp: string; metric: number }[] = [];
+        let m: RegExpExecArray | null;
+        while ((m = defaultRouteRe.exec(output)) !== null) {
+            const gateway = m[1];
+            const ifaceIp = m[2];
+            const metric = Number.parseInt(m[3], 10);
+            if (gateway === 'On-link' || gateway === '0.0.0.0') continue;
+            if (!/^\d+\.\d+\.\d+\.\d+$/.test(gateway)) continue;
+            candidates.push({ ifaceIp, metric });
+        }
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => a.metric - b.metric);
+        const best = candidates[0];
         const interfaces = deps.getInterfaces();
         for (const [name, entries] of Object.entries(interfaces)) {
             for (const entry of entries ?? []) {
-                if (entry.family === 'IPv4' && !entry.internal && entry.address === gatewayIfaceIp) {
+                if (entry.family === 'IPv4' && !entry.internal && entry.address === best.ifaceIp) {
                     const prefix = __internals.netmaskToPrefix(entry.netmask);
                     if (prefix === null) return null;
                     const network = __internals.cidrNetwork(entry.address, prefix);
