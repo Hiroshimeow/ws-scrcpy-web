@@ -141,6 +141,9 @@ export function probeAdb(host: string, port: number, timeoutMs: number): Promise
             }
         });
         socket.once('connect', () => {
+            // Disable Nagle — our 30-byte CNXN should hit the wire immediately
+            // so older embedded adbd stacks see it without waiting for a flush.
+            try { socket.setNoDelay(true); } catch { /* ignore */ }
             log.info(`probe ${host}:${port} connected; sending CNXN`);
             socket.write(buildCnxnPacket());
         });
