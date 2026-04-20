@@ -89,6 +89,12 @@ export class ScanNetworkModal extends Modal {
 
     protected buildFooter(): HTMLElement | null {
         const footer = document.createElement('div');
+        // Defer content so class-field init (after super) doesn't clobber this.startBtn.
+        queueMicrotask(() => this.fillFooter(footer));
+        return footer;
+    }
+
+    private fillFooter(footer: HTMLElement): void {
         const cancel = document.createElement('button');
         cancel.textContent = 'cancel';
         cancel.addEventListener('click', () => this.close());
@@ -98,7 +104,8 @@ export class ScanNetworkModal extends Modal {
         this.startBtn.addEventListener('click', () => this.onStartClick());
         footer.appendChild(cancel);
         footer.appendChild(this.startBtn);
-        return footer;
+        // After the footer is populated, sync the disabled state with current rows.
+        this.updateStartButton();
     }
 
     private loadInitialRows(): void {

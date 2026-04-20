@@ -18,6 +18,11 @@ export class AddSubnetModal extends Modal {
     }
 
     protected buildBody(container: HTMLElement): void {
+        // Defer so class-field init (after super) doesn't clobber assignments made here.
+        queueMicrotask(() => this.fillBody(container));
+    }
+
+    private fillBody(container: HTMLElement): void {
         const help = document.createElement('p');
         help.textContent = 'Accepted formats: CIDR (192.168.2.0/24), single IP (192.168.2.5), or range (192.168.2.10-50).';
         help.style.cssText = 'margin: 0 0 12px; color: var(--muted, #8b949e); font-size: 13px;';
@@ -26,20 +31,26 @@ export class AddSubnetModal extends Modal {
         this.input = document.createElement('input');
         this.input.type = 'text';
         this.input.placeholder = '192.168.2.0/24 or 192.168.2.5 or 192.168.2.10-50';
-        this.input.style.cssText = 'width: 100%; padding: 8px; font-family: var(--font-mono, monospace);';
+        this.input.style.cssText = 'width: 100%; padding: 8px; font-family: var(--font-mono, monospace); box-sizing: border-box;';
         this.input.addEventListener('input', () => this.revalidate());
         this.input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !this.addBtn.disabled) this.submit();
+            if (e.key === 'Enter' && this.addBtn && !this.addBtn.disabled) this.submit();
         });
         container.appendChild(this.input);
 
         this.status = document.createElement('div');
-        this.status.style.cssText = 'min-height: 18px; margin-top: 8px; font-size: 13px;';
+        this.status.style.cssText = 'min-height: 18px; margin-top: 8px; font-size: 13px; word-wrap: break-word;';
         container.appendChild(this.status);
     }
 
     protected buildFooter(): HTMLElement | null {
         const footer = document.createElement('div');
+        // Defer content so class-field init doesn't clobber this.addBtn.
+        queueMicrotask(() => this.fillFooter(footer));
+        return footer;
+    }
+
+    private fillFooter(footer: HTMLElement): void {
         const cancel = document.createElement('button');
         cancel.textContent = 'cancel';
         cancel.addEventListener('click', () => this.close());
@@ -49,10 +60,10 @@ export class AddSubnetModal extends Modal {
         this.addBtn.addEventListener('click', () => this.submit());
         footer.appendChild(cancel);
         footer.appendChild(this.addBtn);
-        return footer;
     }
 
     private revalidate(): void {
+        if (!this.input || !this.status || !this.addBtn) return;
         const raw = this.input.value.trim();
         if (!raw) {
             this.status.replaceChildren();
@@ -108,6 +119,7 @@ export class AddSubnetModal extends Modal {
     }
 
     private submit(): void {
+        if (!this.input) return;
         const raw = this.input.value.trim();
         if (!raw) return;
         this.addedCallback(raw);
