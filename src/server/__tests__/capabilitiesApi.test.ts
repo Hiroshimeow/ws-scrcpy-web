@@ -1,8 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CapabilitiesApi } from '../api/CapabilitiesApi';
-import { _resetForTest, resolveNodePty } from '../NodePtyResolver';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
+
+// Mock the resolver so CapabilitiesApi tests focus on API behavior and don't
+// exercise real download / filesystem / network code. The resolver has its own
+// unit tests + a dedicated integration test.
+let mockedHandle: { available: boolean; reason?: string } | undefined;
+vi.mock('../NodePtyResolver', () => ({
+    _resetForTest: () => { mockedHandle = undefined; },
+    resolveNodePty: async () => mockedHandle ?? { available: false, reason: 'test-default' },
+    getNodePty: () => mockedHandle,
+}));
 
 function makeReqRes(url: string, method = 'GET') {
     const req = { url, method } as IncomingMessage;
@@ -20,17 +29,33 @@ function makeReqRes(url: string, method = 'GET') {
 
 describe('CapabilitiesApi', () => {
     beforeEach(() => {
-        _resetForTest();
+        mockedHandle = undefined;
     });
 
-    it('returns { shell: true } when node-pty resolved successfully', async () => {
-        await resolveNodePty('/tmp/test-deps');
+    it('returns { shell: true } when the cached handle reports available', async () => {
+        mockedHandle = { available: true };
         const api = new CapabilitiesApi();
         const { req, res } = makeReqRes('/api/capabilities');
         const handled = await api.handle(req, res);
         expect(handled).toBe(true);
         expect((res as any).getStatus()).toBe(200);
         expect(JSON.parse((res as any).getBody())).toEqual({ shell: true });
+    });
+
+    it('returns { shell: false } when the cached handle is unavailable', async () => {
+        mockedHandle = { available: false, reason: 'no-manifest' };
+        const api = new CapabilitiesApi();
+        const { req, res } = makeReqRes('/api/capabilities');
+        const handled = await api.handle(req, res);
+        expect(handled).toBe(true);
+        expect(JSON.parse((res as any).getBody())).toEqual({ shell: false });
+    });
+
+    it('returns { shell: false } when no handle is cached yet', async () => {
+        const api = new CapabilitiesApi();
+        const { req, res } = makeReqRes('/api/capabilities');
+        await api.handle(req, res);
+        expect(JSON.parse((res as any).getBody())).toEqual({ shell: false });
     });
 
     it('returns false from handle() for non-matching URLs', async () => {
