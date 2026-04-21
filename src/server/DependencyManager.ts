@@ -95,7 +95,9 @@ export class DependencyManager {
         const errors = infos.filter((i) => i.status === DependencyStatus.Error).length;
         const parts: string[] = [];
         if (updates.length > 0) {
-            parts.push(`${updates.length} ${updates.length === 1 ? 'update' : 'updates'} available (${updates.join(', ')})`);
+            parts.push(
+                `${updates.length} ${updates.length === 1 ? 'update' : 'updates'} available (${updates.join(', ')})`,
+            );
         }
         if (upToDate > 0) {
             parts.push(`${upToDate} up-to-date`);
@@ -165,6 +167,15 @@ export class DependencyManager {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             } catch {
                 // Best effort cleanup
+            }
+        }
+    }
+
+    public async autoInstallMissing(): Promise<void> {
+        for (const info of this.state.values()) {
+            if (info.installedVersion === null && info.latestVersion !== null) {
+                log.info(`First-run: auto-installing ${info.name}`);
+                await this.update(info.name);
             }
         }
     }
