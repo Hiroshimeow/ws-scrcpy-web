@@ -18,9 +18,6 @@ if not exist "%NODE%" (
     exit /b 1
 )
 
-:: Set environment so the app knows where dependencies live
-set "DEPS_PATH=%DEPS_PATH%"
-
 :: Clean up stale restart marker
 if exist "%RESTART_MARKER%" del "%RESTART_MARKER%"
 
