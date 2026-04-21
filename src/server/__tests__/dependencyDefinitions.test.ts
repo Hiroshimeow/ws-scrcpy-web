@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPlatform, getArch, getDependencyDefinitions } from '../DependencyDefinitions';
+import { getArch, getDependencyDefinitions, getPlatform, NODE_LTS_ABI, parseNodeMajor } from '../DependencyDefinitions';
 
 describe('getPlatform', () => {
     it('returns win32 or linux based on os.platform()', () => {
@@ -46,5 +46,33 @@ describe('getDependencyDefinitions', () => {
         const defs = getDependencyDefinitions();
         const scrcpy = defs.find((d) => d.name === 'scrcpy-server');
         expect(scrcpy?.requiresRestart).toBe(false);
+    });
+});
+
+describe('parseNodeMajor', () => {
+    it('parses leading-v version strings', () => {
+        expect(parseNodeMajor('v24.14.1')).toBe(24);
+    });
+
+    it('parses bare version strings', () => {
+        expect(parseNodeMajor('22.11.0')).toBe(22);
+    });
+
+    it('returns NaN for garbage input', () => {
+        expect(parseNodeMajor('not-a-version')).toBeNaN();
+    });
+});
+
+describe('NODE_LTS_ABI', () => {
+    it('covers known LTS majors with string ABI values', () => {
+        // These ABIs are documented in process.versions.modules across Node releases.
+        expect(NODE_LTS_ABI[20]).toBe('115');
+        expect(NODE_LTS_ABI[22]).toBe('127');
+        expect(NODE_LTS_ABI[24]).toBe('137');
+    });
+
+    it('does not include non-LTS majors', () => {
+        expect(NODE_LTS_ABI[21]).toBeUndefined();
+        expect(NODE_LTS_ABI[23]).toBeUndefined();
     });
 });
