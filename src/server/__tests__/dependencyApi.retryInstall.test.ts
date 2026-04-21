@@ -8,12 +8,9 @@ import { DependencyManager } from '../DependencyManager';
 interface MockRes {
     statusCode?: number;
     body?: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    writeHead: (...args: any[]) => any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    end: (...args: any[]) => any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setHeader: (...args: any[]) => any;
+    writeHead: (...args: unknown[]) => unknown;
+    end: (...args: unknown[]) => unknown;
+    setHeader: (...args: unknown[]) => unknown;
 }
 
 function makeMockRes() {
