@@ -1387,17 +1387,21 @@ chain and caches the result:
    of the time.
 
 2. **Disk cache** — If that fails to load, look for a cached prebuilt
-   under `dependencies/node-pty/prebuilds/{key}/pty.node`. Set
-   `NODE_GYP_BUILD_BINARY_PATH` to point at the cached binary and
-   re-require the homebridge package; its `node-gyp-build` resolver
-   picks up the env pointer.
+   under `dependencies/node-pty/prebuilds/{key}/pty.node`.
+   `@homebridge/node-pty-prebuilt-multiarch` does not use `node-gyp-build`;
+   its loader (`lib/prebuild-file-path.js`) resolves the binary at
+   `<package>/prebuilds/{platform}-{arch}/node.abi{modules}[.musl].node`
+   via a plain `fs.existsSync` at require-time. The resolver copies the
+   cached `.node` file to that exact path before the dynamic import so
+   homebridge's loader finds it.
 
 3. **GitHub Releases fallback** — If no cached prebuilt matches, fetch
    `manifest.json` from our GH Release `node-pty-prebuilds-latest`. If
    the manifest covers the current Node ABI, download the corresponding
    tarball from the versioned release (`node-pty-prebuilds-v{upstream}`),
    verify SHA256 against the release's `SHA256SUMS`, extract into the
-   cache, and retry loading.
+   cache, copy the `.node` file to homebridge's prebuilds directory, and
+   then import.
 
 If all three sources fail, the resolver returns `{ available: false }`
 and the shell modal is disabled client-side via `/api/capabilities`.

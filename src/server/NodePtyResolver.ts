@@ -34,6 +34,20 @@ export function _resetForTest(): void {
     inflight = undefined;
 }
 
+/**
+ * Test-only: find which cache-dir entry matches the given host info, if any.
+ * Returns the matched entry name (e.g. "node-pty-v1.1.0-node-abi127-linux-x64-glibc")
+ * and the expected pty.node path, without performing any I/O beyond readdirSync.
+ */
+export function _findCacheEntry(host: HostInfo, cacheDir: string): { entryName: string; binaryPath: string } | null {
+    if (!fs.existsSync(cacheDir)) return null;
+    const entries = fs.readdirSync(cacheDir);
+    const wantSuffix = `-node-abi${host.nodeAbi}-${host.platform}-${host.arch}${host.platform === 'linux' ? `-${host.libc}` : ''}`;
+    const match = entries.find((e) => e.startsWith('node-pty-v') && e.endsWith(wantSuffix));
+    if (!match) return null;
+    return { entryName: match, binaryPath: path.join(cacheDir, match, 'pty.node') };
+}
+
 export function getNodePty(): NodePtyHandle | undefined {
     return cachedHandle;
 }
@@ -67,6 +81,24 @@ export async function verifyChecksum(filePath: string, expectedSha256Hex: string
 const RELEASE_URL_BASE = 'https://github.com/bilbospocketses/ws-scrcpy-web/releases/download';
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 
+/**
+ * Resolve the path where homebridge's prebuild-file-path.js will look for
+ * the native binary for the current Node ABI.
+ *
+ * homebridge's loader (lib/prebuild-file-path.js) constructs:
+ *   <package>/prebuilds/{platform}-{arch}/node.abi{modules}[.musl].node
+ * and checks fs.existsSync at require-time. There is no env-var override.
+ * Placing the .node file at this path before the first import is the only
+ * way to inject a custom binary.
+ */
+export function homebridgePrebuildPath(host: HostInfo): string {
+    const pkgDir = path.dirname(require.resolve('@homebridge/node-pty-prebuilt-multiarch/package.json'));
+    const runtimeTag = process.versions.hasOwnProperty('electron') ? 'electron' : 'node';
+    const muslSuffix = host.platform === 'linux' && host.libc === 'musl' ? '.musl' : '';
+    const filename = `${runtimeTag}.abi${host.nodeAbi}${muslSuffix}.node`;
+    return path.join(pkgDir, 'prebuilds', `${host.platform}-${host.arch}`, filename);
+}
+
 async function tryCachedPrebuilt(host: HostInfo, depsPath: string): Promise<NodePtyHandle | null> {
     const cacheDir = path.join(depsPath, 'node-pty', 'prebuilds');
     try {
@@ -77,8 +109,11 @@ async function tryCachedPrebuilt(host: HostInfo, depsPath: string): Promise<Node
         if (!match) return null;
         const binaryPath = path.join(cacheDir, match, 'pty.node');
         if (!fs.existsSync(binaryPath)) return null;
-        // node-gyp-build checks NODE_GYP_BUILD_BINARY_PATH first; point it at our cached file
-        process.env.NODE_GYP_BUILD_BINARY_PATH = binaryPath;
+        // homebridge's loader checks fs.existsSync on a fixed path at require-time.
+        // Copy the cached binary to the exact path homebridge expects, then import.
+        const destPath = homebridgePrebuildPath(host);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.copyFileSync(binaryPath, destPath);
         const pty = await import('@homebridge/node-pty-prebuilt-multiarch');
         if (typeof (pty as any).spawn !== 'function') return null;
         log.info(`node-pty resolved from disk cache: ${match}`);
@@ -131,13 +166,16 @@ async function tryDownloadPrebuilt(host: HostInfo, depsPath: string, upstreamVer
         execFileSync('tar', ['-xzf', tarPath, '-C', cacheDir], { stdio: 'inherit' });
         fs.rmSync(tarPath, { force: true });
 
-        // Point node-gyp-build at the extracted binary, then re-require
+        // homebridge's loader checks fs.existsSync on a fixed path at require-time.
+        // Copy the extracted binary to the exact path homebridge expects, then import.
         const binaryPath = path.join(cacheDir, 'pty.node');
         if (!fs.existsSync(binaryPath)) {
             log.error(`pty.node missing after extract in ${cacheDir}`);
             return null;
         }
-        process.env.NODE_GYP_BUILD_BINARY_PATH = binaryPath;
+        const destPath = homebridgePrebuildPath(host);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.copyFileSync(binaryPath, destPath);
         const pty = await import('@homebridge/node-pty-prebuilt-multiarch');
         if (typeof (pty as any).spawn !== 'function') return null;
         log.info(`node-pty resolved via downloaded prebuilt: ${key}`);
