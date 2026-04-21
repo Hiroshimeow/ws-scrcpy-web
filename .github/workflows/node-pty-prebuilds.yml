@@ -188,16 +188,9 @@ jobs:
           }
           JSON
 
-      - name: Commit state file
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/state/node-pty-prebuilds-state.json
-          git diff --cached --quiet && exit 0
-          git commit -m "chore(ci): bump node-pty prebuild state to node-pty v${{ needs.precheck.outputs.node_pty_version }}"
-          git push
-
       - name: Create versioned release
+        # Runs before the state-file commit so release asset uploads are not
+        # blocked by a git push race (main can move during the matrix run).
         uses: softprops/action-gh-release@v2
         with:
           tag_name: node-pty-prebuilds-v${{ needs.precheck.outputs.node_pty_version }}
@@ -222,6 +215,24 @@ jobs:
           files: |
             downloaded/manifest.json
           body: "Manifest pointing at the latest published prebuild release."
+
+      - name: Commit state file
+        # Runs last so a race on main (docs/feature pushes landing mid-matrix)
+        # doesn't block release-asset uploads. Rebase first to absorb any new
+        # commits; if push still races, the release is already complete so the
+        # state file drift is cosmetic and self-heals on the next run.
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/state/node-pty-prebuilds-state.json
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(ci): bump node-pty prebuild state to node-pty v${{ needs.precheck.outputs.node_pty_version }}"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push failed (attempt $attempt), retrying..."
+            sleep 5
+          done
+          echo "::warning::state-file commit could not be pushed after 3 attempts; self-heals on next run"
 
   open-issue-on-failure:
     needs: [precheck, build, publish]
