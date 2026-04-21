@@ -48,6 +48,35 @@ export class DependencyApi {
                 return true;
             }
 
+            // POST /api/dependencies/retry-install — retry first-run bootstrap
+            if (req.method === 'POST' && url === '/api/dependencies/retry-install') {
+                const before = new Map<string, { installedVersion: string | null }>();
+                for (const info of this.manager.getAll()) {
+                    before.set(info.name, { installedVersion: info.installedVersion });
+                }
+                await this.manager.checkAll();
+                await this.manager.autoInstallMissing();
+                const installed: string[] = [];
+                const stillMissing: string[] = [];
+                const errors: Record<string, string> = {};
+                for (const info of this.manager.getAll()) {
+                    const prev = before.get(info.name);
+                    if (prev?.installedVersion === null && info.installedVersion !== null) {
+                        installed.push(info.name);
+                    }
+                    if (info.installedVersion === null) {
+                        stillMissing.push(info.name);
+                    }
+                    if (info.errorMessage) {
+                        errors[info.name] = info.errorMessage;
+                    }
+                }
+                const success = stillMissing.length === 0 && Object.keys(errors).length === 0;
+                res.writeHead(200);
+                res.end(JSON.stringify({ success, installed, stillMissing, errors }));
+                return true;
+            }
+
             res.writeHead(404);
             res.end(JSON.stringify({ error: 'Not found' }));
             return true;
