@@ -8,10 +8,13 @@ ENTRY="$SCRIPT_DIR/dist/index.js"
 export DEPS_PATH="$SCRIPT_DIR/dependencies"
 RESTART_MARKER="$DEPS_PATH/.restart"
 
-# Ensure node binary exists
+# Probe chain: dependencies first, then Velopack seed fallback
 if [ ! -x "$NODE" ]; then
-    echo "ERROR: Node.js not found at $NODE"
-    echo "Run the initial setup or place the node binary in dependencies/node/"
+    NODE="$SCRIPT_DIR/seed/node/node"
+fi
+if [ ! -x "$NODE" ]; then
+    echo "ERROR: Node.js not found at dependencies/node/ or seed/node/"
+    echo "Reinstall the app to restore the bundled Node."
     exit 1
 fi
 

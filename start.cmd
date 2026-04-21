@@ -10,10 +10,11 @@ set "ENTRY=%SCRIPT_DIR%dist\index.js"
 set "DEPS_PATH=%SCRIPT_DIR%dependencies"
 set "RESTART_MARKER=%DEPS_PATH%\.restart"
 
-:: Ensure node binary exists
+:: Probe chain: dependencies first, then Velopack seed fallback
+if not exist "%NODE%" set "NODE=%SCRIPT_DIR%seed\node\node.exe"
 if not exist "%NODE%" (
-    echo ERROR: Node.js not found at %NODE%
-    echo Run the initial setup or place node.exe in dependencies\node\
+    echo ERROR: Node.js not found at dependencies\node\ or seed\node\
+    echo Reinstall the app to restore the bundled Node.
     pause
     exit /b 1
 )
