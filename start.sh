@@ -5,8 +5,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE="$SCRIPT_DIR/dependencies/node/node"
 ENTRY="$SCRIPT_DIR/dist/index.js"
-RESTART_MARKER="$SCRIPT_DIR/.restart"
 export DEPS_PATH="$SCRIPT_DIR/dependencies"
+RESTART_MARKER="$DEPS_PATH/.restart"
 
 # Ensure node binary exists
 if [ ! -x "$NODE" ]; then
@@ -23,10 +23,15 @@ while true; do
     "$NODE" "$ENTRY"
     EXIT_CODE=$?
 
-    # Check if restart was requested
+    # Check if restart was requested — marker file OR exit code 75
     if [ -f "$RESTART_MARKER" ]; then
         rm -f "$RESTART_MARKER"
-        echo "Restarting..."
+        echo "Restarting (marker)..."
+        sleep 2
+        continue
+    fi
+    if [ "$EXIT_CODE" -eq 75 ]; then
+        echo "Restarting (exit 75)..."
         sleep 2
         continue
     fi

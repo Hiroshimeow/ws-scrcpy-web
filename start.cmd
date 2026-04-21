@@ -7,8 +7,8 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 set "NODE=%SCRIPT_DIR%dependencies\node\node.exe"
 set "ENTRY=%SCRIPT_DIR%dist\index.js"
-set "RESTART_MARKER=%SCRIPT_DIR%.restart"
 set "DEPS_PATH=%SCRIPT_DIR%dependencies"
+set "RESTART_MARKER=%DEPS_PATH%\.restart"
 
 :: Ensure node binary exists
 if not exist "%NODE%" (
@@ -32,12 +32,17 @@ echo Starting ws-scrcpy-web...
 "%NODE%" "%ENTRY%"
 set "EXIT_CODE=%ERRORLEVEL%"
 
-:: Check if restart was requested
+:: Check if restart was requested — marker file OR exit code 75
 if exist "%RESTART_MARKER%" (
     del "%RESTART_MARKER%"
-    :: Clean up old node binary if update just happened
     if exist "%NODE%.old" del "%NODE%.old"
-    echo Restarting...
+    echo Restarting (marker)...
+    timeout /t 2 /nobreak >nul
+    goto loop
+)
+if "%EXIT_CODE%"=="75" (
+    if exist "%NODE%.old" del "%NODE%.old"
+    echo Restarting (exit 75)...
     timeout /t 2 /nobreak >nul
     goto loop
 )
