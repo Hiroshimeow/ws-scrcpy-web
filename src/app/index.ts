@@ -1,10 +1,12 @@
 import '../style/app.css';
-import '../style/home.css';
 import '../style/dependencies.css';
-import { HostTracker } from './client/HostTracker';
+import '../style/first-run-banner.css';
+import '../style/home.css';
 import { DependencyPanel } from './client/DependencyPanel';
+import { FirstRunBanner } from './client/FirstRunBanner';
+import { HostTracker } from './client/HostTracker';
 import { NetworkDiscoveryPanel } from './client/NetworkDiscoveryPanel';
-import { initTheme, createThemeToggle } from './client/ThemeToggle';
+import { createThemeToggle, initTheme } from './client/ThemeToggle';
 import type { Tool } from './client/Tool';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 
@@ -48,6 +50,10 @@ window.onload = async (): Promise<void> => {
     const pageContainer = document.createElement('div');
     pageContainer.className = 'page-container';
     document.body.appendChild(pageContainer);
+
+    FirstRunBanner.create().then((banner) => {
+        pageContainer.insertBefore(banner.getElement(), pageContainer.firstChild);
+    });
 
     const devicesDiv = document.createElement('div');
     devicesDiv.id = 'devices';
