@@ -43,7 +43,7 @@ The "standard Docker" objection — that images should be immutable — is style
 ### D3. Installer packaging uses Velopack
 
 Chosen over raw platform zips, `pkg`, and Node SEA because:
-- **Cross-platform from one spec** — Windows (MSIX/Squirrel) + Linux (AppImage, deb, rpm) from the same `vpk pack` invocation
+- **Cross-platform from one spec** — Windows (MSIX/Squirrel) + Linux Debian family (`.deb` for Ubuntu / Debian / Mint / etc.) + Linux RHEL family (`.rpm` for Fedora / RHEL / CentOS / Rocky / Alma / openSUSE) + portable AppImage, all from the same `vpk pack` invocation
 - **App self-update built in** — today the dep manager updates Node / ADB / scrcpy, but NOT the app's own code. Velopack fills that gap with delta updates.
 - **GitHub Releases as the update feed** — no separate release server to run
 - **Background-service install supported** — fits this headless-server use case (no desktop UI window)
@@ -107,12 +107,13 @@ Each of these gets its own brainstorming session + tactical plan. Ordering below
 - `npm run package:win` / `npm run package:linux` / `npm run package:all` scripts
 - Release CI that builds the Velopack artifacts on every tagged release and uploads to GitHub Releases in the format Velopack's updater expects
 - Signed Windows installer (code signing cert required; may be a follow-up)
-- `.deb` + AppImage for Linux (Velopack supports both; pick one as primary based on distro targets)
+- `.deb` (Debian/Ubuntu family) + `.rpm` (Fedora/RHEL family) + AppImage (portable fallback for any distro) — all three for Linux; Velopack emits them from one spec
 - Velopack updater invocation on app startup: check feed, stage update if available, apply on next restart
 
 **Open design questions:**
 - Where does the app install to on Windows? `%LOCALAPPDATA%` (per-user) vs `%PROGRAMFILES%` (machine-wide)? Velopack default is per-user; that avoids UAC.
-- Linux: AppImage (portable, no install step) vs `.deb` (proper system integration). Pick one or ship both?
+- Linux packaging mix: `.deb` for Debian family, `.rpm` for RHEL family, AppImage as portable fallback. Ship all three, or just the distro-native pair (deb + rpm) and skip AppImage? Or ship all three and let the user pick based on preference?
+- Linux validation coverage: at minimum one Debian-family distro (Ubuntu LTS) and one RHEL-family distro (Fedora current) need real-hardware test passes before release. AppImage as the "works everywhere else" safety net.
 - What's the update cadence? Velopack supports "check every N hours"; is app-startup-only enough?
 - Running as a service on Linux — systemd unit shipped with the install? Or user-launched only?
 - Running as a service on Windows — Windows service vs Startup entry vs nothing?
