@@ -151,6 +151,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Embed layout: video + toolbar now right-aligned as a pair (matches legacy `float: right` look). Previously the video cell was stretched across the flex row with `flex: 1`, centering the canvas in the middle and leaving the toolbar marooned at the far right — obvious on phone aspects where the centered canvas was narrow. Now `body[data-embed-entry] .device-view` uses `justify-content: flex-end`; the video cell stays content-sized so the toolbar sits flush against the mirror's right edge.
 - `/embed.html` now parses the `deviceKind` URL parameter. `StartStreamOptions.deviceKind` has existed since its addition alongside the device-kind auto-detection feature (see Added), but `embed-entry.ts`'s `parseEmbedParams` was silently dropping the param on the URL side — iframe consumers like Control Menu's `ScrcpyMirror` component could pass `&deviceKind=phone` without effect. Now validated against the closed set `phone | tablet | tv` (anything else is ignored, keeping forward-compat). Test coverage added in `embedEntry.test.ts`.
 
+### Added
+- Logger coverage in `DependencyManager` at medium granularity (update start/complete, checkAll aggregate, restart requested, errors).
+- Node auto-update gating against the node-pty prebuilt manifest (Option D): `nodejs.checkLatest` only offers LTS versions we have prebuilts for; silently skips newer majors until the matrix catches up.
+- Launcher scripts (`start.cmd`, `start.sh`) now also loop on process exit code 75, in addition to the `.restart` marker.
+
+### Changed
+- `DependencyManager.requestRestart` now writes the `.restart` marker at `<depsPath>/.restart` (was `dirname(depsPath)/.restart`) and exits with code 75 (was 0). Launcher scripts updated to read the marker from `$DEPS_PATH/.restart` and also loop on exit code 75. This unbreaks the marker path under Velopack's `<installFolder>/current/` layout and lets supervisors (systemd, Docker restart policies) distinguish intentional restart from crash.
+- `Config.dependenciesPath` resolution is now strict: `DEPS_PATH` environment variable wins, then `config.json` `dependenciesPath`, then a dev-only fallback that triggers only when a sibling `package.json` is present. Production deployments (Velopack, Docker) must set `DEPS_PATH`. A clear startup error names the env var and config key if no source resolves.
+- Never-auto-downgrade rule: when the (possibly filtered) latest version is older than the installed version, status stays `UpToDate` with an explanatory INFO log.
+
 ## [1.0.0] - 2026-04-17
 
 First public release. Browser-based Android screen mirroring rebuilt from the ground up on vanilla scrcpy v3.x with a modernized Node.js + TypeScript stack.
