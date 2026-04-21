@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { DependencyManager } from '../DependencyManager';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DependencyStatus } from '../../common/DependencyTypes';
+import { DependencyManager } from '../DependencyManager';
 
 describe('DependencyManager', () => {
     it('initializes with all dependencies in unknown state', () => {
@@ -44,9 +44,9 @@ describe('DependencyManager.requestRestart', () => {
 
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-dm-'));
-        exitSpy = vi.spyOn(process, 'exit').mockImplementation(
-            ((code?: number) => { throw new Error(`exit:${code}`); }) as never,
-        );
+        exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+            throw new Error(`exit:${code}`);
+        }) as never);
     });
 
     afterEach(() => {
@@ -68,7 +68,11 @@ describe('DependencyManager.requestRestart', () => {
 
     it('marker body contains a timestamp marker', () => {
         const mgr = new DependencyManager(tmpDir);
-        try { mgr.requestRestart(); } catch { /* expected */ }
+        try {
+            mgr.requestRestart();
+        } catch {
+            /* expected */
+        }
         const body = fs.readFileSync(path.join(tmpDir, '.restart'), 'utf-8');
         expect(body).toMatch(/^restart-requested-\d+$/);
     });
