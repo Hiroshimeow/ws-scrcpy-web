@@ -122,7 +122,16 @@ export function dedupModel(s: string): string {
  * embedded adbd stacks silently reject — they ignore new connections while
  * still cleaning up the previous one (verified empirically on a Samsung
  * SM-T550 tablet: double-connect silent, single-connect produces AUTH reply).
+ *
+ * Close behavior: when isAdb is true we send FIN (socket.end()) instead of RST
+ * (socket.destroy()) so adbd sees a clean teardown. An RST leaves some adbd
+ * stacks in a cleanup window during which a subsequent real `adb connect`
+ * races with their state machine and silently fails. FIN + a short safety-net
+ * destroy keeps closed-port/timeout paths fast while giving live devices a
+ * graceful close.
  */
+const GRACEFUL_CLOSE_GRACE_MS = 250;
+
 export function probeAdb(
     host: string,
     port: number,
@@ -138,7 +147,14 @@ export function probeAdb(
             if (settled) return;
             settled = true;
             if (timer) clearTimeout(timer);
-            try { socket.destroy(); } catch { /* ignore */ }
+            if (result.isAdb) {
+                try { socket.end(); } catch { /* ignore */ }
+                setTimeout(() => {
+                    try { socket.destroy(); } catch { /* ignore */ }
+                }, GRACEFUL_CLOSE_GRACE_MS).unref();
+            } else {
+                try { socket.destroy(); } catch { /* ignore */ }
+            }
             resolve(result);
         };
         // Phase 1: connect timeout. Short (fast-fail on closed ports).

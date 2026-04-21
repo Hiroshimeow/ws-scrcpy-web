@@ -196,6 +196,7 @@ export class NetworkDiscoveryPanel {
                 <input type="text" class="discovery-name-input" placeholder="Name this device..." value="${escapeHtml(hit.label || '')}" />
                 <button class="dep-btn dep-update discovery-connect-btn" data-address="${escapeHtml(hit.address)}" data-serial="${escapeHtml(hit.serial)}">Connect</button>
             </div>
+            <div class="discovery-card-result" hidden></div>
         `;
         card.querySelector('.discovery-connect-btn')!.addEventListener('click', () =>
             this.connectDevice(hit.address, hit.serial, card),
@@ -282,9 +283,13 @@ export class NetworkDiscoveryPanel {
     private async connectDevice(address: string, serial: string, card: HTMLElement): Promise<void> {
         const btn = card.querySelector('.discovery-connect-btn') as HTMLButtonElement;
         const nameInput = card.querySelector('.discovery-name-input') as HTMLInputElement;
+        const resultEl = card.querySelector('.discovery-card-result') as HTMLElement;
         const label = nameInput.value.trim();
 
         btn.disabled = true;
+        resultEl.setAttribute('hidden', '');
+        resultEl.textContent = '';
+        resultEl.classList.remove('error', 'success');
 
         try {
             const res = await fetch('/api/devices/connect', {
@@ -299,9 +304,18 @@ export class NetworkDiscoveryPanel {
                 setTimeout(() => card.remove(), 1500);
             } else {
                 btn.disabled = false;
+                this.showCardResult(resultEl, result.message || `Failed to connect to ${address}`, 'error');
             }
-        } catch {
+        } catch (err: any) {
             btn.disabled = false;
+            this.showCardResult(resultEl, err?.message || 'Request failed', 'error');
         }
+    }
+
+    private showCardResult(resultEl: HTMLElement, text: string, kind: 'success' | 'error'): void {
+        resultEl.textContent = text;
+        resultEl.classList.toggle('success', kind === 'success');
+        resultEl.classList.toggle('error', kind === 'error');
+        resultEl.removeAttribute('hidden');
     }
 }

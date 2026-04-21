@@ -3,8 +3,11 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { AdbClient, parseSerialFromMdnsName } from '../AdbClient';
 import { Config } from '../Config';
 import { DeviceLabelStore } from '../DeviceLabelStore';
+import { Logger } from '../Logger';
 import { detectSubnet } from '../network/SubnetDetector';
 import { resolveMac } from '../network/MacResolver';
+
+const log = Logger.for('DeviceDiscoveryApi');
 
 export class DeviceDiscoveryApi {
     private adbClient: AdbClient;
@@ -65,6 +68,9 @@ export class DeviceDiscoveryApi {
                 }
                 const result = await this.adbClient.connect(address);
                 const success = result.includes('connected');
+                log.info(
+                    `connect ${address} → ${success ? 'OK' : 'FAIL'}: ${result.trim().replace(/\s+/g, ' ')}`,
+                );
                 if (success && label) {
                     // Persist the label under the device's real serial AND its MAC.
                     // Storing under both keys lets future scans (which may only have
@@ -197,6 +203,7 @@ export class DeviceDiscoveryApi {
             res.end(JSON.stringify({ error: 'Not found' }));
             return true;
         } catch (err: any) {
+            log.error(`${req.method} ${req.url} threw: ${err?.message ?? String(err)}`);
             res.writeHead(500);
             res.end(JSON.stringify({ error: err.message }));
             return true;

@@ -222,18 +222,22 @@
     color: var(--text-color, #eee);
 }
 
-.discovery-manual-result {
+.discovery-manual-result,
+.discovery-card-result {
     flex-basis: 100%;
     font-size: 13px;
     margin-top: 4px;
     font-family: var(--font-mono);
+    word-break: break-word;
 }
 
-.discovery-manual-result.error {
+.discovery-manual-result.error,
+.discovery-card-result.error {
     color: #f87171;
 }
 
-.discovery-manual-result.success {
+.discovery-manual-result.success,
+.discovery-card-result.success {
     color: #4ade80;
 }
 
