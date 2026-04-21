@@ -744,6 +744,7 @@ Browser WS connect (action=stream, udid=xxx, videoCodec=h265, ...)
 | `PORT` | `8000` | HTTP/WS server port |
 | `ADB_PATH` | `adb` | Path to ADB executable |
 | `CONFIG_PATH` | `config.json` | Path to config file |
+| `DEPS_PATH` | see below | Absolute path to the dep-manager's writable folder. Resolution priority: env → `config.json` `dependenciesPath` → dev fallback (`<entry>/../dependencies` if `<entry>/../package.json` exists) → hard-fail with instructive startup error. Production deployments (Velopack, Docker) must set it explicitly. |
 
 ---
 
@@ -932,10 +933,11 @@ The dependency updater manages runtime dependencies (Node.js + node-pty, ADB, sc
 |------|----------------|
 | `src/common/DependencyTypes.ts` | Shared types (`DependencyInfo`, `DependencyStatus`, `UpdateResult`) and `compareVersions()` |
 | `src/server/DependencyDefinitions.ts` | Declarative config for each dependency (version sources, download URLs, platform detection) |
-| `src/server/DependencyManager.ts` | Core logic: version detection, remote checking, download, extract, install |
+| `src/server/DependencyManager.ts` | Core logic: version detection, remote checking, download, extract, install, `autoInstallMissing()` first-run bootstrap primitive, never-auto-downgrade in `resolveStatus` |
 | `src/server/api/DependencyApi.ts` | HTTP REST endpoints under `/api/dependencies/` |
 | `src/app/client/DependencyPanel.ts` | Browser-side table UI with status badges and update buttons |
-| `start.cmd` / `start.sh` | Launcher scripts that handle restart after Node.js updates |
+| `src/app/client/FirstRunBanner.ts` | Home-page banner shown when any managed dep is in `Error` state or `Unknown` with null `installedVersion`. Offers a Retry button for offline-at-first-boot recovery. |
+| `start.cmd` / `start.sh` | Launcher scripts. Handle restart after Node.js updates (via `.restart` marker at `$DEPS_PATH/.restart` and/or exit code 75). Probe `dependencies/node/` first, fall back to `seed/node/` (Velopack-bundled location) before hard-failing. |
 
 ### 13.2 API Endpoints
 
@@ -945,6 +947,7 @@ The dependency updater manages runtime dependencies (Node.js + node-pty, ADB, sc
 | POST | `/api/dependencies/check` | Check all dependencies for updates |
 | POST | `/api/dependencies/:name/update` | Download and install update for named dependency |
 | POST | `/api/dependencies/restart` | Restart the server (via launcher script) |
+| POST | `/api/dependencies/retry-install` | Re-run `checkAll` + `autoInstallMissing`; returns `{ success, installed, stillMissing, errors }`. Used by `FirstRunBanner`'s Retry button. Always responds 200 regardless of `success` value — client reads banner state by re-fetching `/api/dependencies`. |
 
 ### 13.3 Restart Flow
 
@@ -952,25 +955,61 @@ Node.js cannot replace its own running binary on Windows. The solution uses an e
 
 1. User clicks "Update" for Node.js in the browser
 2. Server downloads new Node.js, renames running `node.exe` to `node.exe.old`, copies new binary
-3. Server writes `.restart` marker file and exits with code 0
-4. Launcher script (`start.cmd` / `start.sh`) detects marker, deletes old binary, relaunches
+3. Server writes `.restart` marker at `<depsPath>/.restart` **and** exits with code `75` (the belt-and-suspenders primitive — consumers pick whichever signal fits their supervisor shape)
+4. Launcher script (`start.cmd` / `start.sh`) loops on either the marker OR exit code `75`, deletes old binary, relaunches
 5. Browser polls `/api/dependencies` until server responds, then reloads the page
 
-On Linux, file locking is not an issue -- the binary can be overwritten directly. The launcher script still handles the restart loop for consistency.
+On Linux, file locking is not an issue — the binary can be overwritten directly. The launcher script still handles the restart loop for consistency.
+
+**Supervisor integration:** the exit-75 convention means SP3's Velopack service wrapper, Docker `restart: on-failure`, or a systemd unit with `RestartForceExitStatus=75` can all restart the server without needing to read the marker file. The launcher's marker-based loop is the dev / host-install path.
+
+### 13.3.1 First-Run Bootstrap
+
+Fresh Velopack installs arrive with `dependencies/` empty. SP2b adds an auto-install primitive that fills it in on first boot:
+
+1. Launcher probe chain finds Node: `dependencies/node/` first, `seed/node/` (Velopack-bundled) fallback.
+2. Server boots and runs the standard `checkAll()` — populates `installedVersion` + `latestVersion` for every dep.
+3. `DependencyManager.autoInstallMissing()` runs right after: walks dep state, calls `update(name)` for any dep with `installedVersion === null && latestVersion !== null`. Sequential (no network-saturation storm). Idempotent. Offline-tolerant (skips deps whose latest check failed — the banner path handles those).
+4. If any dep is still in `Error` or `Unknown+null-installed` after the sweep, `FirstRunBanner` renders on the home page with a Retry button. Click → `POST /api/dependencies/retry-install` → re-runs checkAll + autoInstallMissing → banner re-polls state and hides on success.
+
+In practice, Node ships via Velopack seed (never null), scrcpy-server ships bundled in the webpack output (`dist/assets/scrcpy-server`, always "installed" from `SERVER_VERSION`), and ADB is the only dep that actually downloads on first run.
+
+### 13.3.2 Option D — Node version gating against node-pty prebuilts
+
+`nodejs.checkLatest()` filters candidate Node LTS releases by whether our node-pty prebuilt manifest (published by SP1/SP1b at GH Releases, cached at `dependencies/node-pty/manifest.json`) has coverage for the major's ABI. Mechanics:
+
+- `NODE_LTS_ABI: Record<number, string>` maps Node major → `process.versions.modules` ABI string. Hardcoded table in `DependencyDefinitions.ts` (20 → 115, 22 → 127, 24 → 137). Add new majors as the prebuilt matrix ships them.
+- For each LTS release from `nodejs.org/dist/index.json`, look up its major's ABI. If that ABI is in `Manifest.coveredAbis`, keep it. Else drop it.
+- Return the newest surviving candidate.
+- If `loadManifest()` returns null (first-run corner case), fall back to unfiltered newest LTS with a WARN.
+
+**Never-auto-downgrade:** if `compareVersions(installedVersion, filteredLatest) > 0` (a user on a Node major that fell out of the matrix), `resolveStatus` keeps status `UpToDate` with an INFO log — we never suggest an "update" that would go backward.
 
 ### 13.4 Dependencies Folder Structure
 
 ```
-ws-scrcpy-web/
-  dependencies/
-    node/       -- node.exe (Windows) or node (Linux) + node-pty native files
-    adb/        -- ADB platform-tools (adb, fastboot, etc.)
+ws-scrcpy-web/                           -- installFolder (depsPath parent)
+  dependencies/                          -- survives Velopack app updates
+    node/                                -- node.exe / node (dep-manager writes here)
+    adb/                                 -- ADB platform-tools (adb, fastboot, etc.)
+    node-pty/                            -- SP1b two-source resolver cache
+      manifest.json                      -- latest prebuilt coverage
+      v{version}/{platform}-{arch}[-{libc}]/pty.node
+    .restart                             -- transient marker (server → launcher)
+  seed/                                  -- Velopack-shipped Node fallback (SP3)
+    node/                                -- probed only when dependencies/node/ is empty
   dist/
     assets/
-      scrcpy-server   -- managed by webpack build, updatable via the UI
-  start.cmd           -- Windows launcher
-  start.sh            -- Linux launcher
+      scrcpy-server                      -- bundled by webpack, updatable via the UI
+    index.js                             -- server entry
+  start.cmd                              -- Windows launcher
+  start.sh                               -- Linux launcher
 ```
+
+**Key invariants:**
+- `dependencies/` is the dep-manager's canonical writable location. It survives Velopack app updates.
+- `seed/` is shipped by the Velopack installer as a fallback Node (read-only from the app's perspective, refreshed on every Velopack app update).
+- Dev checkouts have neither `seed/` nor (initially) anything useful in `dependencies/`. `Config.resolveDependenciesPath` detects the dev layout via a sibling `package.json` tell and falls back to `<repo>/dependencies/`.
 
 ### 13.5 Adding a New Managed Dependency
 
