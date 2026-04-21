@@ -35,6 +35,8 @@
     padding: 20px;
     margin-bottom: 8px;
     font-family: var(--font-mono);
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 8px;
 }
 
 .home-section h2 {
@@ -128,6 +130,7 @@
 
 .discovery-card-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     width: 100%;
@@ -135,7 +138,7 @@
 }
 
 .discovery-name-input {
-    flex: 1;
+    flex-basis: 100%;
     background: var(--stream-bg-color, #333);
     border: 1px solid var(--device-border-color, #444);
     border-radius: 6px;
@@ -245,4 +248,24 @@
     background: #1a3a1a !important;
     border-color: #2a5a2a !important;
     color: #4ade80 !important;
+}
+
+.discovery-connect-btn {
+    border-color: #4ade80 !important;
+    color: #4ade80 !important;
+    background: transparent !important;
+}
+
+.discovery-connect-btn:hover:not(:disabled) {
+    background: rgba(74, 222, 128, 0.1) !important;
+}
+
+.discovery-dismiss-btn {
+    border-color: #f06c75 !important;
+    color: #f06c75 !important;
+    background: transparent !important;
+}
+
+.discovery-dismiss-btn:hover:not(:disabled) {
+    background: rgba(240, 108, 117, 0.1) !important;
 }

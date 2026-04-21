@@ -194,13 +194,18 @@ export class NetworkDiscoveryPanel {
             </div>
             <div class="discovery-card-actions">
                 <input type="text" class="discovery-name-input" placeholder="Name this device..." value="${escapeHtml(hit.label || '')}" />
-                <button class="dep-btn dep-update discovery-connect-btn" data-address="${escapeHtml(hit.address)}" data-serial="${escapeHtml(hit.serial)}">Connect</button>
+                <button class="dep-btn discovery-connect-btn" data-address="${escapeHtml(hit.address)}" data-serial="${escapeHtml(hit.serial)}">connect</button>
+                <button class="dep-btn discovery-dismiss-btn" aria-label="dismiss" title="dismiss">close</button>
             </div>
             <div class="discovery-card-result" hidden></div>
         `;
         card.querySelector('.discovery-connect-btn')!.addEventListener('click', () =>
             this.connectDevice(hit.address, hit.serial, card),
         );
+        card.querySelector('.discovery-dismiss-btn')!.addEventListener('click', () => {
+            this.scanSessionHits.delete(hit.address);
+            card.remove();
+        });
         grid.appendChild(card);
         this.scanSessionHits.set(hit.address, card);
     }
@@ -299,8 +304,6 @@ export class NetworkDiscoveryPanel {
             });
             const result: ConnectResult = await res.json();
             if (result.success) {
-                btn.classList.remove('dep-update');
-                btn.classList.add('dep-ok-btn');
                 setTimeout(() => card.remove(), 1500);
             } else {
                 btn.disabled = false;

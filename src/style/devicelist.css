@@ -26,6 +26,12 @@ body.list {
     box-sizing: border-box;
 }
 
+body.list #devices {
+    border: 1px solid var(--device-border-color, #444);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
 body.stream #devices {
     background-color: var(--device-list-default-color);
     opacity: 0.8;
