@@ -168,6 +168,27 @@ jobs:
           JSON
           ls -la
 
+      - name: Write fresh state file
+        # precheck runs on a different runner; its in-memory write of the
+        # state file is lost by the time we checkout fresh here. Regenerate
+        # from precheck outputs so the commit step below has a real diff.
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > .github/state/node-pty-prebuilds-state.json <<JSON
+          {
+            "nodePtyVersion": "${{ needs.precheck.outputs.node_pty_version }}",
+            "nodeCurrentLts": {
+              "version": "${{ needs.precheck.outputs.current_node_version }}",
+              "abi": "${{ needs.precheck.outputs.current_node_abi }}"
+            },
+            "nodePriorLts": {
+              "version": "${{ needs.precheck.outputs.prior_node_version }}",
+              "abi": "${{ needs.precheck.outputs.prior_node_abi }}"
+            },
+            "lastBuiltAt": "${TIMESTAMP}"
+          }
+          JSON
+
       - name: Commit state file
         run: |
           git config user.name "github-actions[bot]"
