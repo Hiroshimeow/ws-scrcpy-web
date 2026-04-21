@@ -1,26 +1,26 @@
 import * as readline from 'readline';
+import { SCAN_WS_PATH } from '../common/ScanMessage';
+import { AdbClient } from './AdbClient';
+import { CapabilitiesApi } from './api/CapabilitiesApi';
+import { DependencyApi } from './api/DependencyApi';
+import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
 import { Config } from './Config';
 import { DependencyManager } from './DependencyManager';
-import { Logger } from './Logger';
+import { DeviceLabelStore } from './DeviceLabelStore';
 import { DeviceProbe } from './DeviceProbe';
+import { Logger } from './Logger';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
 import { ScanMw } from './mw/ScanMw';
 import { WebsocketMultiplexer } from './mw/WebsocketMultiplexer';
-import { ScrcpyConnection } from './ScrcpyConnection';
-import { AdbClient } from './AdbClient';
-import { DeviceLabelStore } from './DeviceLabelStore';
-import { NetworkScanner } from './network/NetworkScanner';
+import { resolveNodePty } from './NodePtyResolver';
 import { probeAdb } from './network/AdbHandshakeProbe';
 import { resolveMac } from './network/MacResolver';
-import { DependencyApi } from './api/DependencyApi';
-import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
-import { CapabilitiesApi } from './api/CapabilitiesApi';
+import { NetworkScanner } from './network/NetworkScanner';
+import { ScrcpyConnection } from './ScrcpyConnection';
 import { HttpServer } from './services/HttpServer';
 import type { Service, ServiceClass } from './services/Service';
 import { WebSocketServer } from './services/WebSocketServer';
-import { SCAN_WS_PATH } from '../common/ScanMessage';
-import { resolveNodePty } from './NodePtyResolver';
 
 const servicesToStart: ServiceClass[] = [HttpServer, WebSocketServer];
 
@@ -116,8 +116,11 @@ loadGoogModules()
         process.on('SIGINT', exit);
         process.on('SIGTERM', exit);
 
-        // Kick off initial dependency check in background (don't block startup)
-        depManager.checkAll().catch((err: Error) => Logger.for('DependencyManager').error('Initial check failed:', err.message));
+        // Kick off initial dependency check + auto-install in background (don't block startup)
+        depManager
+            .checkAll()
+            .then(() => depManager.autoInstallMissing())
+            .catch((err: Error) => Logger.for('DependencyManager').error('Initial check/install failed:', err.message));
     })
     .catch((error) => {
         Logger.for('Server').error(error.message);
