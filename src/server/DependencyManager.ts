@@ -1,5 +1,6 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { execFile } from 'child_process';
+// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import os from 'os';
@@ -88,15 +89,21 @@ export class DependencyManager {
         for (const def of this.definitions) {
             await this.checkLatest(def.name);
         }
-        const updates = Array.from(this.state.values())
-            .filter((i) => i.status === DependencyStatus.UpdateAvailable)
-            .map((i) => i.name);
-        const upToDate = Array.from(this.state.values()).filter((i) => i.status === DependencyStatus.UpToDate).length;
-        const summary =
-            updates.length === 0
-                ? `all ${upToDate} up-to-date`
-                : `${updates.length} update available (${updates.join(', ')}), ${upToDate} up-to-date`;
-        log.info(`Dependency check complete: ${summary}`);
+        const infos = Array.from(this.state.values());
+        const updates = infos.filter((i) => i.status === DependencyStatus.UpdateAvailable).map((i) => i.name);
+        const upToDate = infos.filter((i) => i.status === DependencyStatus.UpToDate).length;
+        const errors = infos.filter((i) => i.status === DependencyStatus.Error).length;
+        const parts: string[] = [];
+        if (updates.length > 0) {
+            parts.push(`${updates.length} ${updates.length === 1 ? 'update' : 'updates'} available (${updates.join(', ')})`);
+        }
+        if (upToDate > 0) {
+            parts.push(`${upToDate} up-to-date`);
+        }
+        if (errors > 0) {
+            parts.push(`${errors} ${errors === 1 ? 'check failure' : 'check failures'}`);
+        }
+        log.info(`Dependency check complete: ${parts.length > 0 ? parts.join(', ') : 'no results'}`);
     }
 
     public async update(name: string): Promise<UpdateResult> {
