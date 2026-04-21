@@ -1,4 +1,4 @@
-import type { IPty } from '@homebridge/node-pty-prebuilt-multiarch';
+import type { IPty } from 'node-pty';
 import { getNodePty } from '../../NodePtyResolver';
 import * as os from 'os';
 import type WS from 'ws';
