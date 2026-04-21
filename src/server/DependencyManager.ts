@@ -1,6 +1,4 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-
-// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import { execFile } from 'child_process';
 import fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
