@@ -997,6 +997,26 @@ The home page (`http://localhost:8000`) is a single-page view with three section
 - `src/app/client/ThemeToggle.ts` -- theme initialization and toggle button
 - `src/style/app.css` -- theme color variables (`[data-theme="dark"]` and `[data-theme="light"]`)
 
+**Design tokens (both themes):** New work on the home page should reach for these named variables rather than hardcoding hex values. Each is defined in both theme blocks in `app.css` so switching themes Just Works. Dark-mode values are in parentheses after light-mode.
+
+| Token | Purpose | Light | Dark |
+|---|---|---|---|
+| `--text-color` | Primary text / headings | `#212529` | `#e0e0e0` |
+| `--text-color-light` | Secondary / helper / placeholder text | `#495057` | `#a8a8a8` |
+| `--section-border-color` | Outer frame around home-page sections | `#8f959d` | `#5a5a5a` |
+| `--device-border-color` | Inner card outlines, input borders | `#c0c6cc` | `#444444` |
+| `--button-border-color` | Default button border (neutral) | `#c0c6cc` | `#444444` |
+| `--success-color` | Outlined green actions + badges | `#15803d` | `#4ade80` |
+| `--success-hover-bg` | Hover fill for outlined green | `rgba(21, 128, 61, 0.1)` | `rgba(74, 222, 128, 0.1)` |
+| `--danger-color` | Outlined red actions + badges | `#b91c1c` | `#f06c75` |
+| `--danger-hover-bg` | Hover fill for outlined red | `rgba(185, 28, 28, 0.1)` | `rgba(240, 108, 117, 0.1)` |
+| `--warning-color` | Outlined amber badges (`.dep-warn`) | `#b45309` | `#fbbf24` |
+| `--info-color` | Outlined blue badges (`.dep-info`) | `#0969da` | `#60a5fa` |
+
+All action-button pairs on the home page (`.discovery-connect-btn` + `.discovery-dismiss-btn`; `.sleep-wake-btn.state-off` + `.state-on`; `.disconnect-btn`) use the outlined treatment — transparent bg, colored border + text — and pull their colors from `--success-color` / `--danger-color` so light mode gets legible contrast automatically. The status pills in the Dependencies section (`.dep-ok` / `.dep-warn` / `.dep-info` / `.dep-error` / `.dep-unknown`) use the same pattern, with the shared `.dep-badge` rule declaring `border: 0.5px solid currentColor; background: transparent;` — each status only needs to set its text color, and the border matches automatically via `currentColor`.
+
+The subnet cheat sheet (`public/help/subnets.html`) is a standalone HTML page served from `/help/subnets.html`. It defines its own local `--bg` / `--panel` / `--text` / `--muted` / `--accent` / `--border` variables keyed on `[data-theme="dark"]` / `[data-theme="light"]`, and runs a small inline script at the top of `<head>` that reads `ws-scrcpy-web-theme` from localStorage and applies `data-theme` before the first paint so the cheat sheet matches whatever theme the user left the app on — no flash.
+
 ### 14.1 Connected Devices
 
 Rendered by `DeviceTracker` via WebSocket updates from `ControlCenter`. The server polls `adb devices` every 5 seconds (`ControlCenter.POLL_INTERVAL`). Devices appear automatically when ADB detects them.

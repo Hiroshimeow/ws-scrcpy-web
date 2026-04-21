@@ -43,7 +43,7 @@ export class NetworkDiscoveryPanel {
                 <input type="text" class="discovery-manual-address" placeholder="192.168.86.50" />
                 <input type="text" class="discovery-manual-port" placeholder="5555" value="5555" />
                 <input type="text" class="discovery-manual-label" placeholder="optional name" />
-                <button class="dep-btn dep-update discovery-manual-connect">connect</button>
+                <button class="dep-btn discovery-connect-btn discovery-manual-connect">connect</button>
                 <button class="discovery-manual-close" aria-label="close" title="close">×</button>
                 <div class="discovery-manual-result" hidden></div>
             </div>

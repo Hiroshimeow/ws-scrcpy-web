@@ -41,7 +41,7 @@ export class LargeSubnetWarningModal extends Modal {
 
         const advice = document.createElement('p');
         advice.textContent = 'To narrow the scan, cancel and edit subnets. Otherwise continue.';
-        advice.style.cssText = 'margin-top: 12px; color: var(--muted, #8b949e); font-size: 13px;';
+        advice.style.cssText = 'margin-top: 12px; color: var(--text-color-light); font-size: 13px;';
         container.appendChild(advice);
     }
 

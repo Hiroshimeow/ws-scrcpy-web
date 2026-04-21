@@ -26,7 +26,7 @@ export class ScanProgressChip {
             'display: flex; align-items: center; gap: 12px; padding: 4px 12px; ' +
             'width: 100%; min-height: 32px; box-sizing: border-box; ' +
             'background: rgba(88,166,255,0.12); border: 1px solid #58a6ff; border-radius: 16px; ' +
-            'font-size: 13px; font-family: var(--font-mono, monospace); color: var(--text, #e6edf3);';
+            'font-size: 13px; font-family: var(--font-mono, monospace); color: var(--text-color);';
 
         this.label = document.createElement('span');
         this.el.appendChild(this.label);
@@ -40,7 +40,7 @@ export class ScanProgressChip {
         this.dismissBtn = document.createElement('button');
         this.dismissBtn.textContent = '×';
         this.dismissBtn.setAttribute('aria-label', 'dismiss');
-        this.dismissBtn.style.cssText = 'margin-left: auto; background: none; border: none; color: var(--muted, #8b949e); cursor: pointer;';
+        this.dismissBtn.style.cssText = 'margin-left: auto; background: none; border: none; color: var(--text-color-light); cursor: pointer;';
         this.dismissBtn.addEventListener('click', () => this.dismiss());
         this.dismissBtn.hidden = true;
         this.el.appendChild(this.dismissBtn);

@@ -26,7 +26,7 @@ dialog.modal .modal-frame {
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    background: rgba(30, 35, 45, 0.80);
+    background: rgba(42, 42, 42, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -42,7 +42,7 @@ dialog.modal .modal-frame {
 /* Nested-modal readability: when a second modal opens on top, the top one uses
    a fully opaque frame so its content is crisp over the lower modal's glass. */
 body:has(dialog.modal[open] ~ dialog.modal[open]) dialog.modal[open]:last-of-type .modal-frame {
-    background: rgb(30, 35, 45);
+    background: rgb(42, 42, 42);
 }
 
 [data-theme="light"] body:has(dialog.modal[open] ~ dialog.modal[open]) dialog.modal[open]:last-of-type .modal-frame {

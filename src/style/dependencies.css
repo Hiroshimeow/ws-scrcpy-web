@@ -12,7 +12,7 @@
 .dep-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
 
 .dep-table th {
@@ -36,18 +36,18 @@
 
 .dep-version {
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: 0.93rem;
     white-space: nowrap;
 }
 
 .dep-description {
-    font-size: 0.8rem;
+    font-size: 0.93rem;
     color: var(--text-color-light);
-    margin-top: 0.15rem;
+    margin-top: 0.2rem;
 }
 
 .dep-paired {
-    font-size: 0.78rem;
+    font-size: 0.86rem;
     color: var(--text-color-light);
     margin-left: 0.35rem;
 }
@@ -91,35 +91,32 @@
     display: inline-block;
     padding: 0.2rem 0.55rem;
     border-radius: 999px;
-    font-size: 0.78rem;
+    border: 0.5px solid currentColor;
+    background: transparent;
+    font-size: 0.86rem;
     font-weight: 500;
     white-space: nowrap;
 }
 
 .dep-ok {
-    background: #1a3a1a;
-    color: #4ade80;
+    color: var(--success-color);
 }
 
 .dep-warn {
-    background: #3a3a1a;
-    color: #fbbf24;
+    color: var(--warning-color);
 }
 
 .dep-info {
-    background: #1a2a3a;
-    color: #60a5fa;
+    color: var(--info-color);
 }
 
 .dep-error {
-    background: #3a1a1a;
-    color: #f87171;
+    color: var(--danger-color);
     cursor: help;
 }
 
 .dep-unknown {
-    background: #2a2a2a;
-    color: #888;
+    color: var(--text-color-light);
 }
 
 /* Restart prompt bar */
@@ -133,7 +130,7 @@
     border: 1px solid #5a5a1a;
     border-radius: 4px;
     color: #fbbf24;
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
 
 .dep-restart-prompt p {
@@ -166,7 +163,7 @@
 
 .dep-restarting p {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
 
 /* Error message row */
@@ -174,5 +171,5 @@
     text-align: center;
     color: #f87171;
     padding: 1rem;
-    font-size: 0.9rem;
+    font-size: 1rem;
 }

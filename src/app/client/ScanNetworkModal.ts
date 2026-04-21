@@ -88,7 +88,7 @@ export class ScanNetworkModal extends Modal {
         container.appendChild(addBtn);
 
         const cheatLink = document.createElement('p');
-        cheatLink.style.cssText = 'font-size: 12px; color: var(--muted, #8b949e);';
+        cheatLink.style.cssText = 'font-size: 12px; color: var(--text-color-light);';
         cheatLink.innerHTML = 'New to CIDR? See the <a href="help/subnets.html" target="_blank" rel="noopener">subnet cheat sheet</a>.';
         container.appendChild(cheatLink);
     }

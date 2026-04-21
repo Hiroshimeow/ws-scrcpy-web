@@ -33,7 +33,7 @@ export class AddSubnetModal extends Modal {
     private fillBody(container: HTMLElement): void {
         const help = document.createElement('p');
         help.textContent = 'Accepted formats: CIDR (192.168.2.0/24), single IP (192.168.2.5), or range (192.168.2.10-50).';
-        help.style.cssText = 'margin: 0 0 12px; color: var(--muted, #8b949e); font-size: 13px;';
+        help.style.cssText = 'margin: 0 0 12px; color: var(--text-color-light); font-size: 13px;';
         container.appendChild(help);
 
         this.input = document.createElement('input');

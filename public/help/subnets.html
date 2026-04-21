@@ -4,31 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Subnet &amp; CIDR Cheat Sheet — ws-scrcpy-web</title>
+<script>
+// Apply stored theme before paint to avoid flash. Shares the main app's
+// localStorage key so switching themes in the app carries over on reload.
+(function() {
+    try {
+        var t = localStorage.getItem('ws-scrcpy-web-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();
+</script>
 <style>
 :root {
-    --bg: #0d1117;
-    --panel: #161b22;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent: #58a6ff;
     --mono: ui-monospace, Consolas, "SF Mono", "Liberation Mono", monospace;
+}
+:root, [data-theme="dark"] {
+    --bg: #2a2a2a;
+    --panel: #1f1f1f;
+    --text: #e0e0e0;
+    --muted: #a8a8a8;
+    --accent: hsl(218, 63%, 70%);
+    --border: #444444;
+}
+[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f6f8fa;
+    --text: #212529;
+    --muted: #495057;
+    --accent: #0969da;
+    --border: #d0d7de;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.6; }
 main { max-width: 780px; margin: 0 auto; padding: 32px 24px 64px; }
 h1 { font-size: 28px; margin: 0 0 8px; }
-h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid #30363d; }
+h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 p { margin: 0 0 12px; }
 code, .mono { font-family: var(--mono); font-size: 0.95em; background: var(--panel); padding: 2px 6px; border-radius: 4px; }
 pre { background: var(--panel); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-family: var(--mono); font-size: 13px; }
 table { width: 100%; border-collapse: collapse; margin: 12px 0; font-family: var(--mono); font-size: 13px; }
-th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #30363d; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; }
 .muted { color: var(--muted); }
 .back { display: inline-block; margin-top: 32px; color: var(--accent); text-decoration: none; }
 .back:hover { text-decoration: underline; }
-.footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #30363d; color: var(--muted); font-size: 12px; }
+.footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>

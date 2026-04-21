@@ -33,9 +33,9 @@
 /* Page sections */
 .home-section {
     padding: 20px;
-    margin-bottom: 8px;
+    margin-bottom: 35px;
     font-family: var(--font-mono);
-    border: 1px solid var(--device-border-color, #444);
+    border: 1.5px solid var(--section-border-color, #5a5a5a);
     border-radius: 8px;
 }
 
@@ -66,7 +66,7 @@
     border-radius: 8px;
     padding: 16px;
     background: var(--device-list-default-color, #1e1e1e);
-    color: var(--text-color-secondary, #888);
+    color: var(--text-color-light);
     font-size: 14px;
     text-align: center;
 }
@@ -87,6 +87,10 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 10px;
+}
+
+.discovery-results:not(:empty) {
+    margin-bottom: 15px;
 }
 
 .discovery-card {
@@ -121,7 +125,7 @@
 .discovery-card-address {
     font-size: 12px;
     font-family: var(--font-mono);
-    color: var(--text-color-secondary, #888);
+    color: var(--text-color-light);
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -153,7 +157,7 @@
 }
 
 .discovery-name-input::placeholder {
-    color: var(--text-color-secondary, #888);
+    color: var(--text-color-light);
 }
 
 .discovery-header-actions {
@@ -192,7 +196,7 @@
 }
 
 .discovery-manual-form input[type="text"]::placeholder {
-    color: var(--text-color-secondary, #888);
+    color: var(--text-color-light);
 }
 
 .discovery-manual-form input.discovery-manual-address {
@@ -214,7 +218,7 @@
 .discovery-manual-close {
     background: transparent;
     border: none;
-    color: var(--text-color-secondary, #888);
+    color: var(--text-color-light);
     font-size: 20px;
     line-height: 1;
     cursor: pointer;
@@ -251,21 +255,21 @@
 }
 
 .discovery-connect-btn {
-    border-color: #4ade80 !important;
-    color: #4ade80 !important;
+    border-color: var(--success-color) !important;
+    color: var(--success-color) !important;
     background: transparent !important;
 }
 
 .discovery-connect-btn:hover:not(:disabled) {
-    background: rgba(74, 222, 128, 0.1) !important;
+    background: var(--success-hover-bg) !important;
 }
 
 .discovery-dismiss-btn {
-    border-color: #f06c75 !important;
-    color: #f06c75 !important;
+    border-color: var(--danger-color) !important;
+    color: var(--danger-color) !important;
     background: transparent !important;
 }
 
 .discovery-dismiss-btn:hover:not(:disabled) {
-    background: rgba(240, 108, 117, 0.1) !important;
+    background: var(--danger-hover-bg) !important;
 }
