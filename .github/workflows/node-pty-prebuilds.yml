@@ -76,7 +76,7 @@ jobs:
 
       - name: Install build toolchain (Alpine)
         if: matrix.container == 'alpine'
-        run: apk add --no-cache python3 make g++ tar gzip
+        run: apk add --no-cache bash python3 make g++ tar gzip
 
       - name: Setup Node (non-Alpine)
         if: matrix.container == ''
@@ -87,7 +87,16 @@ jobs:
       - name: Build node-pty prebuilt
         shell: bash
         run: |
-          set -e
+          set -ex
+          echo "--- runner diagnostics ---"
+          node --version
+          npm --version
+          python --version 2>&1 || python3 --version 2>&1 || echo "no python on PATH"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            where cl.exe 2>&1 || echo "no cl.exe on PATH"
+          fi
+          echo "--- /runner diagnostics ---"
+
           UPSTREAM_VER="${{ needs.precheck.outputs.node_pty_version }}"
           ABI="${{ matrix.abi_label == 'current' && needs.precheck.outputs.current_node_abi || needs.precheck.outputs.prior_node_abi }}"
           PLATFORM="${{ startsWith(matrix.os, 'windows') && 'win32' || 'linux' }}"
@@ -98,7 +107,13 @@ jobs:
 
           mkdir build && cd build
           npm init -y
-          npm install --no-save "node-pty@${UPSTREAM_VER}"
+          # --build-from-source guarantees the binary lands at build/Release/pty.node
+          # and that we are not repackaging upstream's prebuilts.
+          npm install --no-save --build-from-source "node-pty@${UPSTREAM_VER}"
+
+          echo "--- node-pty install layout ---"
+          find node_modules/node-pty -name '*.node' -o -name '*.dll' -o -name '*.exe' | sort
+          echo "--- /node-pty install layout ---"
 
           PACK_DIR="../artifacts/${KEY}"
           mkdir -p "$PACK_DIR"
