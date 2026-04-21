@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 9 * * 1'       # Mondays 09:00 UTC
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force matrix run even when precheck reports no version delta'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # to commit state file + create releases
@@ -32,7 +37,11 @@ jobs:
           node scripts/compute-matrix-versions.mjs > /tmp/check.json
           RC=$?
           set -e
-          CHANGED=$([ "$RC" = "1" ] && echo "true" || echo "false")
+          if [ "${{ inputs.force }}" = "true" ]; then
+            CHANGED=true
+          else
+            CHANGED=$([ "$RC" = "1" ] && echo "true" || echo "false")
+          fi
           echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
           jq -r '.fresh | "node_pty_version=\(.nodePtyVersion)"' /tmp/check.json >> "$GITHUB_OUTPUT"
           jq -r '.fresh.nodeCurrentLts | "current_node_version=\(.version)\ncurrent_node_abi=\(.abi)"' /tmp/check.json >> "$GITHUB_OUTPUT"
