@@ -1373,39 +1373,44 @@ Benchmarks on Google TV Streamer 4K (hardwired Ethernet):
 
 `node-pty` is a native Node module used by the shell modal to spawn an
 interactive terminal. Historically it required a C++ toolchain at install
-time; as of SP1 (April 2026) the app uses a two-source prebuilt chain so
-no user ever compiles native code.
+time; as of SP1+SP1b (April 2026) the app uses a two-source prebuilt chain
+so no user ever compiles native code. `node-pty` is an `optionalDependency`;
+the repo's `.npmrc` sets `ignore-scripts=true` globally so the package's
+native `node-gyp rebuild` install hook is skipped. The binary arrives via
+our own prebuilt matrix.
 
 ### 18.1 Runtime Resolution
 
-At server startup, `src/server/NodePtyResolver.ts` executes a three-step
+At server startup, `src/server/NodePtyResolver.ts` executes a two-source
 chain and caches the result:
 
-1. **Homebridge prebuilts** — Try `@homebridge/node-pty-prebuilt-multiarch`
-   as installed by npm. Covers every platform + arch + libc + Node ABI
-   that homebridge publishes — which is most of the target matrix, most
-   of the time.
+1. **Load manifest** — fetch `manifest.json` from our GH Release
+   `node-pty-prebuilds-latest` (falls back to a cached copy at
+   `dependencies/node-pty/manifest.json` for offline boot). The manifest
+   names the current upstream node-pty version and the Node ABIs covered.
 
-2. **Disk cache** — If that fails to load, look for a cached prebuilt
-   under `dependencies/node-pty/prebuilds/{key}/pty.node`.
-   `@homebridge/node-pty-prebuilt-multiarch` does not use `node-gyp-build`;
-   its loader (`lib/prebuild-file-path.js`) resolves the binary at
-   `<package>/prebuilds/{platform}-{arch}/node.abi{modules}[.musl].node`
-   via a plain `fs.existsSync` at require-time. The resolver copies the
-   cached `.node` file to that exact path before the dynamic import so
-   homebridge's loader finds it.
+2. **Local cache** — look under
+   `dependencies/node-pty/v{upstreamVersion}/{platform}-{arch}[-{libc}]/`.
+   Populated by a prior run, by `npm run fetch-prebuilts`, or (eventually)
+   by the installer / Docker image.
 
-3. **GitHub Releases fallback** — If no cached prebuilt matches, fetch
-   `manifest.json` from our GH Release `node-pty-prebuilds-latest`. If
-   the manifest covers the current Node ABI, download the corresponding
-   tarball from the versioned release (`node-pty-prebuilds-v{upstream}`),
-   verify SHA256 against the release's `SHA256SUMS`, extract into the
-   cache, copy the `.node` file to homebridge's prebuilds directory, and
-   then import.
+3. **Download if cache misses** — fetch the tarball from
+   `node-pty-prebuilds-v{upstreamVersion}`, verify SHA256 against the
+   release's `SHA256SUMS`, extract with `tar --strip-components=1` into
+   the cache directory.
 
-If all three sources fail, the resolver returns `{ available: false }`
-and the shell modal is disabled client-side via `/api/capabilities`.
-Every other feature continues to work.
+Either way, the resolver then copies the cache directory contents into
+`node_modules/node-pty/build/Release/`. Upstream `node-pty`'s standard
+loader (`lib/utils.js`) iterates `build/Release/`, `build/Debug/`, and
+`prebuilds/{platform}-{arch}/` uniformly on all platforms, so the binary
+is found with no platform-specific branching.
+
+If the manifest doesn't cover the current ABI, or download fails, or
+`require('node-pty')` rejects, the resolver returns
+`{ available: false, reason }`. `/api/capabilities` reports
+`{ shell: false }`, and the shell anchor on every device card is
+disabled-via-CSS + `aria-disabled` + tooltip. Every other feature
+continues to work.
 
 ### 18.2 Fallback Publisher Workflow
 
@@ -1423,9 +1428,9 @@ matrix builds prebuilts for:
 
 `linux arm64 musl` is intentionally excluded: GitHub Actions' JS-action
 runtime (checkout, setup-node, upload-artifact) cannot execute inside an
-Alpine container on an ARM64 runner. Hosts on arm64+musl fall through
-the resolver chain to compile-at-install via the bundled @homebridge
-package. See `actions/runner#801`.
+Alpine container on an ARM64 runner. Hosts on arm64+musl land in the
+`{ available: false, reason: 'no-prebuilt-for-abi-...' }` path and use the
+shell-disabled UI. See `actions/runner#801`.
 
 The workflow attaches the tarballs + `SHA256SUMS` + `manifest.json` to a
 versioned GitHub Release and updates a `node-pty-prebuilds-latest`
@@ -1456,15 +1461,20 @@ card as disabled-via-CSS + `aria-disabled` + tooltip when
 
 | File | Purpose |
 |------|---------|
-| `src/server/NodePtyResolver.ts` | Three-step resolution chain: homebridge → disk cache → GH Releases |
+| `src/server/NodePtyResolver.ts` | Two-source resolution chain: local cache → download-if-missing |
 | `src/server/libcDetect.ts` | glibc vs musl detection via process.report, alpine-release, ldd |
 | `src/server/api/CapabilitiesApi.ts` | `GET /api/capabilities` endpoint returning `{ shell: boolean }` |
 | `src/app/googDevice/client/DeviceTracker.ts` | Fetch capabilities on mount, gate shell anchor client-side |
-| `.github/workflows/node-pty-prebuilds.yml` | Weekly/manual dispatch CI; 12-row matrix, SHA256 verification, release publish |
+| `scripts/fetch-prebuilts.mjs` | Pure-JS CLI for pre-fetching prebuilts (air-gapped setups, CI pre-test) |
+| `vitest.globalSetup.ts` | Runs fetch-prebuilts before any test to ensure node-pty binary is present |
+| `.github/workflows/node-pty-prebuilds.yml` | Weekly/manual dispatch CI; 10-row matrix, SHA256 verification, release publish |
 | `.github/state/node-pty-prebuilds-state.json` | Tracked build state (Node LTS versions, upstream release) |
 | `scripts/compute-matrix-versions.mjs` | Pre-check script for workflow matrix computation |
+| `.npmrc` | `ignore-scripts=true` — prevents node-pty's install script from firing node-gyp rebuild |
 
 ### 18.6 Reference Docs
 
-- **Design spec:** `docs/superpowers/specs/2026-04-21-sp1-node-pty-prebuilts-design.md`
-- **Implementation plan:** `docs/superpowers/plans/2026-04-21-sp1-node-pty-prebuilts.md`
+- **SP1 design spec:** `docs/superpowers/specs/2026-04-21-sp1-node-pty-prebuilts-design.md`
+- **SP1 implementation plan:** `docs/superpowers/plans/2026-04-21-sp1-node-pty-prebuilts.md`
+- **SP1b design spec:** `docs/superpowers/specs/2026-04-21-sp1b-node-pty-direct-design.md`
+- **SP1b implementation plan:** `docs/superpowers/plans/2026-04-21-sp1b-node-pty-direct.md`
