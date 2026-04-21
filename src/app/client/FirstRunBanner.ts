@@ -1,14 +1,6 @@
 import type { DependencyInfo } from '../../common/DependencyTypes';
 import { DependencyStatus } from '../../common/DependencyTypes';
 
-// biome-ignore lint/correctness/noUnusedVariables: Declared for documentation purposes; response is discarded
-interface RetryResponse {
-    success: boolean;
-    installed: string[];
-    stillMissing: string[];
-    errors: Record<string, string>;
-}
-
 export class FirstRunBanner {
     private container: HTMLElement;
     private retryButton: HTMLButtonElement | null = null;
@@ -47,8 +39,8 @@ export class FirstRunBanner {
     private static pendingDeps(deps: DependencyInfo[]): DependencyInfo[] {
         return deps.filter(
             (d) =>
-                d.status === DependencyStatus.Error ||
-                (d.status === DependencyStatus.Unknown && d.installedVersion === null),
+                d.installedVersion === null &&
+                (d.status === DependencyStatus.Error || d.status === DependencyStatus.Unknown),
         );
     }
 
