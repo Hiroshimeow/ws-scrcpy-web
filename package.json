@@ -33,11 +33,14 @@
     "start": "npm run build && node dist/index.js",
     "test": "vitest run",
     "lint": "npx @biomejs/biome check src/",
-    "format": "npx @biomejs/biome check --write src/"
+    "format": "npx @biomejs/biome check --write src/",
+    "fetch-prebuilts": "node scripts/fetch-prebuilts.mjs"
   },
   "dependencies": {
-    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
