@@ -120,12 +120,11 @@ jobs:
 
           PACK_DIR="../artifacts/${KEY}"
           mkdir -p "$PACK_DIR"
-          cp node_modules/node-pty/build/Release/pty.node "$PACK_DIR/"
-          if [ "$PLATFORM" = "win32" ]; then
-            cp node_modules/node-pty/build/Release/conpty.node "$PACK_DIR/" 2>/dev/null || true
-            cp node_modules/node-pty/build/Release/*.dll "$PACK_DIR/" 2>/dev/null || true
-            cp node_modules/node-pty/build/Release/*.exe "$PACK_DIR/" 2>/dev/null || true
-          fi
+          # cp -r captures everything build/Release emits: pty.node, conpty.node,
+          # conpty_console_list.node, the conpty/ subdir (OpenConsole.exe + conpty.dll),
+          # winpty DLLs/EXEs on Windows; pty.node on Linux. Future-proof against
+          # upstream node-pty adding more build artifacts.
+          cp -r node_modules/node-pty/build/Release/. "$PACK_DIR/"
 
           cd ../artifacts
           tar -czf "${KEY}.tar.gz" "${KEY}"
