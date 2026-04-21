@@ -23,7 +23,12 @@ export function buildFixtureTarball(srcDir: string, key: string, outDir: string)
     fs.cpSync(srcDir, keyDir, { recursive: true });
 
     const tarPath = path.join(outDir, `${key}.tar.gz`);
-    execFileSync('tar', ['-czf', tarPath, '-C', stagingDir, key], { stdio: 'inherit' });
+    // GNU tar on Windows (Git Bash) interprets 'C:\\...' as 'host:path'. Use
+    // cwd-relative paths: cd into stagingDir, write tarball into its parent.
+    execFileSync('tar', ['-czf', path.join('..', `${key}.tar.gz`), key], {
+        stdio: 'inherit',
+        cwd: stagingDir,
+    });
     fs.rmSync(stagingDir, { recursive: true, force: true });
 
     const hash = crypto.createHash('sha256');

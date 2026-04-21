@@ -157,7 +157,12 @@ export async function downloadAndExtract(
         }
 
         const { execFileSync } = await import('child_process');
-        execFileSync('tar', ['-xzf', tarPath, '--strip-components=1', '-C', cacheDir], { stdio: 'inherit' });
+        // GNU tar on Windows (Git Bash) interprets 'C:\\...' as 'host:path'.
+        // Pass only the filename and cwd into cacheDir so tar uses relative paths.
+        execFileSync('tar', ['-xzf', path.basename(tarPath), '--strip-components=1'], {
+            stdio: 'inherit',
+            cwd: cacheDir,
+        });
         fs.rmSync(tarPath, { force: true });
         return cacheDirHasBinary(cacheDir);
     } catch (err) {
