@@ -25,7 +25,7 @@ describe('resolveDependenciesPath', () => {
             { DEPS_PATH: '/env/deps' },
             { dependenciesPath: '/config/deps' },
             '/any/entry.js',
-            () => true
+            () => true,
         );
         expect(result).toBe('/env/deps');
     });
@@ -45,7 +45,7 @@ describe('resolveDependenciesPath', () => {
 
     it('throws a clear error when no source resolves and dev tell is missing', () => {
         expect(() => resolveDependenciesPath({}, {}, '/no/package/json/here/dist/index.js', () => false)).toThrow(
-            /DEPS_PATH is not set/
+            /DEPS_PATH is not set/,
         );
     });
 
