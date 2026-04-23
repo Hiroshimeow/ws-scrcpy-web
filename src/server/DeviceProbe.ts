@@ -76,6 +76,7 @@ export class DeviceProbe extends Mw {
             width,
             height,
             density,
+            sdkInt,
             videoEncoders: encoders.videoEncoders,
             audioEncoders: encoders.audioEncoders,
         };

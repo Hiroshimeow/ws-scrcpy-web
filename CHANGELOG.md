@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `sdkInt: number` field in `ProbeResult` interface — `DeviceProbe` now includes the device's Android SDK version (from `ro.build.version.sdk`) in the WebSocket probe response. The value was already computed internally for encoder-enumeration strategy selection; exposing it avoids downstream consumers (e.g. Control Menu's audio settings gating) needing a redundant `adb shell getprop` call.
+
 ### Changed
 - `node-pty` native dependency handled via our own prebuilt matrix + a two-source resolver, no `node-gyp rebuild` at install time. Shipped in two steps: SP1 (April 2026) introduced a GH Actions matrix that builds `microsoft/node-pty` from source across platforms and publishes tarballs to GH Releases; SP1b (April 2026) dropped the `@homebridge/node-pty-prebuilt-multiarch` fork indirection and made our own prebuilts authoritative. Current layout: `node-pty@^1.1.0` is declared under `optionalDependencies`; `.npmrc` sets `ignore-scripts=true` globally so the package install doesn't trigger a native compile. The resolver downloads + extracts binaries on first run. SP1+SP1b are step 1 of the installer + Docker roadmap (`docs/superpowers/specs/2026-04-21-installer-docker-roadmap.md`).
 

@@ -659,7 +659,7 @@ Browser                          Server
   |                                |-- WS close(1000)
 ```
 
-`DeviceProbeClient` opens a one-shot WebSocket to the server. `DeviceProbe` (server middleware) runs three ADB shell commands in parallel, parses the output for encoder names (matching patterns like `.avc.`, `.hevc.`, `.av1.`), screen dimensions, and density, then sends a `ProbeResult` JSON and closes.
+`DeviceProbeClient` opens a one-shot WebSocket to the server. `DeviceProbe` (server middleware) runs three ADB shell commands in parallel, parses the output for encoder names (matching patterns like `.avc.`, `.hevc.`, `.av1.`), screen dimensions, density, and `sdkInt` (the device's Android SDK version from `ro.build.version.sdk`), then sends a `ProbeResult` JSON and closes. The `sdkInt` field enables downstream consumers (e.g. Control Menu) to gate audio settings by SDK version without issuing a redundant `adb shell getprop` call.
 
 ### 8.2 Auto-Selection Algorithm
 
