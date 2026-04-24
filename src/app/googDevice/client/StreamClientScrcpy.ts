@@ -437,8 +437,18 @@ export class StreamClientScrcpy
         document.addEventListener('click', resumeAudio, { once: true });
         document.addEventListener('keydown', resumeAudio, { once: true });
 
-        // Auto-detect best codec + encoder if not specified (direct link without ConfigureScrcpy)
-        if (!this.params.videoCodec) {
+        if (this.params.videoCodec) {
+            // Caller supplied a codec — verify the browser can actually decode it
+            if (!(await browserSupportsCodec(this.params.videoCodec))) {
+                console.warn(
+                    TAG,
+                    `Requested codec "${this.params.videoCodec}" is not supported by this browser, falling back to h264`,
+                );
+                this.params.videoCodec = 'h264';
+                this.params.encoderName = undefined;
+            }
+        } else {
+            // Auto-detect best codec + encoder (direct link without ConfigureScrcpy)
             try {
                 const detected = await detectBestCodecAndEncoder(udid, {
                     hostname: this.params.hostname,

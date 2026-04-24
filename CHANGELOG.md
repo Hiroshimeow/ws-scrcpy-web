@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `fix:` Embed API codec parameter now validated against browser capabilities before connecting. Previously, passing `codec: 'h265'` on Firefox (which cannot decode HEVC) would bomb the stream — the `browserSupportsCodec()` check only ran when no codec was specified (auto-detect path). Now explicitly-supplied codecs are verified via `VideoDecoder.isConfigSupported()` in `StreamClientScrcpy.startStream()` and fall back to h264 if unsupported. The caller-supplied encoder is also cleared on fallback since it was chosen for the original codec.
+
 ### Added
 - `sdkInt: number` field in `ProbeResult` interface — `DeviceProbe` now includes the device's Android SDK version (from `ro.build.version.sdk`) in the WebSocket probe response. The value was already computed internally for encoder-enumeration strategy selection; exposing it avoids downstream consumers (e.g. Control Menu's audio settings gating) needing a redundant `adb shell getprop` call.
 
