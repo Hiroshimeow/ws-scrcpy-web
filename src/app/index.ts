@@ -8,7 +8,37 @@ import { HostTracker } from './client/HostTracker';
 import { NetworkDiscoveryPanel } from './client/NetworkDiscoveryPanel';
 import { createThemeToggle, initTheme } from './client/ThemeToggle';
 import type { Tool } from './client/Tool';
+import { WelcomeModal } from './client/WelcomeModal';
+import type { AppConfigEnvelope } from '../common/ConfigEvents';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
+
+function maybeShowWelcomeModal(): void {
+    fetch('/api/config')
+        .then((r) => (r.ok ? (r.json() as Promise<Partial<AppConfigEnvelope>>) : null))
+        .then((data) => {
+            const runtime = data?.runtime;
+            if (!runtime || runtime.firstRunComplete !== false) return;
+            new WelcomeModal({
+                webPort: runtime.webPort,
+                portWasAutoShifted: runtime.portWasAutoShifted,
+                onDecision: async (choice) => {
+                    const installMode = choice === 'service' ? 'user-service' : 'user';
+                    try {
+                        await fetch('/api/config', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ installMode, firstRunComplete: true }),
+                        });
+                    } catch {
+                        // Silent — first-run flag will retry on next load.
+                    }
+                },
+            });
+        })
+        .catch(() => {
+            // /api/config absent (e.g., dev server without P2 wiring) — silently bail.
+        });
+}
 
 // Initialize theme immediately to prevent flash of wrong colors
 initTheme();
@@ -54,6 +84,8 @@ window.onload = async (): Promise<void> => {
     FirstRunBanner.create().then((banner) => {
         pageContainer.insertBefore(banner.getElement(), pageContainer.firstChild);
     });
+
+    maybeShowWelcomeModal();
 
     const devicesDiv = document.createElement('div');
     devicesDiv.id = 'devices';

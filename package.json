@@ -40,6 +40,7 @@
     "package:stage": "node scripts/stage-publish.mjs"
   },
   "dependencies": {
+    "velopack": "^0.0.1589-ga2c5a97",
     "ws": "^8.18.0"
   },
   "optionalDependencies": {

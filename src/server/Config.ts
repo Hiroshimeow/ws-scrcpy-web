@@ -1,10 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as process from 'process';
+import {
+    APP_CONFIG_DEFAULTS,
+    type AppConfig,
+    type FirstRunStatus,
+    type InstallMode,
+    VALID_CHANNELS,
+    VALID_INSTALL_MODES,
+} from '../common/ConfigEvents';
 import type { ServerItem } from '../types/Configuration';
 import { EnvName } from './EnvName';
 
-const DEFAULT_PORT = 8000;
+const DEFAULT_PORT = APP_CONFIG_DEFAULTS.webPort;
 const DEFAULT_ADB_PATH = 'adb';
 const DEFAULT_SCAN_CONCURRENCY = 64;
 const DEFAULT_SCAN_TCP_TIMEOUT_MS = 300;
@@ -13,12 +21,16 @@ const DEFAULT_SCAN_PROGRESS_INTERVAL = 10;
 
 /**
  * Minimal flat config supported by config.json:
- *   { "port": 8000, "adbPath": "adb" }
+ *   { "webPort": 8000, "adbPath": "adb" }
+ *
+ * Legacy `port` is still accepted and mapped to `webPort` in memory (migration
+ * is non-destructive: the file is not rewritten unless another save happens).
  *
  * The full ServerItem array form is also accepted for advanced SSL setups:
  *   { "server": [{ "secure": true, "port": 443, "options": { ... } }] }
  */
 export interface FlatConfig {
+    // Legacy / pre-existing
     port?: number;
     adbPath?: string;
     dependenciesPath?: string;
@@ -27,6 +39,15 @@ export interface FlatConfig {
     scanAdbConnectTimeoutMs?: number;
     scanProgressInterval?: number;
     server?: ServerItem[];
+
+    // SP3 lifecycle fields
+    webPort?: number;
+    installMode?: InstallMode | null;
+    firstRunComplete?: boolean;
+    autoUpdate?: boolean;
+    updateCheckIntervalMinutes?: number;
+    channel?: 'stable' | 'beta';
+    githubOwner?: string;
 }
 
 /**
@@ -55,8 +76,142 @@ export function resolveDependenciesPath(
     );
 }
 
+/**
+ * Resolve the path used for reading/writing config.json when no override is
+ * supplied via EnvName.CONFIG_PATH. Order:
+ *   1. <installRoot>/config.json — sibling of `current/` in installed layout.
+ *      We approximate installRoot as parent of the entry script's parent dir.
+ *   2. <repoRoot>/config.json — dev fallback when entry's grandparent has a
+ *      package.json (mirrors resolveDependenciesPath's dev tell).
+ */
+export function resolveConfigPath(entryScript: string, exists: (p: string) => boolean = fs.existsSync): string {
+    const entryDir = path.dirname(entryScript);
+    const repoRoot = path.resolve(entryDir, '..');
+    if (exists(path.join(repoRoot, 'package.json'))) {
+        return path.join(repoRoot, 'config.json');
+    }
+    return path.join(repoRoot, 'config.json');
+}
+
+function isInteger(n: unknown): n is number {
+    return typeof n === 'number' && Number.isInteger(n);
+}
+
+/**
+ * Validate a single AppConfig field. Returns either the accepted value
+ * (possibly coerced) or a string error message describing the failure.
+ */
+type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+function validateField<K extends keyof AppConfig>(key: K, value: unknown): ValidationResult<AppConfig[K]> {
+    switch (key) {
+        case 'webPort': {
+            if (!isInteger(value) || (value as number) < 1024 || (value as number) > 65535) {
+                return { ok: false, error: 'webPort must be an integer between 1024 and 65535' };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        case 'updateCheckIntervalMinutes': {
+            if (!isInteger(value) || (value as number) < 5 || (value as number) > 1440) {
+                return { ok: false, error: 'updateCheckIntervalMinutes must be an integer between 5 and 1440' };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        case 'channel': {
+            if (typeof value !== 'string' || !VALID_CHANNELS.includes(value as 'stable' | 'beta')) {
+                return { ok: false, error: `channel must be one of: ${VALID_CHANNELS.join(', ')}` };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        case 'installMode': {
+            if (value === null) return { ok: true, value: null as AppConfig[K] };
+            if (typeof value !== 'string' || !VALID_INSTALL_MODES.includes(value as InstallMode)) {
+                return { ok: false, error: `installMode must be null or one of: ${VALID_INSTALL_MODES.join(', ')}` };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        case 'firstRunComplete':
+        case 'autoUpdate': {
+            if (typeof value !== 'boolean') {
+                return { ok: false, error: `${key} must be a boolean` };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        case 'githubOwner': {
+            if (typeof value !== 'string' || value.length === 0) {
+                return { ok: false, error: 'githubOwner must be a non-empty string' };
+            }
+            return { ok: true, value: value as AppConfig[K] };
+        }
+        default:
+            return { ok: true, value: value as AppConfig[K] };
+    }
+}
+
+/**
+ * Reduce a (possibly malformed) FlatConfig into a sanitized AppConfig.
+ * Validation failures on specific fields fall back to defaults with a warning;
+ * this matches Contract 1's "do not throw on load" semantics.
+ */
+function sanitizeAppConfig(raw: FlatConfig, warn: (msg: string) => void): AppConfig {
+    const out: AppConfig = { ...APP_CONFIG_DEFAULTS };
+
+    // Migrate legacy `port` → `webPort` (in memory only; do not rewrite file).
+    const candidateWebPort = raw.webPort ?? raw.port;
+    if (candidateWebPort !== undefined) {
+        const r = validateField('webPort', candidateWebPort);
+        if (r.ok) out.webPort = r.value;
+        else warn(`config.json: ${r.error}; using default ${APP_CONFIG_DEFAULTS.webPort}`);
+    }
+
+    if (raw.installMode !== undefined) {
+        const r = validateField('installMode', raw.installMode);
+        if (r.ok) out.installMode = r.value;
+        else warn(`config.json: ${r.error}; using default null`);
+    }
+    if (raw.firstRunComplete !== undefined) {
+        const r = validateField('firstRunComplete', raw.firstRunComplete);
+        if (r.ok) out.firstRunComplete = r.value;
+        else warn(`config.json: ${r.error}; using default false`);
+    }
+    if (raw.autoUpdate !== undefined) {
+        const r = validateField('autoUpdate', raw.autoUpdate);
+        if (r.ok) out.autoUpdate = r.value;
+        else warn(`config.json: ${r.error}; using default true`);
+    }
+    if (raw.updateCheckIntervalMinutes !== undefined) {
+        const r = validateField('updateCheckIntervalMinutes', raw.updateCheckIntervalMinutes);
+        if (r.ok) out.updateCheckIntervalMinutes = r.value;
+        else warn(`config.json: ${r.error}; using default 60`);
+    }
+    if (raw.channel !== undefined) {
+        const r = validateField('channel', raw.channel);
+        if (r.ok) out.channel = r.value;
+        else warn(`config.json: ${r.error}; using default stable`);
+    }
+    if (raw.githubOwner !== undefined) {
+        const r = validateField('githubOwner', raw.githubOwner);
+        if (r.ok) out.githubOwner = r.value;
+        else warn(`config.json: ${r.error}; using default ${APP_CONFIG_DEFAULTS.githubOwner}`);
+    }
+
+    // Pass-through scan / paths fields (not validated for SP3 — pre-existing tuning fields).
+    if (raw.dependenciesPath !== undefined) out.dependenciesPath = raw.dependenciesPath;
+    if (raw.adbPath !== undefined) out.adbPath = raw.adbPath;
+    if (raw.scanConcurrency !== undefined) out.scanConcurrency = raw.scanConcurrency;
+    if (raw.scanTcpTimeoutMs !== undefined) out.scanTcpTimeoutMs = raw.scanTcpTimeoutMs;
+    if (raw.scanAdbConnectTimeoutMs !== undefined) out.scanAdbConnectTimeoutMs = raw.scanAdbConnectTimeoutMs;
+    if (raw.scanProgressInterval !== undefined) out.scanProgressInterval = raw.scanProgressInterval;
+
+    return out;
+}
+
 export class Config {
     private static instance?: Config;
+
+    private _appConfig: AppConfig;
+    private _configFilePath: string;
+    private _firstRunStatus: FirstRunStatus;
 
     private static loadFile(configPath: string): FlatConfig {
         const isAbsolute = configPath.startsWith('/') || /^[A-Za-z]:[\\/]/.test(configPath);
@@ -68,10 +223,21 @@ export class Config {
         return JSON.parse(raw) as FlatConfig;
     }
 
-    private static buildServers(fileConfig: FlatConfig): ServerItem[] {
+    private static tryLoadFile(configPath: string, warn: (msg: string) => void): FlatConfig {
+        if (!fs.existsSync(configPath)) return {};
+        try {
+            const raw = fs.readFileSync(configPath, 'utf-8');
+            return JSON.parse(raw) as FlatConfig;
+        } catch (err) {
+            warn(`config.json at ${configPath} could not be parsed (${(err as Error).message}); using defaults`);
+            return {};
+        }
+    }
+
+    private static buildServers(fileConfig: FlatConfig, webPort: number): ServerItem[] {
         // Env var PORT takes highest priority
         const envPort = process.env['PORT'];
-        const port = envPort ? Number.parseInt(envPort, 10) : (fileConfig.port ?? DEFAULT_PORT);
+        const port = envPort ? Number.parseInt(envPort, 10) : webPort;
 
         if (fileConfig.server && fileConfig.server.length > 0) {
             // Advanced multi-server config: still honour PORT env override on first server
@@ -115,9 +281,29 @@ export class Config {
 
     public static getInstance(): Config {
         if (!this.instance) {
-            const configPath = process.env[EnvName.CONFIG_PATH];
-            const fileConfig: FlatConfig = configPath ? Config.loadFile(configPath) : {};
-            const servers = Config.buildServers(fileConfig);
+            const envConfigPath = process.env[EnvName.CONFIG_PATH];
+            const warn = (msg: string) => console.warn(`[Config] ${msg}`);
+
+            // Resolve the config file path. EnvName.CONFIG_PATH override wins.
+            const configFilePath = envConfigPath
+                ? path.isAbsolute(envConfigPath)
+                    ? envConfigPath
+                    : path.resolve(process.cwd(), envConfigPath)
+                : resolveConfigPath(process.argv[1] ?? '.');
+
+            // Load file if it exists; otherwise empty defaults. We do NOT throw
+            // when the file is absent (Contract 1: defaults applied on read).
+            let fileConfig: FlatConfig;
+            if (envConfigPath) {
+                // Explicit override: existing behavior was to throw if missing —
+                // preserve that for callers that depend on it.
+                fileConfig = Config.loadFile(envConfigPath);
+            } else {
+                fileConfig = Config.tryLoadFile(configFilePath, warn);
+            }
+
+            const appConfig = sanitizeAppConfig(fileConfig, warn);
+            const servers = Config.buildServers(fileConfig, appConfig.webPort);
 
             // ADB_PATH env var overrides file config, which overrides default
             const adbPath = process.env['ADB_PATH'] ?? fileConfig.adbPath ?? DEFAULT_ADB_PATH;
@@ -133,9 +319,24 @@ export class Config {
             const scanAdbConnectTimeoutMs = Number.parseInt(process.env['SCAN_ADB_CONNECT_TIMEOUT_MS'] ?? '', 10) || fileConfig.scanAdbConnectTimeoutMs || DEFAULT_SCAN_ADB_CONNECT_TIMEOUT_MS;
             const scanProgressInterval = Number.parseInt(process.env['SCAN_PROGRESS_INTERVAL'] ?? '', 10) || fileConfig.scanProgressInterval || DEFAULT_SCAN_PROGRESS_INTERVAL;
 
-            this.instance = new Config(servers, adbPath, dependenciesPath, scanConcurrency, scanTcpTimeoutMs, scanAdbConnectTimeoutMs, scanProgressInterval);
+            this.instance = new Config(
+                servers,
+                adbPath,
+                dependenciesPath,
+                scanConcurrency,
+                scanTcpTimeoutMs,
+                scanAdbConnectTimeoutMs,
+                scanProgressInterval,
+                appConfig,
+                configFilePath,
+            );
         }
         return this.instance;
+    }
+
+    /** Test-only: clear the cached singleton. */
+    public static _resetForTest(): void {
+        this.instance = undefined;
     }
 
     constructor(
@@ -146,7 +347,17 @@ export class Config {
         private readonly _scanTcpTimeoutMs: number,
         private readonly _scanAdbConnectTimeoutMs: number,
         private readonly _scanProgressInterval: number,
-    ) {}
+        appConfig: AppConfig,
+        configFilePath: string,
+    ) {
+        this._appConfig = appConfig;
+        this._configFilePath = configFilePath;
+        this._firstRunStatus = {
+            firstRunComplete: appConfig.firstRunComplete,
+            portWasAutoShifted: false,
+            webPort: appConfig.webPort,
+        };
+    }
 
     public get servers(): ServerItem[] {
         return this._servers;
@@ -178,5 +389,84 @@ export class Config {
     /** No remote host list in the simplified config. */
     public getHostList(): [] {
         return [];
+    }
+
+    /** Returns the resolved AppConfig (with defaults filled in). */
+    public getAppConfig(): AppConfig {
+        return { ...this._appConfig };
+    }
+
+    /** Path on disk where config.json lives (or will live on first save). */
+    public getConfigFilePath(): string {
+        return this._configFilePath;
+    }
+
+    /**
+     * Apply a partial AppConfig. Validates each provided field; on failure throws
+     * a ConfigValidationError that ConfigApi turns into a 400 response. On success,
+     * writes config.json synchronously and returns the merged config.
+     */
+    public updateAppConfig(partial: Partial<AppConfig>): { config: AppConfig; restartRequired: boolean } {
+        const merged: AppConfig = { ...this._appConfig };
+        for (const key of Object.keys(partial) as (keyof AppConfig)[]) {
+            const value = partial[key];
+            if (value === undefined) continue;
+            const r = validateField(key, value);
+            if (!r.ok) {
+                throw new ConfigValidationError(r.error, key as string);
+            }
+            // biome-ignore lint/suspicious/noExplicitAny: index assignment with verified-typed value
+            (merged as any)[key] = r.value;
+        }
+        const restartRequired = merged.webPort !== this._appConfig.webPort;
+        this._appConfig = merged;
+        this._firstRunStatus = {
+            ...this._firstRunStatus,
+            firstRunComplete: merged.firstRunComplete,
+        };
+        this.saveToDisk();
+        return { config: { ...merged }, restartRequired };
+    }
+
+    /**
+     * Persist the current AppConfig to disk. Sync writes; pretty-printed JSON
+     * with 2-space indent and trailing newline (Contract 1).
+     */
+    public saveToDisk(): void {
+        const out = JSON.stringify(this._appConfig, null, 2) + '\n';
+        const dir = path.dirname(this._configFilePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(this._configFilePath, out, 'utf-8');
+    }
+
+    public getFirstRunStatus(): FirstRunStatus {
+        return { ...this._firstRunStatus };
+    }
+
+    /**
+     * Called by server startup once the actual bound port is known. If the
+     * resolver had to shift away from `webPort`, this flips the flag and
+     * persists the new port to disk.
+     */
+    public setActualWebPort(actualPort: number): void {
+        const shifted = actualPort !== this._appConfig.webPort;
+        if (shifted) {
+            this._appConfig = { ...this._appConfig, webPort: actualPort };
+            this.saveToDisk();
+        }
+        this._firstRunStatus = {
+            firstRunComplete: this._appConfig.firstRunComplete,
+            portWasAutoShifted: shifted,
+            webPort: actualPort,
+        };
+    }
+}
+
+export class ConfigValidationError extends Error {
+    constructor(message: string, public readonly field: string) {
+        super(message);
+        this.name = 'ConfigValidationError';
     }
 }
