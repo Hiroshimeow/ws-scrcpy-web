@@ -3,6 +3,7 @@
 export interface ScanStartMessage {
     type: 'scan.start';
     subnets: string[]; // raw user-typed strings
+    mdnsOnly?: boolean; // when true, skip TCP probe track; subnets may be empty
 }
 
 export interface ScanCancelMessage {

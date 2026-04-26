@@ -35,6 +35,7 @@ export class NetworkDiscoveryPanel {
             <div class="discovery-header">
                 <h2>Available Network Devices</h2>
                 <div class="discovery-header-actions">
+                    <button class="dep-btn discovery-quick-scan-btn" title="mDNS-only — finds modern Android devices with wireless debugging enabled">quick scan</button>
                     <button class="dep-btn discovery-scan-btn">scan network</button>
                     <button class="dep-btn discovery-manual-btn">manually add</button>
                 </div>
@@ -48,12 +49,13 @@ export class NetworkDiscoveryPanel {
                 <div class="discovery-manual-result" hidden></div>
             </div>
             <div class="discovery-results"></div>
-            <div class="empty-state-card discovery-info">Click scan network to find devices. Make sure wireless debugging is enabled on the devices you wish to connect with.</div>
+            <div class="empty-state-card discovery-info">Click quick scan for modern Android devices on your network, or scan network to probe a full subnet. Make sure wireless debugging is enabled on the devices you wish to connect with.</div>
         `;
         this.infoBox = this.container.querySelector('.discovery-info')!;
         this.defaultInfoText = this.infoBox.textContent ?? '';
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
+        this.container.querySelector('.discovery-quick-scan-btn')!.addEventListener('click', () => this.quickScan());
         this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
         this.container.querySelector('.discovery-manual-close')!.addEventListener('click', () =>
             this.toggleManualForm(false),
@@ -102,7 +104,13 @@ export class NetworkDiscoveryPanel {
         });
     }
 
-    private startScanWs(rawSubnets: string[]): void {
+    private quickScan(): void {
+        this.startScanWs([], { mdnsOnly: true });
+    }
+
+    private startScanWs(rawSubnets: string[], options: { mdnsOnly?: boolean } = {}): void {
+        const mdnsOnly = options.mdnsOnly === true;
+
         // Clear the panel before a new scan (matches existing behavior)
         this.resultsContainer.innerHTML = '';
         this.scanSessionHits.clear();
@@ -110,19 +118,24 @@ export class NetworkDiscoveryPanel {
         grid.className = 'discovery-grid';
         this.resultsContainer.appendChild(grid);
 
-        // Mount the chip into the info box — it replaces the default info text while scanning,
-        // and we restore that text when the chip dismisses (after auto-hide or manual close).
+        // Full scan mounts the progress chip into the info box; quick scan uses lightweight inline status.
         this.chip?.dismiss();
+        this.chip = undefined;
         this.infoBox.textContent = '';
-        this.chip = new ScanProgressChip({
-            parent: this.infoBox,
-            onCancel: () => {
-                if (this.scanWs?.readyState === WebSocket.OPEN) {
-                    this.scanWs.send(JSON.stringify({ type: 'scan.cancel' }));
-                }
-            },
-            onDismiss: () => this.restoreInfoText(),
-        });
+        this.infoBox.style.color = '';
+        if (mdnsOnly) {
+            this.infoBox.textContent = 'scanning over mDNS…';
+        } else {
+            this.chip = new ScanProgressChip({
+                parent: this.infoBox,
+                onCancel: () => {
+                    if (this.scanWs?.readyState === WebSocket.OPEN) {
+                        this.scanWs.send(JSON.stringify({ type: 'scan.cancel' }));
+                    }
+                },
+                onDismiss: () => this.restoreInfoText(),
+            });
+        }
 
         // Open the WS
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -130,7 +143,12 @@ export class NetworkDiscoveryPanel {
         this.scanWs = ws;
 
         ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'scan.start', subnets: rawSubnets }));
+            const startMsg: { type: 'scan.start'; subnets: string[]; mdnsOnly?: boolean } = {
+                type: 'scan.start',
+                subnets: rawSubnets,
+            };
+            if (mdnsOnly) startMsg.mdnsOnly = true;
+            ws.send(JSON.stringify(startMsg));
         });
         let terminalReceived = false;
         ws.addEventListener('message', (ev: MessageEvent) => {
@@ -138,7 +156,7 @@ export class NetworkDiscoveryPanel {
             if (msg.type === 'scan.complete' || msg.type === 'scan.cancelled' || msg.type === 'scan.error') {
                 terminalReceived = true;
             }
-            this.handleScanMessage(msg, grid);
+            this.handleScanMessage(msg, grid, mdnsOnly);
         });
         ws.addEventListener('close', () => {
             this.scanWs = undefined;
@@ -153,7 +171,7 @@ export class NetworkDiscoveryPanel {
         });
     }
 
-    private handleScanMessage(msg: ScanServerMessage, grid: HTMLElement): void {
+    private handleScanMessage(msg: ScanServerMessage, grid: HTMLElement, mdnsOnly = false): void {
         switch (msg.type) {
             case 'scan.started':
                 this.chip?.setScanning(0, msg.totalHosts, 0);
@@ -168,7 +186,15 @@ export class NetworkDiscoveryPanel {
                 this.chip?.setDraining();
                 break;
             case 'scan.complete':
-                this.chip?.setComplete(msg.found);
+                if (mdnsOnly) {
+                    if (msg.found === 0) {
+                        this.setInfoText('No devices advertising over mDNS. Try scan network for a full subnet probe.');
+                    } else {
+                        this.restoreInfoText();
+                    }
+                } else {
+                    this.chip?.setComplete(msg.found);
+                }
                 break;
             case 'scan.cancelled':
                 this.chip?.setCancelled(msg.found);

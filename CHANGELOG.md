@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `feat:` Quick Scan button on the home page — runs mDNS-only discovery to find modern Android devices advertising over `_adb-tls-connect._tcp.` without probing every host on a subnet. Uses the same `/ws-scan` WebSocket pipeline as full scan; `ScanStartMessage` gained an optional `mdnsOnly?: boolean` flag and `NetworkScanner.start()` accepts an `{ mdnsOnly }` option that short-circuits the TCP worker pool. UI uses inline status text instead of the progress chip since mDNS resolves in ~1s. Restores a convenience that was lost when the full TCP+mDNS scanner replaced the simpler pre-rewrite flow.
+
 ### Fixed
 - `fix:` Embed API codec parameter now validated against browser capabilities before connecting. Previously, passing `codec: 'h265'` on Firefox (which cannot decode HEVC) would bomb the stream — the `browserSupportsCodec()` check only ran when no codec was specified (auto-detect path). Now explicitly-supplied codecs are verified via `VideoDecoder.isConfigSupported()` in `StreamClientScrcpy.startStream()` and fall back to h264 if unsupported. The caller-supplied encoder is also cleared on fallback since it was chosen for the original codec.
 

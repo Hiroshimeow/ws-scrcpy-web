@@ -35,6 +35,7 @@ export class ScanMw {
                     ScanMw.send(ws, { type: 'scan.error', reason: 'scan already in progress' });
                     return;
                 }
+                const mdnsOnly = msg.mdnsOnly === true;
                 const parsed: ParsedSubnet[] = [];
                 const errors: { subnet: string; error: string }[] = [];
                 for (const raw of msg.subnets) {
@@ -50,7 +51,7 @@ export class ScanMw {
                     return;
                 }
                 // Fire and forget — scanner drives the WS directly.
-                scanner.start(parsed, ws).catch(() => {});
+                scanner.start(parsed, ws, { mdnsOnly }).catch(() => {});
                 return;
             }
             if (msg.type === 'scan.cancel') {

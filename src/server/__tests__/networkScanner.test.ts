@@ -64,6 +64,49 @@ describe('NetworkScanner — lifecycle', () => {
     });
 });
 
+describe('NetworkScanner — mdnsOnly mode', () => {
+    it('skips TCP probe entirely when mdnsOnly: true', async () => {
+        const probeSpy = vi.fn(async () => ({ isAdb: false as const }));
+        const scanner = new NetworkScanner(baseDeps({
+            adbHandshakeProbe: probeSpy,
+            adbMdnsServices: async () => [
+                { name: 'adb-SERIAL123-abcd._adb-tls-connect._tcp.local.', service: '_adb-tls-connect._tcp.', address: '192.168.1.50', port: 41234 },
+            ],
+            progressInterval: 1,
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['192.168.1.10', '192.168.1.11'])], ws, { mdnsOnly: true });
+        expect(probeSpy).not.toHaveBeenCalled();
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({ source: 'mdns', address: '192.168.1.50:41234' });
+        expect(messages.at(-1)?.type).toBe('scan.complete');
+    });
+
+    it('emits scan.started with totalHosts=0 in mdnsOnly mode', async () => {
+        const scanner = new NetworkScanner(baseDeps({
+            adbMdnsServices: async () => [],
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['1.1.1.1', '1.1.1.2'])], ws, { mdnsOnly: true });
+        const started = messages.find((m) => m.type === 'scan.started') as any;
+        expect(started.totalHosts).toBe(0);
+        expect(started.totalSubnets).toBe(0);
+    });
+
+    it('accepts empty subnets array in mdnsOnly mode', async () => {
+        const scanner = new NetworkScanner(baseDeps({
+            adbMdnsServices: async () => [
+                { name: 'adb-XYZ._adb-tls-connect._tcp.local.', service: '_adb-tls-connect._tcp.', address: '10.0.0.5', port: 5555 },
+            ],
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([], ws, { mdnsOnly: true });
+        const hits = messages.filter((m) => m.type === 'scan.hit');
+        expect(hits).toHaveLength(1);
+    });
+});
+
 describe('NetworkScanner — TCP track', () => {
     it('emits scan.hit for handshake-confirmed devices', async () => {
         const scanner = new NetworkScanner(baseDeps({

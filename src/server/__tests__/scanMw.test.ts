@@ -54,6 +54,42 @@ describe('ScanMw integration', () => {
         await new Promise<void>((r) => wss.close(() => server.close(() => r())));
     });
 
+    it('accepts mdnsOnly scan.start with empty subnets and streams to scan.complete', async () => {
+        const scanner = new NetworkScanner({
+            adbDevices: async () => [],
+            adbMdnsServices: async () => [
+                { name: 'adb-ABCD._adb-tls-connect._tcp.local.', service: '_adb-tls-connect._tcp.', address: '10.0.0.5', port: 5555 },
+            ],
+            adbHandshakeProbe: async () => ({ isAdb: false }),
+            concurrency: 4,
+            progressInterval: 10,
+        });
+        ScanMw.setScanner(scanner);
+
+        const server = http.createServer();
+        const wss = new WebSocketServer({ server });
+        wss.on('connection', (ws, req) => {
+            if (req.url === SCAN_WS_PATH) ScanMw.attach(ws);
+        });
+        await new Promise<void>((r) => server.listen(0, r));
+        const port = (server.address() as any).port;
+
+        const client = new WebSocket(`ws://127.0.0.1:${port}${SCAN_WS_PATH}`);
+        await new Promise<void>((r) => client.once('open', r));
+
+        const collected = collectMessages(client, (m) => m.type === 'scan.complete');
+        client.send(JSON.stringify({ type: 'scan.start', subnets: [], mdnsOnly: true }));
+        const messages = await collected;
+
+        expect(messages[0].type).toBe('scan.started');
+        expect((messages[0] as any).totalHosts).toBe(0);
+        expect(messages.some((m: any) => m.type === 'scan.hit' && m.source === 'mdns')).toBe(true);
+        expect(messages.at(-1).type).toBe('scan.complete');
+
+        client.close();
+        await new Promise<void>((r) => wss.close(() => server.close(() => r())));
+    });
+
     it('rejects scan.start with invalid subnets', async () => {
         const scanner = new NetworkScanner({
             adbDevices: async () => [],

@@ -70,10 +70,11 @@ export class NetworkScanner {
         this.cancelFlag = true;
     }
 
-    async start(subnets: ParsedSubnet[], ws: WS | any): Promise<void> {
+    async start(subnets: ParsedSubnet[], ws: WS | any, options?: { mdnsOnly?: boolean }): Promise<void> {
         if (this.state !== 'idle') {
             throw new Error('scanner already scanning');
         }
+        const mdnsOnly = options?.mdnsOnly === true;
         this.state = 'scanning';
         this.cancelFlag = false;
         this.emittedAddresses.clear();
@@ -87,15 +88,15 @@ export class NetworkScanner {
         }
 
         try {
-            const totalHosts = subnets.reduce((sum, s) => sum + s.hostCount, 0);
+            const totalHosts = mdnsOnly ? 0 : subnets.reduce((sum, s) => sum + s.hostCount, 0);
             this.emit({
                 type: 'scan.started',
                 totalHosts,
-                totalSubnets: subnets.length,
+                totalSubnets: mdnsOnly ? 0 : subnets.length,
                 startedAt: Date.now(),
             });
 
-            const runPromise = this.runTracks(subnets, totalHosts);
+            const runPromise = this.runTracks(mdnsOnly ? [] : subnets, totalHosts, mdnsOnly);
 
             // Watch for cancel flag: emit scan.draining as soon as it's set, while workers still in flight.
             let drainWatcherDone = false;
@@ -129,7 +130,7 @@ export class NetworkScanner {
         }
     }
 
-    protected async runTracks(subnets: ParsedSubnet[], totalHosts: number): Promise<void> {
+    protected async runTracks(subnets: ParsedSubnet[], totalHosts: number, mdnsOnly = false): Promise<void> {
         const connectedAddresses = new Set(
             (await this.deps.adbDevices()).map((d) => d.serial),
         );
@@ -155,6 +156,11 @@ export class NetworkScanner {
                 // mDNS track failed — silent; TCP track continues
             }
         })();
+
+        if (mdnsOnly) {
+            await mdnsPromise;
+            return;
+        }
 
         // Track B: TCP (existing pool logic)
         const hostList: string[] = [];
