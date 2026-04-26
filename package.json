@@ -1,6 +1,6 @@
 {
   "name": "ws-scrcpy-web",
-  "version": "1.0.0",
+  "version": "0.1.0-pre.0",
   "description": "Browser-based Android screen mirroring and control, powered by scrcpy",
   "license": "GPL-3.0-only",
   "author": "bilbospocketses",
@@ -34,7 +34,10 @@
     "test": "vitest run",
     "lint": "npx @biomejs/biome check src/",
     "format": "npx @biomejs/biome check --write src/",
-    "fetch-prebuilts": "node scripts/fetch-prebuilts.mjs"
+    "fetch-prebuilts": "node scripts/fetch-prebuilts.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/assert-version-sync.mjs",
+    "package:stage": "node scripts/stage-publish.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

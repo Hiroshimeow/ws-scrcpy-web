@@ -1,0 +1,21 @@
+[package]
+name = "ws-scrcpy-web-launcher"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "ws-scrcpy-web-launcher"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+ctrlc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+windows.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

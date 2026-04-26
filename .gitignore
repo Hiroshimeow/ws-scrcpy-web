@@ -3,9 +3,21 @@ dist/
 build/
 *.tgz
 
+# Rust build outputs
+target/
+Cargo.lock.bak
+
+# SP3 packaging artifacts (generated locally)
+publish/
+Releases/
+
+# SP3 spike artifacts (preserved locally; never committed)
+spike/
+
 # Dependencies folder (managed at runtime, not committed)
 dependencies/node/
 dependencies/adb/
+dependencies/node-pty/
 .restart
 
 # Superpowers brainstorm artifacts
