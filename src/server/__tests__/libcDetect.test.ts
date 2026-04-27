@@ -38,7 +38,7 @@ describe('detectLibc', () => {
     it('returns musl on linux when /etc/alpine-release exists and glibc marker is absent', () => {
         setPlatform('linux');
         vi.spyOn(process.report as any, 'getReport').mockReturnValue({ header: {} });
-        fsModule.accessSync.mockImplementation((path: string) => {
+        fsModule.accessSync.mockImplementation((path: fs.PathLike) => {
             if (path !== '/etc/alpine-release') throw new Error('ENOENT');
         });
         expect(detectLibc()).toBe('musl');
