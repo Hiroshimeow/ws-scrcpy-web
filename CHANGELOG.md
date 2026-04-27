@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `fix(test)`: widen `libcDetect.test.ts` mocked `accessSync` path parameter from `string` to `fs.PathLike` to match the real `fs.accessSync` signature; unblocks CI `tsc --noEmit` step that started failing on `main` after v0.1.0.
+- `fix(server)`: `detectInstallScope` now uses `path.win32.dirname` for execPath splitting, so injected `platform: 'win32'` test cases resolve correctly on POSIX CI hosts (previously `path.dirname` treated backslashes as literals on Linux runners and returned `.`, making every Windows install look like `system`). No production behavior change on real Windows.
 
 ## [0.1.0] - 2026-04-27
 

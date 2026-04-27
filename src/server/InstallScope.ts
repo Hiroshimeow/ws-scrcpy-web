@@ -42,7 +42,10 @@ export function detectInstallScope(opts: DetectInstallScopeOptions = {}): Instal
     if (!localAppData) return 'system';
 
     const execPath = opts.execPath ?? process.execPath;
-    const installDir = path.dirname(execPath);
+    // Use win32 path semantics explicitly: when tests inject platform: 'win32'
+    // on a POSIX CI host, the default `path.dirname` would treat backslashes
+    // as literal chars and return '.'. On real Windows this is a no-op.
+    const installDir = path.win32.dirname(execPath);
 
     // Case-insensitive prefix compare (Windows paths are case-insensitive).
     // We don't bother with realpath / symlink resolution — Velopack installs
