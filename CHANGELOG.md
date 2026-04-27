@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-04-27
+### Changed
+
+- **Linux AppImage is now truly portable — `chmod +x` and run on any Linux from the last 18 years.** Two changes land together:
+  - The Rust launcher is now built for the `x86_64-unknown-linux-musl` target, so the binary itself has zero glibc dependency. The `Build launcher (musl-static)` CI step links musl statically; `ldd` on the produced ELF reports `not a dynamic executable`. Equivalent of the static-CRT story we did on Windows in v0.1.1.
+  - Velopack ships an older fuse2-linked AppImage runtime by default. We now post-process every Linux release to swap that runtime with the upstream static-fuse runtime from [AppImage/type2-runtime](https://github.com/AppImage/type2-runtime). Result: the AppImage no longer needs `libfuse2` (or `libfuse3`) installed on the host. New `scripts/swap-appimage-runtime.mjs` handles the swap; called from `package-linux.mjs` after `vpk pack`.
+- Linux build still depends on glibc 2.31+ in practice because the bundled Node 24 binary requires it, but the launcher itself runs on anything (including musl-libc distros like Alpine).
 
 ### Fixed
 

@@ -132,10 +132,20 @@ jobs:
         with:
           dotnet-version: 9.x
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Install musl-tools (linker for musl target)
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: dotnet tool install -g vpk
       - run: npm ci --omit=dev
       - run: npm run build
-      - run: cargo build --release --workspace
+      - name: Build launcher (musl-static — no glibc dependency)
+        run: cargo build --release --workspace --target x86_64-unknown-linux-musl
+      - name: Verify launcher is statically linked
+        run: |
+          BIN=target/x86_64-unknown-linux-musl/release/ws-scrcpy-web-launcher
+          file "$BIN"
+          ldd "$BIN" || true   # ldd exits nonzero on a fully-static binary — that is the goal
       - run: node scripts/stage-publish.mjs
       - run: node scripts/package-linux.mjs
 

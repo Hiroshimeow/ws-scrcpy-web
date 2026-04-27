@@ -26,7 +26,7 @@
 // exits 0 — same shape as fetch-servy.mjs / package-stage.mjs.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -130,7 +130,32 @@ function main() {
         { cwd: REPO_ROOT, stdio: 'inherit' },
     );
 
-    log('AppImage packaging complete. Output under Releases/linux/.');
+    // Swap the AppImage runtime to the upstream static-fuse runtime so
+    // the .AppImage runs on hosts without libfuse2/libfuse3 installed.
+    // Velopack ships the older fuse2-linked runtime by default; the
+    // swap is what makes the artifact truly portable.
+    const releasesLinuxDir = join(REPO_ROOT, 'Releases', 'linux');
+    const releasesDir = existsSync(releasesLinuxDir)
+        ? releasesLinuxDir
+        : join(REPO_ROOT, 'Releases');
+    const appimages = existsSync(releasesDir)
+        ? readdirSync(releasesDir).filter((f) => f.endsWith('.AppImage'))
+        : [];
+    if (appimages.length === 0) {
+        err(`vpk pack produced no .AppImage in ${releasesDir}; cannot swap runtime.`);
+        process.exit(1);
+    }
+    const swapScript = join(__dirname, 'swap-appimage-runtime.mjs');
+    for (const name of appimages) {
+        const target = join(releasesDir, name);
+        log(`swapping runtime in ${target}`);
+        execFileSync(process.execPath, [swapScript, target], {
+            cwd: REPO_ROOT,
+            stdio: 'inherit',
+        });
+    }
+
+    log('AppImage packaging + runtime swap complete. Output under Releases/linux/.');
 }
 
 try {

@@ -66,13 +66,20 @@ function main() {
     const exeSuffix = isWindows ? '.exe' : '';
     console.log(`Staging publish/ for ${isWindows ? 'Windows' : 'Linux'} ...`);
 
-    // 1. Verify required prereqs (fail fast before any file ops)
-    const launcherBin = join(
-        REPO_ROOT,
-        'target',
-        'release',
-        `ws-scrcpy-web-launcher${exeSuffix}`,
-    );
+    // 1. Verify required prereqs (fail fast before any file ops).
+    //
+    // Linux launcher is built for the x86_64-unknown-linux-musl target so the
+    // shipped ELF has no glibc dependency (matches the static-CRT story on
+    // Windows). See `.github/workflows/release.yml` for the cargo build step.
+    const launcherBin = isWindows
+        ? join(REPO_ROOT, 'target', 'release', 'ws-scrcpy-web-launcher.exe')
+        : join(
+              REPO_ROOT,
+              'target',
+              'x86_64-unknown-linux-musl',
+              'release',
+              'ws-scrcpy-web-launcher',
+          );
     // Tray helper is Windows-only (per P4b decision (b): common::tray returns
     // Cancelled on non-Windows; no Linux tray binary is shipped). On Linux we
     // skip both copy and prereq check.
