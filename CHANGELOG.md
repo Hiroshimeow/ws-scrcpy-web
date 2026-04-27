@@ -13,9 +13,11 @@ First public release.
 
 ### Installation
 
-- Windows installer (`Setup.exe`) and Linux `.AppImage`, both built with [Velopack](https://velopack.io). Install once, get auto-updates from the in-app **Settings** panel or the header **Update Available** button.
+- **Windows installer (`Setup.exe`)** — installs per-user under `%LocalAppData%`, no admin required. Best for most users. Velopack-managed auto-updates from the in-app **Settings** panel or the header **Update Available** button.
+- **Windows MSI** — installs system-wide under `Program Files` (requires admin). For corporate / SCCM / Group Policy deployment scenarios. Same auto-update behavior as Setup.exe.
+- **Linux AppImage** — single executable; `chmod +x` and run. Velopack-managed auto-updates.
+- **Windows portable ZIP** — unzip and run; no install required, no auto-updates. Air-gapped friendly.
 - Stable and beta release channels, switchable in Settings without reinstall.
-- A self-contained portable ZIP for Windows users who prefer no install.
 - Manual install path still works: clone the repo, `npm install`, `npm start`.
 
 ### Service mode
