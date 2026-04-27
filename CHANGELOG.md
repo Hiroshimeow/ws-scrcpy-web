@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `fix(test)`: widen `libcDetect.test.ts` mocked `accessSync` path parameter from `string` to `fs.PathLike` to match the real `fs.accessSync` signature; unblocks CI `tsc --noEmit` step that started failing on `main` after v0.1.0.
+
 ## [0.1.0] - 2026-04-27
 
 First public release.
