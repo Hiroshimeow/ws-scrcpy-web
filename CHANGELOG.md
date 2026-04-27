@@ -191,6 +191,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - First-run banner uses hardcoded theme-independent amber background + near-black text (contrast ~11:1) instead of the project's `--warning-color` / `--text-color-light` theme tokens. Deliberate deviation from the `reference_wsscrcpy_theme_vars` convention: those tokens resolved to ~1.5:1 contrast (well below WCAG AA) in both dark and light themes because the token pairing wasn't designed for warning-surface use. A warning banner needs to stand out regardless of theme, so fixed colors are correct here.
 
+## [0.1.0] - 2026-04-27
+
 ## [1.0.0] - 2026-04-17
 
 First public release. Browser-based Android screen mirroring rebuilt from the ground up on vanilla scrcpy v3.x with a modernized Node.js + TypeScript stack.
