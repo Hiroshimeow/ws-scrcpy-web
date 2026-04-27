@@ -87,19 +87,17 @@ jobs:
             --mainExe ws-scrcpy-web-launcher.exe `
             --packTitle "ws-scrcpy-web" `
             --packAuthors "ws-scrcpy-web contributors" `
-            --msi `
-            --instLocation Either `
             --channel ${{ needs.prepare.outputs.channel }} `
             -o Releases
 
-      - name: Upload unsigned MSI
+      - name: Upload unsigned Setup.exe
         if: needs.prepare.outputs.signing_mode == 'signed'
-        id: upload-unsigned-msi
+        id: upload-unsigned-setup
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-windows-msi
-          path: Releases/*.msi
-      - name: Sign MSI via SignPath
+          name: unsigned-windows-setup
+          path: Releases/*-Setup.exe
+      - name: Sign Setup.exe via SignPath
         if: needs.prepare.outputs.signing_mode == 'signed'
         uses: signpath/github-action-submit-signing-request@v2
         with:
@@ -107,19 +105,15 @@ jobs:
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: ${{ vars.SIGNPATH_WINDOWS_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-msi.outputs.artifact-id }}
+          github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: Releases/
-
-      - name: Drop Velopack Setup.exe (we ship MSI only)
-        shell: pwsh
-        run: Remove-Item Releases/*-Setup.exe -Force -ErrorAction SilentlyContinue
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows-final
           path: |
-            Releases/*.msi
+            Releases/*-Setup.exe
             Releases/*-Portable.zip
             Releases/*.nupkg
             Releases/RELEASES
@@ -186,7 +180,7 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd artifacts
-          find . -type f \( -name '*.msi' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*-Portable.zip' -o -name '*.nupkg' \) -exec sha256sum {} \; > ../SHA256SUMS
+          find . -type f \( -name '*-Setup.exe' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*-Portable.zip' -o -name '*.nupkg' \) -exec sha256sum {} \; > ../SHA256SUMS
           cd ..
           cat SHA256SUMS
 
@@ -204,7 +198,7 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.channel == 'beta' }}
           body_path: release-notes.md
           files: |
-            artifacts/windows-final/*.msi
+            artifacts/windows-final/*-Setup.exe
             artifacts/windows-final/*-Portable.zip
             artifacts/windows-final/*.nupkg
             artifacts/windows-final/RELEASES

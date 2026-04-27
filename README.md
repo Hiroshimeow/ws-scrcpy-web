@@ -47,7 +47,7 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 
 Get the latest release from the [Releases page](https://github.com/bilbospocketses/ws-scrcpy-web/releases/latest):
 
-- **Windows (MSI):** `ws-scrcpy-web-<version>-Setup.msi` — installs to `%LOCALAPPDATA%` or `Program Files`, Velopack-managed auto-updates
+- **Windows (Setup.exe):** `ws-scrcpy-web-<version>-Setup.exe` — installs to `%LOCALAPPDATA%`, Velopack-managed auto-updates
 - **Windows (Portable ZIP):** `ws-scrcpy-web-<version>-Portable.zip` — unzip and run, no install
 - **Linux (AppImage):** `ws-scrcpy-web-<version>.AppImage` — `chmod +x` and run; see [Linux install](#linux-install-appimage) below
 
