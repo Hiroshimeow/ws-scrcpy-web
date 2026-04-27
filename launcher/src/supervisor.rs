@@ -66,22 +66,19 @@ pub fn run() -> Result<i32> {
         log::error(&format!("could not install Ctrl+C handler: {e}"));
     }
 
-    // Ensure DEPS_PATH is set on our env so the spawned child inherits it
-    // (matches start.cmd's `set "DEPS_PATH=%SCRIPT_DIR%dependencies"`).
-    // Don't overwrite if user set their own.
-    if std::env::var("DEPS_PATH").is_err() {
-        // SAFETY: single-threaded at this point (no Rayon, no rt threads
-        // started yet); Ctrl+C handler doesn't read env.
-        unsafe {
-            std::env::set_var("DEPS_PATH", &paths.deps_path);
-        }
-        log::info(&format!("supervisor: set DEPS_PATH={:?}", paths.deps_path));
-    }
+    // NOTE: do NOT set DEPS_PATH on the launcher's process env. spawn::resolve_node
+    // reads DEPS_PATH and enforces strict mode (no seed/ fallback) when it's set
+    // — which would defeat the first-run bootstrap (deps/ not yet populated, only
+    // seed/ exists). DEPS_PATH is instead passed to the Node CHILD's env directly
+    // via spawn::spawn_server(deps_path). The launcher's resolve_node only sees
+    // DEPS_PATH when the user explicitly set it (e.g., shared-deps install) —
+    // strict mode kicks in only there, as SP2b intended.
+    log::info(&format!("supervisor: deps_path resolved to {:?} (passed to Node child)", paths.deps_path));
 
     loop {
         cleanup_old_node(&paths.old_node);
 
-        let mut child = spawn::spawn_server()?;
+        let mut child = spawn::spawn_server(&paths.deps_path)?;
         log::info(&format!("supervisor: server started (pid {})", child.id()));
 
         let status = wait_with_signal(&mut child, &stop)?;

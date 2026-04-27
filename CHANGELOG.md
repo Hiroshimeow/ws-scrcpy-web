@@ -7,7 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-04-27
+## [0.1.3] - 2026-04-27
+
+**v0.1.0, v0.1.1, and v0.1.2 all shipped with broken installers and have been withdrawn.** Apologies for the wasted time if you tried any of them. v0.1.3 is the first version that has been verified end-to-end to install and launch on a clean Win11 VM. The failures and what was fixed in each:
+
+- **v0.1.0** — Setup.exe crashed on a clean Win11 install with `VCRUNTIME140.dll was not found`. The Rust launcher and tray binaries were dynamically linked against the Visual C++ Redistributable, which a clean Win11 doesn't ship. Fixed in v0.1.1 by adding `-C target-feature=+crt-static` to statically link the MSVC C runtime.
+- **v0.1.1** — Setup.exe completed, but the launcher silent-failed at first run with "Node not found." The SP3 spec called for shipping a bootstrap Node binary at `<install>/current/seed/node/`, but the script that populates `seed/` was deferred during P6 packaging and never landed. Fixed in v0.1.2 with `scripts/fetch-node.mjs` (downloads + SHA256-verifies Node v24.15.0 LTS during the CI build, stages into `seed/`).
+- **v0.1.2** — `seed/node/node.exe` shipped correctly, but the launcher STILL silent-failed because the supervisor was unconditionally setting `DEPS_PATH` on its own process env before calling `resolve_node`, which made `resolve_node` enforce strict mode and refuse the seed/ fallback. The strict resolver and the auto-set were both written in the same SP2b session and the conflict between them was missed in code review. Fixed in v0.1.3: `DEPS_PATH` is now passed to the Node child via `Command::env` directly (so the Node backend's `DependencyManager` still gets it), and the launcher's process env is left untouched (so `resolve_node` correctly falls back to `seed/`).
+
+This is the first release where Setup.exe → app starts → tray icon appears → `localhost:8000` is reachable has been confirmed working. SignPath signing is still pending; this release is unsigned.
+
+### Installation
+
+- **Windows installer (`Setup.exe`)** — installs per-user under `%LocalAppData%`, no admin required. Best for most users. Velopack-managed auto-updates from the in-app **Settings** panel or the header **Update Available** button.
+- **Linux AppImage** — single executable; `chmod +x` and run, on any glibc 2.31+ or musl-libc distro. Velopack-managed auto-updates.
+- **Windows portable ZIP** — unzip and run; no install required, no auto-updates. Air-gapped friendly.
+- Stable and beta release channels, switchable in Settings without reinstall.
+- Manual install path still works: clone the repo, `npm install`, `npm start`.
+
+### Service mode
+
+- Optional Windows service (managed by [Servy](https://github.com/aelassas/servy)) so `ws-scrcpy-web` runs at login or boot. Pick from the first-run welcome modal or Settings → Service.
+- Optional Linux systemd unit. User scope (no sudo) writes to `~/.config/systemd/user/`; system scope (requires sudo) writes to `/etc/systemd/system/`. Welcome modal asks per-platform; `loginctl enable-linger` keeps user-scope services alive after logout.
+- A small system-tray icon on Windows shows a single confirm-and-exit dialog. (Linux skips the tray entirely; use the web UI Stop Server button.)
+
+### Streaming features
+
+- **Multi-codec video** (H.264, H.265, AV1) and **multi-codec audio** (Opus, AAC, FLAC, raw PCM), all decoded via WebCodecs in the browser. No WASM fallbacks.
+- **Audio capture** is SDK-aware with three sources (output / playback / mic), per-device persisted preferences, and graceful gating for older Android. Playback mode keeps device audio audible during capture (Android 13+).
+- **D-pad / Touch input modes** with a toolbar toggle for leanback TV apps. UHID keyboard and mouse with hardware-level input via USB HID. Scroll wheel and Shift+scroll forwarding tuned for high-latency streams.
+- **Programmatic stream API**: load `ws-scrcpy.umd.js` or `ws-scrcpy.esm.js` and call `WsScrcpy.startStream(container, deviceId, options)` to embed a stream into any DOM element. Bundled TypeScript types. Thin `embed.html?device=<udid>` shim for iframe consumers.
+
+### Device discovery
+
+- **Network scan** combining mDNS (modern devices) with a TCP-port-5555 sweep (older devices that do not advertise). Auto-detects gateway subnet; accepts additional subnets as CIDR, bare IP, or IP range. mDNS and TCP hits dedupe automatically.
+- **Quick Scan** button on the home page for fast mDNS-only discovery.
+- **Device labels** persist across sessions, keyed by both serial and MAC, so devices keep their names whether they show up via mDNS or TCP.
+- **Sleep / wake toggle** on each device card with server-polled state, kept in sync over WebSocket so buttons stay accurate when the device sleeps via timer or remote.
+
+### UI
+
+- **First-run welcome modal** that shows the chosen port (with auto-shift if 8000 is busy) and the service-install prompt.
+- **Settings panel** (gear icon, top-right) for web port, auto-update preferences, channel selection, GitHub owner override, and service install/uninstall. Dev-mode banner when running from source.
+- **Dark / light theme toggle** persisted in localStorage.
+- File browser with breadcrumbs, sortable columns, drag-and-drop upload, download with progress, bulk delete.
+- Remote ADB shell terminal with xterm.js.
+- Browser tab title is now static ("Android Power Tools") on every page.
+
+### Self-contained dependencies
+
+- Bundled Node.js 24.15.0 LTS (ships in the installer payload, no first-run download needed). ADB platform-tools and `scrcpy-server` v3.3.4 download on first run with SHA256 verification.
+- Native `node-pty` prebuilds for Windows (x64, arm64) and Linux glibc (x64, arm64), built weekly via GitHub Actions matrix. Falls back to source-compile on unsupported targets.
+- **In-app dependency updater** in the Settings panel: check and update Node.js, ADB, and `scrcpy-server` from the home page with one click.
+
+### Linux portability
+
+- Launcher built for `x86_64-unknown-linux-musl` — zero glibc dependency on the launcher itself. The bundled Node 24 binary still requires glibc 2.31+, which is the actual minimum-glibc for the full app.
+- AppImage runtime stub swapped post-`vpk pack` with the upstream static-fuse runtime from [AppImage/type2-runtime](https://github.com/AppImage/type2-runtime). The .AppImage no longer needs `libfuse2` or `libfuse3` installed on the host.
+
+### Privacy and code signing
+
+- `PRIVACY.md` documents outbound traffic (update checks, optional dep installs from `nodejs.org`, `dl.google.com`, `github.com`). No telemetry. No analytics. No project-operated server.
+- Code signing via [SignPath Foundation](https://signpath.org)'s free OSS program — application is in review. Once approved, the next release will be the first signed release. Until then, integrity is verifiable via the `SHA256SUMS` file shipped with each release.
+
+## [0.1.2] - 2026-04-27 [YANKED]
 
 **First actually-installable release.** v0.1.0 (initial tag) and v0.1.1 (VCRUNTIME fix + branded icons) both shipped with broken installers — v0.1.0 crashed on a clean Win11 install with `VCRUNTIME140.dll was not found`, and v0.1.1 fixed that crash but exposed a separate gap where the post-install app launch silent-failed because the bundled Node bootstrap binary was missing from the installer payload. Both have been withdrawn from the Releases page; this is the first version that actually installs and runs end-to-end on a clean machine. See § Install-blocker fixes below for the full chain.
 
@@ -67,7 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PRIVACY.md` documents outbound traffic (update checks, optional dep installs from `nodejs.org`, `dl.google.com`, `github.com`). No telemetry. No analytics. No project-operated server.
 - Code signing via [SignPath Foundation](https://signpath.org)'s free OSS program — application is in review. Once approved, the next release will be the first signed release. Until then, integrity is verifiable via the `SHA256SUMS` file shipped with each release.
 
-## [0.1.1] - 2026-04-27
+## [0.1.1] - 2026-04-27 [YANKED]
 
 ### Fixed
 
@@ -82,7 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Windows MSI artifact withdrawn.** The MSI we shipped in v0.1.0 was Velopack's `--msiDeploymentTool` output — designed for SCCM / Intune mass deployment, not user-clickable (it silently registered as a "Deployment Tool" in Add/Remove Programs without installing the actual app). Setup.exe (per-user, wizardful) and Portable.zip remain the supported Windows install paths. A real user-facing WiX MSI is logged as a future enhancement.
 
-## [0.1.0] - 2026-04-27
+## [0.1.0] - 2026-04-27 [YANKED]
 
 First public release.
 

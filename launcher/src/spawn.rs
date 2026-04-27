@@ -73,9 +73,16 @@ pub fn resolve_server_entry() -> Result<PathBuf> {
 
 /// Spawn the Node server with hidden console window.
 ///
+/// `deps_path` is set as DEPS_PATH on the Node child's environment so the
+/// Node backend's DependencyManager knows where to install Node / ADB /
+/// scrcpy-server. **Crucially, this is set on the CHILD's env, not the
+/// launcher's process env** — the launcher's `resolve_node()` would
+/// otherwise see DEPS_PATH and enforce strict mode, defeating the seed/
+/// bootstrap fallback on first run before dependencies/ exists.
+///
 /// Returns the child handle so the caller (supervisor) can wait on it.
 #[cfg(windows)]
-pub fn spawn_server() -> Result<Child> {
+pub fn spawn_server(deps_path: &Path) -> Result<Child> {
     use std::os::windows::process::CommandExt;
 
     let node = resolve_node()?;
@@ -86,6 +93,7 @@ pub fn spawn_server() -> Result<Child> {
     let child = Command::new(&node)
         .arg(&entry)
         .current_dir(&work_dir)
+        .env("DEPS_PATH", deps_path)
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", node, entry))?;
@@ -94,7 +102,7 @@ pub fn spawn_server() -> Result<Child> {
 }
 
 #[cfg(not(windows))]
-pub fn spawn_server() -> Result<Child> {
+pub fn spawn_server(deps_path: &Path) -> Result<Child> {
     let node = resolve_node()?;
     let entry = resolve_server_entry()?;
     let exe = std::env::current_exe()?;
@@ -103,6 +111,7 @@ pub fn spawn_server() -> Result<Child> {
     let child = Command::new(&node)
         .arg(&entry)
         .current_dir(&work_dir)
+        .env("DEPS_PATH", deps_path)
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", node, entry))?;
 
