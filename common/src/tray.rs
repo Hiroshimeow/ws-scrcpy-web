@@ -368,11 +368,11 @@ impl Drop for TrayCleanup {
 /// Phase 3 of the Program Files migration extends the tray beyond the
 /// pre-Phase-3 single-action exit-confirm dialog:
 ///   - WM_LBUTTONUP  -> open `open_url` in the default browser (the most
-///                      common user action becomes the cheapest one)
+///     common user action becomes the cheapest one)
 ///   - WM_RBUTTONUP  -> show a popup menu: "Open ws-scrcpy-web" + "Exit"
 ///   - WM_COMMAND    -> dispatch on item ID (`MENU_ID_OPEN` /
-///                      `MENU_ID_EXIT`); Open invokes ShellExecuteW, Exit
-///                      shows the confirm dialog and (on Yes) posts WM_QUIT
+///     `MENU_ID_EXIT`); Open invokes ShellExecuteW, Exit
+///     shows the confirm dialog and (on Yes) posts WM_QUIT
 #[cfg(windows)]
 unsafe extern "system" fn tray_wnd_proc(
     hwnd: HWND,

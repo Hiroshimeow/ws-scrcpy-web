@@ -2,6 +2,8 @@
 
 mod elevated_runner;
 mod hooks;
+#[cfg(windows)]
+mod job_object;
 mod log;
 mod migrate;
 mod paths;

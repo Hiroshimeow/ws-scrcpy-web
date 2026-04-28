@@ -128,8 +128,10 @@ pub fn spawn_in_active_user_session(args: &SpawnUserLauncherArgs) -> SpawnResult
         }
         cmd_line.push(0); // null-terminator
 
-        let mut si = STARTUPINFOW::default();
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        let si = STARTUPINFOW {
+            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
+            ..Default::default()
+        };
         let mut pi = PROCESS_INFORMATION::default();
 
         let cwd: Option<&str> = Path::new(&args.launcher_path)

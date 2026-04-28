@@ -135,6 +135,16 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", node, entry))?;
 
+    // Adopt the child into a process-wide Job Object with
+    // KILL_ON_JOB_CLOSE so the Node grandchild + node-pty descendants are
+    // terminated when the launcher exits. Failure here is non-fatal — we
+    // log and continue with v0.1.21 behavior.
+    if let Err(e) = crate::job_object::adopt(&child) {
+        crate::log::error(&format!(
+            "could not adopt Node child into Job Object (continuing without process-tree teardown guarantee): {e:#}"
+        ));
+    }
+
     Ok(child)
 }
 
