@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-04-28
+
+### Notes
+
+- Updater validation — no code changes. Cut to give v0.1.18 a target to detect on a fresh install (local + service mode end-to-end).
+
 ## [0.1.18] - 2026-04-28
 
 ### Fixed
