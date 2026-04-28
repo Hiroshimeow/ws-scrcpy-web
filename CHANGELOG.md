@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-04-28
+
+### Fixed
+
+- **First-run dependency UI didn't auto-refresh.** The `FirstRunBanner` (top-of-page "missing dependency" warning) and `DependencyPanel` (Settings dependency table) were both one-shot — they only refreshed on user action (Retry click / "check for updates" button). When the background dep manager finished installing Node/ADB/scrcpy-server, the UI kept showing stale "Not installed / Unknown" until a full page reload. Both now poll `/api/dependencies` every 15 s. The banner stops polling and hides itself once `pendingDeps.length === 0`. The panel skips a poll tick while the user's own check/update/restart action is in flight (a `busy` flag) so an in-progress "Updating…" button never gets clobbered mid-action.
+- **Service install redirect landed on Welcome modal instead of Service first-run modal.** `ServiceApi.handleInstall` persisted `installMode = '*-service'` to `config.json` *after* Servy had already started the service. The new service-Node loaded `Config.getInstance()` synchronously at startup, before the local instance had committed the new mode to disk, and served `/api/config` from its stale in-memory copy showing the old `installMode`. The post-redirect page then routed to `WelcomeModal` instead of `ServiceFirstRunModal` because `installMode` didn't match `'user-service' | 'system-service'`. `installMode` now writes to disk *before* the Servy install fires; install failures revert it.
+
+### Added
+
+- **Service-mode Velopack support (experimental).** When the service-Node runs as Local System, Velopack's `UpdateManager` constructor previously failed with "Could not auto-locate app manifest" because `%LOCALAPPDATA%`, `%APPDATA%`, and `%USERPROFILE%` resolve to the system profile (`C:\Windows\system32\config\systemprofile\…`) where no Velopack state exists, and the Settings → Updates section showed dev-mode copy. `ServiceApi.handleInstall` now freezes the installing user's `LOCALAPPDATA`/`APPDATA`/`USERPROFILE` into the service's env block via Servy's `--envVars`. Both the service-launcher (Velopack init in Rust) and the supervised Node (UpdateService init) see real user paths instead of the system profile. **Risk:** if Velopack stages an update from service mode, files staged into the user's `LOCALAPPDATA` will be SYSTEM-owned; a later user-mode launcher may trip on ACLs. Watch during real update tests.
+
 ## [0.1.19] - 2026-04-28
 
 ### Notes

@@ -1,8 +1,13 @@
 import type { DependencyInfo, UpdateResult } from '../../common/DependencyTypes';
 
+const POLL_INTERVAL_MS = 15_000;
+
 export class DependencyPanel {
     private container: HTMLElement;
     private tableBody: HTMLTableSectionElement | null = null;
+    private pollHandle: ReturnType<typeof setInterval> | null = null;
+    private busy = false;
+    private restarting = false;
 
     constructor() {
         this.container = document.createElement('div');
@@ -35,11 +40,27 @@ export class DependencyPanel {
     static async create(): Promise<DependencyPanel> {
         const panel = new DependencyPanel();
         await panel.load();
+        panel.startPolling();
         return panel;
     }
 
     getElement(): HTMLElement {
         return this.container;
+    }
+
+    private startPolling(): void {
+        if (this.pollHandle !== null) return;
+        this.pollHandle = setInterval(() => {
+            if (this.busy || this.restarting) return;
+            void this.load();
+        }, POLL_INTERVAL_MS);
+    }
+
+    private stopPolling(): void {
+        if (this.pollHandle !== null) {
+            clearInterval(this.pollHandle);
+            this.pollHandle = null;
+        }
     }
 
     private async load(): Promise<void> {
@@ -56,6 +77,7 @@ export class DependencyPanel {
         const btn = this.container.querySelector('.dep-check-all') as HTMLButtonElement;
         btn.disabled = true;
         btn.textContent = 'Checking...';
+        this.busy = true;
         try {
             const res = await fetch('/api/dependencies/check', { method: 'POST' });
             const deps: DependencyInfo[] = await res.json();
@@ -63,6 +85,7 @@ export class DependencyPanel {
         } catch {
             this.renderError('Check failed');
         } finally {
+            this.busy = false;
             btn.disabled = false;
             btn.textContent = 'check for updates';
         }
@@ -74,6 +97,7 @@ export class DependencyPanel {
             btn.disabled = true;
             btn.textContent = 'Updating...';
         }
+        this.busy = true;
         try {
             const res = await fetch(`/api/dependencies/${name}/update`, { method: 'POST' });
             const result: UpdateResult = await res.json();
@@ -89,10 +113,14 @@ export class DependencyPanel {
         } catch {
             alert('Update request failed');
             await this.load();
+        } finally {
+            this.busy = false;
         }
     }
 
     private async requestRestart(): Promise<void> {
+        this.restarting = true;
+        this.stopPolling();
         try {
             await fetch('/api/dependencies/restart', { method: 'POST' });
         } catch {

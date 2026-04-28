@@ -1,9 +1,12 @@
 import type { DependencyInfo } from '../../common/DependencyTypes';
 import { DependencyStatus } from '../../common/DependencyTypes';
 
+const POLL_INTERVAL_MS = 15_000;
+
 export class FirstRunBanner {
     private container: HTMLElement;
     private retryButton: HTMLButtonElement | null = null;
+    private pollHandle: ReturnType<typeof setInterval> | null = null;
 
     constructor() {
         this.container = document.createElement('div');
@@ -14,11 +17,26 @@ export class FirstRunBanner {
     static async create(): Promise<FirstRunBanner> {
         const banner = new FirstRunBanner();
         await banner.refresh();
+        banner.startPolling();
         return banner;
     }
 
     getElement(): HTMLElement {
         return this.container;
+    }
+
+    private startPolling(): void {
+        if (this.pollHandle !== null) return;
+        this.pollHandle = setInterval(() => {
+            void this.refresh();
+        }, POLL_INTERVAL_MS);
+    }
+
+    private stopPolling(): void {
+        if (this.pollHandle !== null) {
+            clearInterval(this.pollHandle);
+            this.pollHandle = null;
+        }
     }
 
     private async refresh(): Promise<void> {
@@ -28,6 +46,7 @@ export class FirstRunBanner {
             const pending = FirstRunBanner.pendingDeps(deps);
             if (pending.length === 0) {
                 this.container.style.display = 'none';
+                this.stopPolling();
                 return;
             }
             this.render(pending);

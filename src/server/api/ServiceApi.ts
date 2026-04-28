@@ -219,6 +219,54 @@ export class ServiceApi {
             DEPS_PATH: cfg.dependenciesPath,
         };
 
+        // Velopack auto-update relies on user-context paths (LOCALAPPDATA /
+        // APPDATA / USERPROFILE) to find its install state and write its
+        // update cache. When the service runs as Local System, those env
+        // vars resolve to C:\Windows\system32\config\systemprofile\... where
+        // no Velopack state exists, and UpdateManager construction fails
+        // with "Could not auto-locate app manifest." We freeze the
+        // installing user's paths into the service's env block so both the
+        // service-launcher (Velopack init in main.rs) and the supervised
+        // Node child (UpdateService.init) see real user paths instead of
+        // the system profile.
+        //
+        // Risk acknowledged: if Velopack stages an update from the service
+        // (running as Local System) into a user-owned LOCALAPPDATA dir,
+        // file ACLs may end up Local-System-owned and bite a later
+        // user-mode launcher. Watch for this in testing.
+        if (result.platform === 'win32') {
+            for (const key of ['LOCALAPPDATA', 'APPDATA', 'USERPROFILE'] as const) {
+                const value = process.env[key];
+                if (value && value.length > 0) {
+                    envVars[key] = value;
+                }
+            }
+        }
+
+        // Persist installMode to disk BEFORE invoking the install. The
+        // service-instance's Node process loads Config from config.json
+        // synchronously at startup; if we write installMode AFTER Servy
+        // has already started the service, there's a race where the
+        // service-Node loads the OLD installMode, and the redirect-target
+        // page sees `installMode: 'user'` and renders WelcomeModal instead
+        // of ServiceFirstRunModal. Writing first closes that race.
+        //
+        // Hard-fail: if we can't persist the mode, abort before installing
+        // — we'd otherwise have a real service running while the UI thinks
+        // we're in user mode, which is worse than a clean 500.
+        const previousMode = cfg.getAppConfig().installMode;
+        try {
+            cfg.updateAppConfig({ installMode: newInstallMode });
+        } catch (err) {
+            const body: ServiceActionFailure = {
+                ok: false,
+                error: `could not persist installMode before install: ${(err as Error).message}`,
+            };
+            res.writeHead(500);
+            res.end(JSON.stringify(body));
+            return true;
+        }
+
         try {
             await result.client.install({
                 name: WS_SCRCPY_SERVICE_NAME,
@@ -234,6 +282,17 @@ export class ServiceApi {
                 scope,
             });
         } catch (err) {
+            // Install failed — revert installMode so the next page load
+            // doesn't see a phantom service-mode config without an actual
+            // service. Best-effort; if the revert itself fails we log and
+            // surface the original install error.
+            try {
+                cfg.updateAppConfig({ installMode: previousMode ?? null });
+            } catch (revertErr) {
+                log.warn(
+                    `installMode revert failed after install error: ${(revertErr as Error).message}`,
+                );
+            }
             // ServiceInstallError carries a structured result from the
             // elevated helper. UAC-declined gets its own 403 status so
             // the frontend can render a UAC-aware retry prompt; other
@@ -248,13 +307,6 @@ export class ServiceApi {
             res.writeHead(500);
             res.end(JSON.stringify(body));
             return true;
-        }
-
-        // Persist the new install mode so subsequent boots / UI loads agree.
-        try {
-            cfg.updateAppConfig({ installMode: newInstallMode });
-        } catch (err) {
-            log.warn(`installMode persist failed (service install succeeded): ${(err as Error).message}`);
         }
 
         const status = await result.client.status(WS_SCRCPY_SERVICE_NAME);
