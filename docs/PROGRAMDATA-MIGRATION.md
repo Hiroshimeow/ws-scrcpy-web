@@ -7,7 +7,7 @@ This affects every existing v0.1.x install. Read once before upgrading.
 
 | Concern | v0.1.20 (and earlier) | v0.1.21 |
 |---|---|---|
-| Installer artifact | Setup.exe (per-user) | MSI (per-machine) — Setup.exe still ships through v0.1.21 as a fallback |
+| Installer artifact | Setup.exe (per-user) | MSI (per-machine) |
 | Install location (binaries) | `%LocalAppData%\WsScrcpyWeb\` (per user) | `C:\Program Files\WsScrcpyWeb\` (machine-wide) |
 | Writable state location | `%LocalAppData%\WsScrcpyWeb\config.json` + `dependencies\` | `C:\ProgramData\WsScrcpyWeb\config.json` + `dependencies\` |
 | Updates require UAC | No | **Yes**, every update apply prompts for elevation |
@@ -50,29 +50,21 @@ users must manually uninstall the old version and install the new one:
 4. **First-run setup runs again.** Reconfigure install mode (local or service)
    the same way you did originally.
 
-The v0.1.21 launcher includes a one-shot legacy-config migration shim: if it
-detects a v0.1.20 `config.json` left behind under `%LocalAppData%\WsScrcpyWeb\`
-and no v0.1.21 `config.json` exists yet at `C:\ProgramData\WsScrcpyWeb\`, it
-copies the file over. So if you uninstall **without removing the
-%LocalAppData% leftovers** (skipping step 2 above is fine — Windows Settings
-sometimes leaves user data behind), your v0.1.20 settings (`installMode`,
-`webPort`, `firstRunComplete`, etc.) carry over automatically. Downloaded
-dependencies (`Node`, `ADB`, `scrcpy-server`) will be re-downloaded once on
-first launch — they're not migrated.
+v0.1.21 included a one-shot legacy-config migration shim that copied the
+v0.1.20 `%LocalAppData%\WsScrcpyWeb\config.json` to the new ProgramData
+location on first launch. v0.1.22 dropped the shim — fresh-install behavior
+is identical regardless. If you upgraded through v0.1.21 your settings
+already carry. If you skipped v0.1.21 and are upgrading directly from
+v0.1.20 to v0.1.22, do step 4 (first-run setup) by hand. Downloaded
+dependencies (`Node`, `ADB`, `scrcpy-server`) re-download once on first
+launch — they're never migrated.
 
 ## What to expect on every future update
 
-Because v0.1.21 installs to Program Files, every Velopack update apply
+Because the MSI installs to Program Files, every Velopack update apply
 triggers a UAC prompt. This is unavoidable for system-wide installs and is
 the cost of the architectural simplification. The prompt is from Velopack's
 `Update.exe` (signed) writing to a privileged directory.
-
-If you'd prefer a per-user install with no UAC on updates, the v0.1.21
-release also includes a `Setup.exe` artifact alongside the MSI. The
-Setup.exe variant still installs to `%LocalAppData%\WsScrcpyWeb\` (no MSI,
-no PerMachine), at the cost of the multi-user / service-mode improvements
-described above. v0.1.22 will drop Setup.exe — the MSI is the supported
-install method going forward.
 
 ## Verification after install
 

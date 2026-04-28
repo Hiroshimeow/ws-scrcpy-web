@@ -47,8 +47,7 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 
 Get the latest release from the [Releases page](https://github.com/bilbospocketses/ws-scrcpy-web/releases/latest):
 
-- **Windows MSI** (recommended, v0.1.21+) — installs per-machine to `C:\Program Files\WsScrcpyWeb\` with writable runtime state at `C:\ProgramData\WsScrcpyWeb\`. Requires admin (UAC) to install and to apply each subsequent update. Multi-user friendly; service mode and local mode share configuration.
-- **Windows installer (`Setup.exe`)** — per-user under `%LOCALAPPDATA%`, no admin required. Service mode is supported but the in-app updater can't operate while running as Local System. Shipped through v0.1.21 as a fallback; **dropped in v0.1.22** in favor of the MSI.
+- **Windows MSI** (recommended) — installs per-machine to `C:\Program Files\WsScrcpyWeb\` with writable runtime state at `C:\ProgramData\WsScrcpyWeb\`. Requires admin (UAC) to install and to apply each subsequent update. Multi-user friendly; service mode and local mode share configuration.
 - **Windows portable ZIP** — unzip and run; no install required, no auto-updates. Useful for air-gapped setups.
 - **Linux AppImage** — `chmod +x ws-scrcpy-web-<version>.AppImage` and run. See [Linux install](#linux-install-appimage) below.
 
@@ -94,7 +93,6 @@ ws-scrcpy-web ships as a fully self-contained app with no system-wide installati
 | Path | Best for | Notes |
 |------|----------|-------|
 | **Windows MSI** (`*.msi`, recommended) | Most Windows users; multi-user / service-mode setups | Per-machine install to `C:\Program Files\WsScrcpyWeb\`. Writable state at `C:\ProgramData\WsScrcpyWeb\` (Authenticated Users:Modify). Velopack auto-updates apply with one UAC prompt each. |
-| **Windows installer** (`Setup.exe`, fallback through v0.1.21) | Per-user installs without UAC on every update | Velopack-managed per-user install to `%LocalAppData%`. Service mode works but in-app updater is degraded. Dropped in v0.1.22. |
 | **Linux AppImage** | Most Linux users | Single executable. Velopack-managed auto-updates. Optional systemd service mode. |
 | **Portable ZIP** (Windows) / source build | Air-gapped or no-install setups | Extract and run; layout shown below. |
 
@@ -114,7 +112,7 @@ ws-scrcpy-web/
   start.sh                 -- Linux launcher
 ```
 
-(The `Setup.exe` and AppImage paths use Velopack's own install layout — `current/` plus a stable launcher stub — and you don't need to think about it.)
+(The MSI and AppImage paths use Velopack's own install layout — `current/` plus a stable launcher stub — and you don't need to think about it.)
 
 ### Initial setup
 

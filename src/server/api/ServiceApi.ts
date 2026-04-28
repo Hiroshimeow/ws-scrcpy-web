@@ -198,7 +198,7 @@ export class ServiceApi {
                     error:
                         `service mode requires the packaged launcher binary at ${launcherExe}, ` +
                         `which is not present (likely a dev/from-source run rather than a Velopack install). ` +
-                        `Install ws-scrcpy-web via Setup.exe and retry.`,
+                        `Install ws-scrcpy-web via the MSI and retry.`,
                 };
                 res.writeHead(500);
                 res.end(JSON.stringify(failure));

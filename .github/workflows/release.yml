@@ -85,16 +85,16 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: publish/
 
-      - name: vpk pack (Setup.exe + PerMachine MSI)
+      - name: vpk pack (PerMachine MSI)
         shell: pwsh
         run: |
-          # Phase 4 of the Program Files migration: emit BOTH a
-          # Setup.exe (legacy fallback through v0.1.21) and a
-          # PerMachine MSI (new primary artifact). The MSI installs
-          # to C:\Program Files\WsScrcpyWeb\ and runs elevated; the
+          # Phase 4 of the Program Files migration: PerMachine MSI is
+          # the only Windows install artifact. The MSI installs to
+          # C:\Program Files\WsScrcpyWeb\ and runs elevated; the
           # launcher's veloapp-install hook grants the ProgramData
           # ACL (Authenticated Users:Modify (OI)(CI)) at install
-          # time. v0.1.22 will drop Setup.exe.
+          # time. v0.1.22 dropped Setup.exe (vpk still emits one as a
+          # side effect of `--msi`; we just don't publish it).
           vpk pack `
             --packId WsScrcpyWeb `
             --packVersion ${{ needs.prepare.outputs.version }} `
@@ -107,25 +107,6 @@ jobs:
             --msi `
             --instLocation PerMachine `
             -o Releases
-
-      - name: Upload unsigned Setup.exe
-        if: needs.prepare.outputs.signing_mode == 'signed'
-        id: upload-unsigned-setup
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-windows-setup
-          path: Releases/*-Setup.exe
-      - name: Sign Setup.exe via SignPath
-        if: needs.prepare.outputs.signing_mode == 'signed'
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_WINDOWS_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: Releases/
 
       - name: Upload unsigned MSI
         if: needs.prepare.outputs.signing_mode == 'signed'
@@ -155,7 +136,6 @@ jobs:
         with:
           name: windows-final
           path: |
-            Releases/*-Setup.exe
             Releases/*.msi
             Releases/*-Portable.zip
             Releases/*.nupkg
@@ -242,7 +222,7 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd artifacts
-          find . -type f \( -name '*-Setup.exe' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*-Portable.zip' -o -name '*.nupkg' \) -exec sha256sum {} \; > ../SHA256SUMS
+          find . -type f \( -name '*.msi' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*-Portable.zip' -o -name '*.nupkg' \) -exec sha256sum {} \; > ../SHA256SUMS
           cd ..
           cat SHA256SUMS
 
@@ -260,7 +240,6 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.channel == 'beta' }}
           body_path: release-notes.md
           files: |
-            artifacts/windows-final/*-Setup.exe
             artifacts/windows-final/*.msi
             artifacts/windows-final/*-Portable.zip
             artifacts/windows-final/*.nupkg
