@@ -199,7 +199,7 @@ fn on_updated(install_root: &Path, data_root: &Path) -> i32 {
         log::info("hook(updated): not service mode; nothing to do");
         return 0;
     }
-    run_servy(install_root, &["restart", "WsScrcpyWeb"], "updated")
+    run_servy(install_root, &["restart", "--name", "WsScrcpyWeb"], "updated")
 }
 
 fn on_uninstall(install_root: &Path, data_root: &Path) -> i32 {
@@ -210,10 +210,15 @@ fn on_uninstall(install_root: &Path, data_root: &Path) -> i32 {
     }
     // User data (config.json, dependencies/, logs/) is intentionally NOT
     // touched here.
-    let stop_code = run_servy(install_root, &["stop", "WsScrcpyWeb"], "uninstall:stop");
+    // Servy 8.2 CLI expects `--name <NAME>` for service-targeting commands
+    // (matches the elevated_runner uninstall path); positional args don't
+    // address any service. Pre-v0.1.21 these calls used positional args, so
+    // servy-cli ran but the SCM entry survived MSI uninstall + reboot —
+    // hooks::run_servy was missed during the v0.1.5 Servy-8.2 flag migration.
+    let stop_code = run_servy(install_root, &["stop", "--name", "WsScrcpyWeb"], "uninstall:stop");
     let uninstall_code = run_servy(
         install_root,
-        &["uninstall", "WsScrcpyWeb"],
+        &["uninstall", "--name", "WsScrcpyWeb"],
         "uninstall:uninstall",
     );
     if stop_code != 0 {
