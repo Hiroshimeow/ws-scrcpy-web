@@ -972,7 +972,9 @@ Fresh Velopack installs arrive with `dependencies/` empty. SP2b adds an auto-ins
 3. `DependencyManager.autoInstallMissing()` runs right after: walks dep state, calls `update(name)` for any dep with `installedVersion === null && latestVersion !== null`. Sequential (no network-saturation storm). Idempotent. Offline-tolerant (skips deps whose latest check failed — the banner path handles those).
 4. If any dep is still in `Error` or `Unknown+null-installed` after the sweep, `FirstRunBanner` renders on the home page with a Retry button. Click → `POST /api/dependencies/retry-install` → re-runs checkAll + autoInstallMissing → banner re-polls state and hides on success.
 
-In practice, Node ships via Velopack seed (never null), scrcpy-server ships bundled in the webpack output (`dist/assets/scrcpy-server`, always "installed" from `SERVER_VERSION`), and ADB is the only dep that actually downloads on first run.
+In practice, Node ships via Velopack seed (never null), scrcpy-server seed-promotes from `<install>/current/seed/scrcpy-server/` to `<deps>/scrcpy-server/scrcpy-server` on first run (idempotent — falls back to network download from Genymobile if the seed is absent), and ADB is the only dep that always downloads on first run.
+
+> **v0.1.10 architectural correction:** pre-v0.1.10, `scrcpy-server` was bundled into `dist/assets/scrcpy-server` via a webpack `import` and `checkInstalled` returned `SERVER_VERSION` unconditionally. The dep updater wrote to `<deps>/scrcpy-server/` but no runtime code read from there — it was a load-bearing-but-invisible bug. v0.1.10 makes the runtime path the source of truth: `DeviceProbe.serverFile()` and `ScrcpyConnection.serverFile()` resolve via `Config.dependenciesPath`, `checkInstalled` does an `fs.existsSync` against that path, and `DependencyManager.promoteSeedScrcpyServer()` covers offline first-run installs by copying the seed in from the Velopack image (anchored at `__dirname` to handle the `<base>/current/` layout).
 
 ### 13.3.2 Option D — Node version gating against node-pty prebuilts
 
@@ -1420,13 +1422,24 @@ our own prebuilt matrix.
 
 ### 18.1 Runtime Resolution
 
-At server startup, `src/server/NodePtyResolver.ts` executes a two-source
-chain and caches the result:
+At server startup, `src/server/NodePtyResolver.ts` executes a chain
+and caches the result:
 
-1. **Load manifest** — fetch `manifest.json` from our GH Release
-   `node-pty-prebuilds-latest` (falls back to a cached copy at
-   `dependencies/node-pty/manifest.json` for offline boot). The manifest
-   names the current upstream node-pty version and the Node ABIs covered.
+0. **Bundled-first (v0.1.10+).** Try `import('node-pty')` directly,
+   gated by `cacheDirHasBinary(node_modules/node-pty/build/Release/)`.
+   The Velopack image ships `pty.node` from `npm ci --omit=dev` at
+   `<base>/current/node_modules/node-pty/build/Release/`, so on a fresh
+   install the bundled binary already covers the running Node ABI. If
+   the import succeeds, we're done — no manifest fetch, no network.
+   Pre-v0.1.10 the resolver always went through manifest fetch, so a
+   clean VM with restrictive networking returned `available: false`
+   even with a working `pty.node` already on disk.
+
+1. **Load manifest** — only when the bundled import isn't viable. Fetch
+   `manifest.json` from our GH Release `node-pty-prebuilds-latest`
+   (falls back to a cached copy at `dependencies/node-pty/manifest.json`
+   for offline boot). The manifest names the current upstream node-pty
+   version and the Node ABIs covered.
 
 2. **Local cache** — look under
    `dependencies/node-pty/v{upstreamVersion}/{platform}-{arch}[-{libc}]/`.
