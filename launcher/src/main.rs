@@ -5,7 +5,6 @@ mod hooks;
 #[cfg(windows)]
 mod job_object;
 mod log;
-mod migrate;
 mod paths;
 mod single_instance;
 mod spawn;
@@ -88,15 +87,6 @@ fn main() {
         }
     };
     let data_root = common::config::data_root_from_env();
-
-    // One-shot upgrade migration: when v0.1.21+ runs over a v0.1.20
-    // install layout, the user's existing <install_root>/config.json is
-    // copied to <data_root>/config.json so settings (installMode,
-    // webPort, firstRunComplete, etc.) carry over. Idempotent — only
-    // fires when the data_root copy is missing.
-    if let (Some(ir), Some(dr)) = (install_root.as_deref(), data_root.as_deref()) {
-        migrate::migrate_legacy_config(ir, dr);
-    }
 
     let config_dir = data_root.or(install_root);
     let is_service_mode = config_dir
