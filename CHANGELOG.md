@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.2] - 2026-04-28
+
+No code changes. Cut as an in-app update target so v0.1.23-beta.1 fresh installs can exercise the in-app updater path under the new argv-logging diagnostic + unknown-flag catch-all from beta.1. The launcher.log entry for the post-Update.exe respawn will reveal which velopack lifecycle flag was tripping `VelopackApp::build().run()` to silent-exit, which feeds the proper handler in v0.1.23 (final).
+
 ## [0.1.23-beta.1] - 2026-04-28
 
 Diagnostic-only beta cut. Targets the v0.1.22 in-app updater spawn-loop investigation. Fresh-install only — the in-app updater from v0.1.21 / v0.1.22 to this beta is the same broken Update.exe and will hang/loop the same way.
