@@ -89,7 +89,16 @@ describe('NodePtyResolver — integration (download path)', () => {
         }
     });
 
+    // v0.1.10: resolver now tries the bundled pty.node before any network
+    // fetch. Tests that exercise the download path must clear the active
+    // dir so the bundled-import gate returns null and the resolver falls
+    // through to manifest+download.
+    function forceDownloadPath() {
+        fs.rmSync(nodeModulesReleaseDir(), { recursive: true, force: true });
+    }
+
     it('downloads, extracts, places, and loads', async () => {
+        forceDownloadPath();
         const handle = await resolveNodePty(tempDepsPath);
         expect(handle.reason).toBeUndefined();
         expect(handle.available).toBe(true);
@@ -105,6 +114,7 @@ describe('NodePtyResolver — integration (download path)', () => {
     });
 
     it('cache hit skips download on second call', async () => {
+        forceDownloadPath();
         await resolveNodePty(tempDepsPath);
         _resetForTest();
 
@@ -142,9 +152,23 @@ describe('NodePtyResolver — integration (download path)', () => {
         const addr = server.address() as any;
         _setReleaseUrlBase(`http://127.0.0.1:${addr.port}`);
 
+        forceDownloadPath();
         _resetForTest();
         const handle = await resolveNodePty(tempDepsPath);
         expect(handle.available).toBe(false);
         expect(handle.reason).toBe('download-failed');
+    });
+
+    it('resolves via bundled pty.node without any network fetch (v0.1.10)', async () => {
+        // active dir is intact from globalSetup. Point release URL at a
+        // closed port so any manifest fetch attempt would fail loudly.
+        _setReleaseUrlBase('http://127.0.0.1:1');
+
+        _resetForTest();
+        const handle = await resolveNodePty(tempDepsPath);
+        expect(handle.reason).toBeUndefined();
+        expect(handle.available).toBe(true);
+        // No manifest cached because the manifest path was never invoked.
+        expect(fs.existsSync(path.join(tempDepsPath, 'node-pty', 'manifest.json'))).toBe(false);
     });
 });

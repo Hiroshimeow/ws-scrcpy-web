@@ -181,12 +181,64 @@ export function copyTreeTo(src: string, dst: string): void {
     fs.cpSync(src, dst, { recursive: true, force: true });
 }
 
+/**
+ * v0.1.10: try the bundled node-pty before any network fetch.
+ *
+ * stage-publish.mjs runs `npm ci --omit=dev` inside the publish/ folder,
+ * which installs node-pty's prebuilt-install postinstall and lands a
+ * working pty.node at publish/node_modules/node-pty/build/Release/. That
+ * folder ships into the Velopack image and is sitting at
+ * <installRoot>/current/node_modules/node-pty/build/Release/ before the
+ * launcher even starts Node. If the bundled pty.node matches the running
+ * Node ABI, just import() it. Done. No manifest, no GitHub fetch, no
+ * runtime-network dependency for the offline-first-run case.
+ *
+ * Pre-v0.1.10 the resolver always went through loadManifest first, and
+ * a clean VM with restrictive networking (or just a slow GH connection
+ * during first launch) would hit reason=no-manifest and return
+ * available=false, even with a perfectly good pty.node sitting on disk.
+ * That bit clean-VM smoke testing for v0.1.8 and v0.1.9.
+ *
+ * The manifest+download path is preserved as a fallback for the case
+ * where Node was auto-updated to an ABI the bundled pty.node doesn't
+ * cover — the resolver fetches the right prebuilt and stages it over
+ * the bundled one. That path is exercised by the existing integration
+ * tests; the bundled-first path is exercised by the import in dev
+ * (npm test) where node-pty is just an npm dep.
+ */
+async function tryBundledImport(): Promise<NodePtyHandle | null> {
+    // Gate on filesystem existence first to avoid polluting Node's module
+    // cache with a failed lookup — once a missing module is recorded, a
+    // later download+stage doesn't always re-resolve cleanly.
+    if (!cacheDirHasBinary(nodeModulesReleaseDir())) {
+        return null;
+    }
+    try {
+        const pty = await import('node-pty');
+        // biome-ignore lint/suspicious/noExplicitAny: runtime shape check on an untyped import
+        if (typeof (pty as any).spawn !== 'function') {
+            return null;
+        }
+        return { available: true, pty };
+    } catch (err) {
+        log.info(`bundled node-pty import failed: ${(err as Error).message}; falling back to manifest`);
+        return null;
+    }
+}
+
 export async function resolveNodePty(depsPath: string): Promise<NodePtyHandle> {
     if (cachedHandle) return cachedHandle;
     if (inflight) return inflight;
     inflight = (async () => {
         const host = getHostInfo();
         log.info(`resolving node-pty for ${host.platform}-${host.arch}-${host.libc}-abi${host.nodeAbi}`);
+
+        const bundled = await tryBundledImport();
+        if (bundled) {
+            log.info('node-pty resolved via bundled pty.node (no network fetch)');
+            cachedHandle = bundled;
+            return cachedHandle;
+        }
 
         const manifest = await loadManifest(depsPath);
         if (!manifest) {
