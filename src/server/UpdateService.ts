@@ -79,7 +79,18 @@ export class UpdateService {
     private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
 
     constructor(opts: UpdateServiceOptions = {}) {
-        this.installRoot = opts.installRoot ?? path.dirname(process.execPath);
+        // v0.1.15: anchor installRoot at the webpack bundle's location, not
+        // at process.execPath. Our launcher resolves the Node binary to
+        // <base>/current/seed/node/node.exe (first run) or
+        // <base>/dependencies/node/node.exe (after dep-manager installs Node),
+        // so path.dirname(process.execPath) lands inside seed/ or dependencies/
+        // — never the Velopack install root where sq.version actually lives.
+        // Webpack bundles this file into <base>/current/dist/index.js, so
+        // __dirname resolves to <base>/current/dist/; two levels up is <base>/,
+        // the install root that Velopack populates with sq.version, current/,
+        // and dependencies/. Same pattern as the v0.1.10 scrcpy-server seed
+        // path fix in DependencyManager.ts.
+        this.installRoot = opts.installRoot ?? path.resolve(__dirname, '..', '..');
         this.factory = opts.updateManagerFactory ?? defaultUpdateManagerFactory;
         this.feedUrlOverride = opts.feedUrlOverride;
         this.existsSync = opts.existsSync ?? fs.existsSync;

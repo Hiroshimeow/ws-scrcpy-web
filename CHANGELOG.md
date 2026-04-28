@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-04-28
+
+### Fixed
+
+- **In-app updater never noticed new releases.** `UpdateService` derived its install root from `path.dirname(process.execPath)`, which under our launcher resolves to `<base>\seed\node\` or `<base>\dependencies\node\` — neither contains the Velopack `sq.version` marker, which lives at `<base>\` alongside `current/`. The service silently fell into "dev mode" on every startup and skipped its check. Anchoring at `__dirname` (the webpack bundle's location, always `<base>\current\dist\`) and walking two levels up reliably hits the install root. Same pattern as the v0.1.10 scrcpy-server seed-path fix.
+
 ## [0.1.14] - 2026-04-28
 
 ### Fixed
