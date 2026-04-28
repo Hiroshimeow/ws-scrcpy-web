@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.1] - 2026-04-28
+
+Diagnostic-only beta cut. Targets the v0.1.22 in-app updater spawn-loop investigation. Fresh-install only — the in-app updater from v0.1.21 / v0.1.22 to this beta is the same broken Update.exe and will hang/loop the same way.
+
+### Added
+
+- **Argv logging in launcher startup.** `launcher/src/main.rs` now logs `argv: [...]` immediately after collecting args, on every launcher invocation. v0.1.22's Update.exe spawn-loop bug couldn't be diagnosed because we had no record of which velopack lifecycle flag Update.exe was passing on respawn. With this in place, the next failed update flow leaves a per-spawn argv trace in `<dataRoot>\ws-scrcpy-web-launcher.log`.
+- **Catch-all handler for unknown `--veloapp-*` flags.** `launcher/src/hooks.rs` now matches any `--veloapp-*` flag not in our explicit `{install, updated, uninstall}` set, logs it via `log::error` (so it stands out), and exits 0. Without this, `VelopackApp::build().run()` silently consumed the unknown flag and exited the process before our supervisor branch fired, which `Update.exe` interpreted as launcher failure and retried indefinitely. The catch-all converts the infinite respawn loop into a single clean exit, so `Update.exe` either completes the swap or surfaces a definitive error instead of hanging.
+
 ## [0.1.22] - 2026-04-28 [YANKED]
 
 **This release was yanked on 2026-04-28** after VM testing showed the in-app updater never completes the v0.1.21 → v0.1.22 swap. The fresh-MSI install of v0.1.22 itself works correctly; only the auto-update path is broken across the v0.1.21 → v0.1.22 boundary.

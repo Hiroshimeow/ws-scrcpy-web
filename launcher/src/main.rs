@@ -21,6 +21,14 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
 
+    // Diagnostic: log the full argv on every launcher start. v0.1.22 ship
+    // surfaced an in-app updater spawn-loop where Update.exe respawned the
+    // launcher every ~13 s, each spawn exiting silently before reaching any
+    // logged branch — likely VelopackApp::build().run() consuming an unknown
+    // --veloapp-* flag and exiting. Without seeing the exact argv we can't
+    // know which flag to handle. Cheap to keep around long-term.
+    log::info(&format!("argv: {:?}", args));
+
     // Elevate-and-run dispatch comes BEFORE Velopack hooks because the
     // helper is invoked through a UAC prompt and is a single-shot
     // operation — no need to bring up the supervisor, no need to register

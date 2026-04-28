@@ -25,25 +25,39 @@ use crate::log;
 const FLAG_INSTALL: &str = "--veloapp-install";
 const FLAG_UPDATED: &str = "--veloapp-updated";
 const FLAG_UNINSTALL: &str = "--veloapp-uninstall";
+const FLAG_PREFIX: &str = "--veloapp-";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HookKind {
     Install,
     Updated,
     Uninstall,
+    /// Any `--veloapp-*` flag we don't explicitly handle. v0.1.22 ship surfaced
+    /// the in-app updater spawn-loop where Update.exe respawns the launcher
+    /// indefinitely after passing some velopack lifecycle flag that
+    /// VelopackApp::build().run() consumes silently. Catching the flag here
+    /// (BEFORE VelopackApp::run()) lets us log it loudly and exit cleanly
+    /// with code 0 so Update.exe sees success and stops retrying. The
+    /// captured flag string lets us add a real handler in the next release.
+    Unknown(String),
 }
 
-/// Pure: scan args for a hook flag. Returns the kind if matched.
+/// Pure: scan args for a hook flag. Returns the kind if matched. Recognized
+/// flags take precedence over Unknown — we never catch-all over a known flag.
 pub fn parse_hook_flag(args: &[String]) -> Option<HookKind> {
+    let mut unknown: Option<String> = None;
     for a in args {
         match a.as_str() {
             FLAG_INSTALL => return Some(HookKind::Install),
             FLAG_UPDATED => return Some(HookKind::Updated),
             FLAG_UNINSTALL => return Some(HookKind::Uninstall),
+            other if other.starts_with(FLAG_PREFIX) && unknown.is_none() => {
+                unknown = Some(other.to_string());
+            }
             _ => {}
         }
     }
-    None
+    unknown.map(HookKind::Unknown)
 }
 
 /// Public entry: if argv contains a Velopack hook flag, handle it and return
@@ -68,6 +82,7 @@ pub fn handle_velopack_hook(args: &[String]) -> Option<i32> {
         HookKind::Install => on_install(&data_root),
         HookKind::Updated => on_updated(&install_root, &data_root),
         HookKind::Uninstall => on_uninstall(&install_root, &data_root),
+        HookKind::Unknown(flag) => on_unknown(&flag),
     };
     Some(code)
 }
@@ -99,6 +114,20 @@ fn default_config_json() -> String {
     let mut s = serde_json::to_string_pretty(&v).expect("serde_json on a static value");
     s.push('\n');
     s
+}
+
+/// Catch-all for unknown `--veloapp-*` flags. Logs the flag (via
+/// `log::error` so it stands out in the launcher log) and returns 0.
+/// Without this, Velopack's Rust SDK consumes the flag inside
+/// `VelopackApp::build().run()` and exits the process silently, which
+/// causes Update.exe to enter a respawn-retry loop (observed in v0.1.22
+/// VM testing — 286 launcher spawns over 15 minutes with no progress).
+fn on_unknown(flag: &str) -> i32 {
+    log::error(&format!(
+        "hook: unknown velopack flag {flag:?} — exiting 0 to avoid Update.exe respawn loop. \
+         Add a handler in launcher/src/hooks.rs and ship a fix."
+    ));
+    0
 }
 
 fn on_install(data_root: &Path) -> i32 {
@@ -333,6 +362,37 @@ mod tests {
     fn parse_takes_first_match_when_multiple() {
         let args = vec![s("--veloapp-install"), s("--veloapp-uninstall")];
         assert_eq!(parse_hook_flag(&args), Some(HookKind::Install));
+    }
+
+    #[test]
+    fn parse_recognizes_unknown_velopack_flag() {
+        let args = vec![s("foo"), s("--veloapp-firstrun"), s("1.0.0")];
+        assert_eq!(
+            parse_hook_flag(&args),
+            Some(HookKind::Unknown("--veloapp-firstrun".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_known_flag_wins_over_unknown_regardless_of_order() {
+        let a = vec![s("--veloapp-firstrun"), s("--veloapp-install")];
+        assert_eq!(parse_hook_flag(&a), Some(HookKind::Install));
+        let b = vec![s("--veloapp-install"), s("--veloapp-firstrun")];
+        assert_eq!(parse_hook_flag(&b), Some(HookKind::Install));
+    }
+
+    #[test]
+    fn parse_first_unknown_wins_when_multiple_unknown() {
+        let args = vec![s("--veloapp-foo"), s("--veloapp-bar")];
+        assert_eq!(
+            parse_hook_flag(&args),
+            Some(HookKind::Unknown("--veloapp-foo".to_string()))
+        );
+    }
+
+    #[test]
+    fn on_unknown_returns_zero() {
+        assert_eq!(on_unknown("--veloapp-firstrun"), 0);
     }
 
     #[test]
