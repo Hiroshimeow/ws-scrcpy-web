@@ -47,7 +47,6 @@ describe('ServyClient', () => {
             displayName: 'ws-scrcpy-web',
             description: 'desc',
             binPath: 'C:\\app\\node.exe',
-            account: 'currentUser',
             startType: 'Automatic',
             maxRestartAttempts: 3,
             envVars: { DEPS_PATH: 'C:\\deps', FOO: 'bar' },
@@ -56,18 +55,28 @@ describe('ServyClient', () => {
         expect(execFileSyncMock).toHaveBeenCalledTimes(1);
         const [cmd, args] = execFileSyncMock.mock.calls[0];
         expect(cmd).toBe('C:\\fake\\servy-cli.exe');
+        // Servy 8.2 flag names (NOT --binPath / --account / --startType /
+        // --logPath — those were the v0.1.4 bug). No --user flag = service
+        // runs as Local System.
         expect(args).toEqual([
             'install',
             '--name', 'WsScrcpyWeb',
             '--displayName', 'ws-scrcpy-web',
             '--description', 'desc',
-            '--binPath', 'C:\\app\\node.exe',
-            '--account', 'currentUser',
-            '--startType', 'Automatic',
+            '--path', 'C:\\app\\node.exe',
+            '--startupType', 'Automatic',
             '--maxRestartAttempts', '3',
             '--envVars', 'DEPS_PATH=C:\\deps;FOO=bar',
-            '--logPath', 'C:\\app\\service.log',
+            '--stdout', 'C:\\app\\service.log',
+            '--stderr', 'C:\\app\\service.log',
         ]);
+        // Regression guard: none of the v0.1.4-broken flag names should be
+        // present in argv.
+        expect(args).not.toContain('--binPath');
+        expect(args).not.toContain('--account');
+        expect(args).not.toContain('--startType');
+        expect(args).not.toContain('--logPath');
+        expect(args).not.toContain('--user');
     });
 
     it('uninstall calls servy-cli uninstall --name', async () => {
@@ -122,7 +131,6 @@ describe('ServyClient', () => {
             displayName: 'ws-scrcpy-web',
             description: 'desc',
             binPath: 'C:\\app\\node.exe',
-            account: 'currentUser',
             startType: 'Automatic',
             maxRestartAttempts: 3,
             envVars: {},
@@ -167,7 +175,6 @@ describe('ServyClient', () => {
                 displayName: 'ws-scrcpy-web',
                 description: 'desc',
                 binPath: 'C:\\app\\node.exe',
-                account: 'currentUser',
                 startType: 'Automatic',
                 maxRestartAttempts: 3,
                 envVars: {},
@@ -244,7 +251,6 @@ describe('ServyClient', () => {
                 displayName: 'X',
                 description: 'd',
                 binPath: 'b',
-                account: 'currentUser',
                 startType: 'Automatic',
                 maxRestartAttempts: 1,
                 envVars: {},

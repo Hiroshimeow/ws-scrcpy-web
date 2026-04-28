@@ -11,18 +11,21 @@
  *
  * The interface stays minimal: install / uninstall / status / restart / stop.
  * Each call is keyed by the canonical service name (`WsScrcpyWeb`); install
- * also takes display name, description, binary path, account, start type,
- * environment vars, and the log path.
+ * also takes display name, description, binary path, start type, environment
+ * vars, the log path, and (on Linux) a scope selector.
+ *
+ * Account model: Windows always runs as Local System (Servy default); Linux
+ * uses systemd's user-vs-system scope. There is no `account` field — the
+ * 0.1.4 ServyClient bug came from passing `--account` to a Servy 8.2 CLI
+ * that doesn't accept that flag, so the surface is now scoped to what each
+ * platform actually consumes.
  */
 
 import type { ServiceStatus } from '../../common/ServiceEvents';
 
 export type { ServiceStatus };
 
-/** Account the service runs under. Maps to Servy --account on Windows. */
-export type ServiceAccount = 'currentUser' | 'LocalSystem';
-
-/** Service start type. Maps to Servy --startType on Windows. */
+/** Service start type. Maps to Servy --startupType on Windows. */
 export type ServiceStartType = 'Automatic' | 'Manual' | 'Disabled';
 
 /** Options accepted by ServiceClient.install(). */
@@ -35,8 +38,6 @@ export interface ServiceInstallOptions {
     description: string;
     /** Absolute path to the binary the service should launch. */
     binPath: string;
-    /** Which account the service runs under. */
-    account: ServiceAccount;
     /** Service start type. */
     startType: ServiceStartType;
     /** Restart attempts before SCM gives up on the service. */
@@ -57,7 +58,7 @@ export interface ServiceInstallOptions {
      *                  the client).
      *
      * Required on Linux (SystemdClient throws if undefined). Ignored on
-     * Windows — ServyClient consumes `account` instead.
+     * Windows — ServyClient runs the service as Local System.
      */
     scope?: 'user' | 'system';
 }

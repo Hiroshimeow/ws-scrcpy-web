@@ -18,7 +18,6 @@ import {
     getServiceClient,
     type ServiceClientFactoryResult,
 } from '../service';
-import type { ServiceAccount } from '../service/ServiceClient';
 import { readJsonBody } from './utils';
 
 const log = Logger.for('ServiceApi');
@@ -144,7 +143,9 @@ export class ServiceApi {
             scope = this.scope();
         }
 
-        const account: ServiceAccount = scope === 'user' ? 'currentUser' : 'LocalSystem';
+        // Windows ServyClient ignores scope and always installs as Local System
+        // (no `--user` flag). Linux SystemdClient consumes scope to decide
+        // user-systemd vs system-systemd unit placement.
         const newInstallMode: InstallMode = scope === 'user' ? 'user-service' : 'system-service';
 
         // The service launches the same Node binary the launcher would. We
@@ -164,7 +165,6 @@ export class ServiceApi {
                 displayName: WS_SCRCPY_SERVICE_DISPLAY_NAME,
                 description: WS_SCRCPY_SERVICE_DESCRIPTION,
                 binPath,
-                account,
                 startType: 'Automatic',
                 maxRestartAttempts: 3,
                 envVars,

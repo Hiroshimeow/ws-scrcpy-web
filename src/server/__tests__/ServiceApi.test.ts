@@ -157,7 +157,7 @@ describe('ServiceApi', () => {
         expect(JSON.parse((res as any).getBody())).toEqual({ ok: false, error: 'nope' });
     });
 
-    it('POST /install calls client.install with currentUser account for user scope', async () => {
+    it('POST /install calls client.install with installMode=user-service for user scope', async () => {
         const installFn = vi.fn<(opts: Parameters<ServiceClient['install']>[0]) => Promise<void>>(async () => undefined);
         const client = fakeClient({
             install: installFn,
@@ -179,13 +179,15 @@ describe('ServiceApi', () => {
         expect(installFn).toHaveBeenCalledTimes(1);
         const opts = installFn.mock.calls[0]?.[0];
         expect(opts?.name).toBe('WsScrcpyWeb');
-        expect(opts?.account).toBe('currentUser');
+        // No `account` field — Windows ServyClient runs as Local System
+        // unconditionally; Linux SystemdClient consumes `scope` instead.
+        expect((opts as { account?: unknown })?.account).toBeUndefined();
         expect(opts?.startType).toBe('Automatic');
         expect(opts?.maxRestartAttempts).toBe(3);
         expect(opts?.envVars.DEPS_PATH).toBeDefined();
     });
 
-    it('POST /install calls client.install with LocalSystem for system scope', async () => {
+    it('POST /install calls client.install with installMode=system-service for system scope', async () => {
         const installFn = vi.fn<(opts: Parameters<ServiceClient['install']>[0]) => Promise<void>>(async () => undefined);
         const client = fakeClient({
             install: installFn,
@@ -201,7 +203,7 @@ describe('ServiceApi', () => {
         await api.handle(req, res);
         const body = JSON.parse((res as any).getBody());
         expect(body.installMode).toBe('system-service');
-        expect(installFn.mock.calls[0]?.[0].account).toBe('LocalSystem');
+        expect((installFn.mock.calls[0]?.[0] as { account?: unknown }).account).toBeUndefined();
     });
 
     it('POST /install returns 500 with stderr-rich error when client.install throws', async () => {
@@ -334,7 +336,7 @@ describe('ServiceApi', () => {
             expect(body.installMode).toBe('user-service');
             const opts = installFn.mock.calls[0]?.[0];
             expect(opts?.scope).toBe('user');
-            expect(opts?.account).toBe('currentUser');
+            expect((opts as { account?: unknown })?.account).toBeUndefined();
         });
 
         it('POST /install on Linux with {scope: "user"} body installs user scope', async () => {
@@ -384,7 +386,7 @@ describe('ServiceApi', () => {
             expect(body.installMode).toBe('system-service');
             const opts = installFn.mock.calls[0]?.[0];
             expect(opts?.scope).toBe('system');
-            expect(opts?.account).toBe('LocalSystem');
+            expect((opts as { account?: unknown })?.account).toBeUndefined();
         });
 
         it('POST /install on Linux with {scope: "system"} as non-root returns 403', async () => {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-27
+
+### Fixed
+
+- **Service install wizard hard-failed with "Option 'binPath' is unknown."** The Windows ServyClient was passing `--binPath`, `--account`, `--startType`, and `--logPath` — none of which are valid Servy 8.2 CLI flags (those names look like NSSM, which Servy was originally inspired by but does not match). Servy 8.2 uses `--path`, `--startupType`, `--stdout`, `--stderr`, and `--user` (the latter omitted entirely now). The bug was hidden during v0.1.4 fresh-VM smoke because that smoke stopped at "Setup runs, app launches, page reachable" — nobody clicked "yes install service" on the welcome modal. Fixed by:
+  - Rewriting the install args in `src/server/service/ServyClient.ts` to use Servy 8.2's actual flag names: `--path` (not `--binPath`), `--startupType` (not `--startType`), and `--stdout` + `--stderr` (not `--logPath`, both pointed at the same file for a unified service log).
+  - Dropping `--account` entirely. The Windows service now runs as Local System (Servy's default when `--user` is omitted), which side-steps password capture in the welcome modal and is the standard for tray-app service installs.
+  - Removing the `account: ServiceAccount` field from the cross-platform `ServiceInstallOptions` interface, dropping the `ServiceAccount` type from `src/server/service/ServiceClient.ts`, and stripping the corresponding plumbing from `src/server/api/ServiceApi.ts`. SystemdClient on Linux had never actually consumed `account` (it derives behavior from `scope`), so the field was dead weight there too.
+  - Updating `src/server/__tests__/ServyClient.test.ts` to assert the correct Servy 8.2 argv shape *and* explicitly assert that the v0.1.4-broken flag names (`--binPath`, `--account`, `--startType`, `--logPath`, `--user`) are NOT present in argv — regression guard against a future revert.
+
 ## [0.1.4] - 2026-04-27
 
 **v0.1.0, v0.1.1, v0.1.2, AND v0.1.3 all shipped broken and have been withdrawn.** That's four broken releases in a row. If you installed any of them: apologies for the wasted time. v0.1.4 is the FIFTH attempt and the first one where every previously-deferred packaging-path bug has been closed instead of "noted for later."

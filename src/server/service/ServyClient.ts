@@ -8,17 +8,28 @@
  *
  * CLI shape (v8.2 — see https://github.com/aelassas/servy):
  *   servy-cli install --name <Name> --displayName <DisplayName>
- *                     --description <Description> --binPath <Path>
- *                     --account currentUser|LocalSystem
- *                     --startType Automatic|Manual|Disabled
+ *                     --description <Description> --path <Path>
+ *                     --startupType Automatic|Manual|Disabled
  *                     --maxRestartAttempts <N>
  *                     --envVars KEY1=VAL1;KEY2=VAL2
- *                     --logPath <Path>
+ *                     --stdout <Path> --stderr <Path>
  *   servy-cli uninstall --name <Name>
  *   servy-cli start     --name <Name>
  *   servy-cli stop      --name <Name>
  *   servy-cli restart   --name <Name>
  *   servy-cli list                            (status is parsed from this)
+ *
+ * Account model: no `--user` flag is passed, so Servy runs the service as
+ * Local System (its default). Local System is the standard Windows account
+ * for services that need to start at boot, write to system locations, and
+ * spawn child processes (adb in our case). It side-steps password capture
+ * in the welcome modal. The full set of Servy recovery actions is available
+ * to Local System, so we let Servy pick its default.
+ *
+ * v0.1.4 attempted `--account currentUser` and `--binPath`/`--startType`/
+ * `--logPath` — none of those are real Servy 8.2 flags; the install wizard
+ * hard-failed with "Option 'binPath' is unknown." The 0.1.5 fix uses
+ * Servy's actual flag names and drops the account flag (Local System).
  *
  * Status detection: Servy v8.2 has no single-service status subcommand, so we
  * call `servy-cli list` and regex-match the named row to extract the running /
@@ -146,17 +157,22 @@ export class ServyClient implements ServiceClient {
     }
 
     public async install(opts: ServiceInstallOptions): Promise<void> {
+        // Servy 8.2 flag names — verified against `servy-cli install --help`
+        // shipped in dependencies/servy/v8.2/. The 0.1.4 build passed wrong
+        // flag names (--binPath, --account, --startType, --logPath) and the
+        // wizard hard-failed; see CHANGELOG [0.1.5]. We point both --stdout
+        // and --stderr at the same file for a unified service log.
         const args = [
             'install',
             '--name', opts.name,
             '--displayName', opts.displayName,
             '--description', opts.description,
-            '--binPath', opts.binPath,
-            '--account', opts.account,
-            '--startType', opts.startType,
+            '--path', opts.binPath,
+            '--startupType', opts.startType,
             '--maxRestartAttempts', String(opts.maxRestartAttempts),
             '--envVars', formatEnvVars(opts.envVars),
-            '--logPath', opts.logPath,
+            '--stdout', opts.logPath,
+            '--stderr', opts.logPath,
         ];
         runServy(this.servyPath, args);
 
