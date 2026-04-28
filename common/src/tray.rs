@@ -85,12 +85,18 @@ use windows::Win32::UI::Shell::{
 };
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyWindow,
-    DispatchMessageW, GetMessageW, GetWindowLongPtrW, MessageBoxW, PostQuitMessage, RegisterClassW,
-    SetWindowLongPtrW, TranslateMessage, UnregisterClassW, GWLP_USERDATA, HICON, HMENU, HWND_MESSAGE,
-    IDYES, LR_DEFAULTCOLOR, MB_ICONQUESTION, MB_YESNO, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_LBUTTONUP, WM_QUIT, WM_USER, WNDCLASSW,
+    AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
+    DestroyIcon, DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW,
+    GetWindowLongPtrW, MessageBoxW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
+    SetWindowLongPtrW, TrackPopupMenu, TranslateMessage, UnregisterClassW, GWLP_USERDATA, HICON,
+    HMENU, HWND_MESSAGE, IDYES, LR_DEFAULTCOLOR, MB_ICONQUESTION, MB_YESNO, MF_SEPARATOR, MF_STRING,
+    MSG, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_LBUTTONUP,
+    WM_QUIT, WM_RBUTTONUP, WM_USER, WNDCLASSW,
 };
+#[cfg(windows)]
+use windows::Win32::UI::Shell::ShellExecuteW;
+#[cfg(windows)]
+use windows::Win32::Foundation::POINT;
 
 /// Custom window message: tray icon callback. The Win32 docs use
 /// `WM_APP + N` or `WM_USER + N` interchangeably for app-defined messages.
@@ -107,6 +113,13 @@ const TRAY_ICON_UID: u32 = 1;
 #[cfg(windows)]
 const WINDOW_CLASS_NAME: &str = "WsScrcpyWebTrayClass";
 
+/// Menu item IDs. Stable per process — see WM_COMMAND dispatch in
+/// `tray_wnd_proc`. Range 100+ is conventional for app-defined items.
+#[cfg(windows)]
+const MENU_ID_OPEN: u32 = 100;
+#[cfg(windows)]
+const MENU_ID_EXIT: u32 = 101;
+
 /// Per-tray runtime state, stashed in the window's `GWLP_USERDATA` slot.
 ///
 /// Lifetime: allocated as a `Box`, leaked into `GWLP_USERDATA` on
@@ -116,9 +129,17 @@ struct TrayState {
     /// Set true when the user clicks Yes on the confirm dialog.
     confirmed: Cell<bool>,
     /// Wide-string buffers kept alive for the lifetime of the window so the
-    /// `MessageBoxW` PCWSTR pointers remain valid across the message loop.
+    /// PCWSTR pointers handed to Win32 stay valid across the message loop.
     confirm_title_w: Vec<u16>,
     confirm_body_w: Vec<u16>,
+    /// URL invoked on left-click and the "Open" menu item. Phase 3 of the
+    /// Program Files migration: tray now opens the app directly instead of
+    /// asking to exit on left-click.
+    open_url_w: Vec<u16>,
+    /// "Open ws-scrcpy-web" wide label for the popup menu.
+    menu_label_open_w: Vec<u16>,
+    /// "Exit" wide label for the popup menu.
+    menu_label_exit_w: Vec<u16>,
 }
 
 /// Run a tray icon event loop. BLOCKS the calling thread until the user
@@ -141,6 +162,7 @@ pub fn run(
     tooltip: &str,
     confirm_title: &str,
     confirm_body: &str,
+    open_url: &str,
 ) -> Result<TrayAction> {
     // SAFETY: GetModuleHandleW(NULL) returns the HMODULE for the calling
     // process's executable; always safe to call.
@@ -194,6 +216,9 @@ pub fn run(
         confirmed: Cell::new(false),
         confirm_title_w: to_wide(confirm_title),
         confirm_body_w: to_wide(confirm_body),
+        open_url_w: to_wide(open_url),
+        menu_label_open_w: to_wide("Open ws-scrcpy-web"),
+        menu_label_exit_w: to_wide("Exit"),
     });
     let state_ptr: *mut TrayState = Box::into_raw(state);
 
@@ -337,11 +362,17 @@ impl Drop for TrayCleanup {
     }
 }
 
-/// Window procedure: receives WM_TRAY_CALLBACK on tray events.
+/// Window procedure: receives WM_TRAY_CALLBACK on tray events plus
+/// WM_COMMAND from popup-menu item clicks.
 ///
-/// Reads `Box<TrayState>` from `GWLP_USERDATA`, checks if the event is a
-/// left-button release, shows the confirm dialog, and (on Yes) sets the
-/// confirmed flag and posts WM_QUIT to break the message pump.
+/// Phase 3 of the Program Files migration extends the tray beyond the
+/// pre-Phase-3 single-action exit-confirm dialog:
+///   - WM_LBUTTONUP  -> open `open_url` in the default browser (the most
+///                      common user action becomes the cheapest one)
+///   - WM_RBUTTONUP  -> show a popup menu: "Open ws-scrcpy-web" + "Exit"
+///   - WM_COMMAND    -> dispatch on item ID (`MENU_ID_OPEN` /
+///                      `MENU_ID_EXIT`); Open invokes ShellExecuteW, Exit
+///                      shows the confirm dialog and (on Yes) posts WM_QUIT
 #[cfg(windows)]
 unsafe extern "system" fn tray_wnd_proc(
     hwnd: HWND,
@@ -349,38 +380,137 @@ unsafe extern "system" fn tray_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // SAFETY: GWLP_USERDATA was populated by `run` before any message could
+    // arrive (we set it immediately after CreateWindowExW; messages are not
+    // dispatched until the message pump starts). The pointer is valid for
+    // the lifetime of the window. Reading it here from any handler branch
+    // is sound; null check guards the (unreachable in practice) racey case.
+    let state_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut TrayState;
+    let state = if state_ptr.is_null() { None } else { Some(&*state_ptr) };
+
     if msg == WM_TRAY_CALLBACK {
-        // lParam low-word holds the mouse event (WM_LBUTTONUP, etc.).
-        // Per Win32 docs, the high-word holds the icon ID; we only have
-        // one icon so we don't bother checking it.
+        // lParam low-word holds the mouse event. Per Win32 docs, high-word
+        // holds the icon ID; we only have one icon so we don't check it.
         let event = (lparam.0 as u32) & 0xFFFF;
         if event == WM_LBUTTONUP {
-            // SAFETY: GWLP_USERDATA was populated by `run` before the first
-            // message could arrive (RegisterClassW returns before any
-            // messages are dispatched, and we set it immediately after
-            // CreateWindowExW). The pointer is valid for the lifetime of
-            // the window.
-            let state_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut TrayState;
-            if !state_ptr.is_null() {
-                let state = &*state_ptr;
-                // SAFETY: title/body wide buffers are owned by TrayState
-                // and live as long as the window. MessageBoxW is modal —
-                // it pumps its own loop internally.
-                let result = MessageBoxW(
-                    hwnd,
-                    PCWSTR(state.confirm_body_w.as_ptr()),
-                    PCWSTR(state.confirm_title_w.as_ptr()),
-                    MB_YESNO | MB_ICONQUESTION,
-                );
-                if result == IDYES {
-                    state.confirmed.set(true);
-                    PostQuitMessage(0);
-                }
+            if let Some(s) = state {
+                open_url_via_shell(hwnd, &s.open_url_w);
+            }
+            return LRESULT(0);
+        }
+        if event == WM_RBUTTONUP {
+            if let Some(s) = state {
+                show_popup_menu(hwnd, s);
             }
             return LRESULT(0);
         }
     }
+
+    if msg == WM_COMMAND {
+        // wParam low-word is the menu item ID.
+        let id = (wparam.0 as u32) & 0xFFFF;
+        if let Some(s) = state {
+            match id {
+                MENU_ID_OPEN => {
+                    open_url_via_shell(hwnd, &s.open_url_w);
+                    return LRESULT(0);
+                }
+                MENU_ID_EXIT => {
+                    confirm_and_quit(hwnd, s);
+                    return LRESULT(0);
+                }
+                _ => {}
+            }
+        }
+    }
+
     DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+/// Open `url_w` (a wide-string URL) using the system's default URL handler.
+/// Fire-and-forget — failures fall through silently; the worst case is the
+/// user's click did nothing, which they can retry.
+#[cfg(windows)]
+unsafe fn open_url_via_shell(hwnd: HWND, url_w: &[u16]) {
+    let verb_w = to_wide("open");
+    // ShellExecuteW returns an HINSTANCE; values <= 32 indicate failure.
+    // We don't care which failure mode — the click is best-effort.
+    let _ = ShellExecuteW(
+        hwnd,
+        PCWSTR(verb_w.as_ptr()),
+        PCWSTR(url_w.as_ptr()),
+        PCWSTR::null(),
+        PCWSTR::null(),
+        windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+    );
+}
+
+/// Build a popup menu at the cursor and surface it as a foreground modal.
+///
+/// Win32 quirks worth knowing:
+///   - `SetForegroundWindow` is REQUIRED before `TrackPopupMenu`; otherwise
+///     the menu can dismiss itself when the user clicks anything else
+///     ("phantom dismiss" behavior).
+///   - `TPM_RIGHTBUTTON` lets the user dismiss the menu by clicking either
+///     mouse button, matching the Windows convention for tray menus.
+///   - Menu item commands arrive at the SAME WndProc via `WM_COMMAND` after
+///     the menu closes. We dispatch on `MENU_ID_*` there.
+#[cfg(windows)]
+unsafe fn show_popup_menu(hwnd: HWND, state: &TrayState) {
+    let menu = match CreatePopupMenu() {
+        Ok(m) => m,
+        Err(_) => return, // best-effort; click is a no-op on failure
+    };
+    let _ = AppendMenuW(
+        menu,
+        MF_STRING,
+        MENU_ID_OPEN as usize,
+        PCWSTR(state.menu_label_open_w.as_ptr()),
+    );
+    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+    let _ = AppendMenuW(
+        menu,
+        MF_STRING,
+        MENU_ID_EXIT as usize,
+        PCWSTR(state.menu_label_exit_w.as_ptr()),
+    );
+
+    let mut pt = POINT::default();
+    let _ = GetCursorPos(&mut pt);
+    // Foreground-window dance is mandatory for popup menus from a
+    // hidden/message-only host window — without it, the menu is unreliable.
+    let _ = SetForegroundWindow(hwnd);
+    // SAFETY: menu is owned by us; we destroy it after TrackPopupMenu
+    // returns. The hwnd belongs to the calling window. Coordinates are
+    // screen-relative per GetCursorPos.
+    let _ = TrackPopupMenu(
+        menu,
+        TPM_LEFTALIGN | TPM_RIGHTBUTTON,
+        pt.x,
+        pt.y,
+        0,
+        hwnd,
+        None,
+    );
+    let _ = DestroyMenu(menu);
+}
+
+/// Show the exit-confirm dialog. On IDYES, set the confirmed flag and
+/// post WM_QUIT to unwind the message pump.
+#[cfg(windows)]
+unsafe fn confirm_and_quit(hwnd: HWND, state: &TrayState) {
+    // SAFETY: title/body buffers are owned by TrayState and live as long as
+    // the window. MessageBoxW is modal and pumps its own loop internally.
+    let result = MessageBoxW(
+        hwnd,
+        PCWSTR(state.confirm_body_w.as_ptr()),
+        PCWSTR(state.confirm_title_w.as_ptr()),
+        MB_YESNO | MB_ICONQUESTION,
+    );
+    if result == IDYES {
+        state.confirmed.set(true);
+        PostQuitMessage(0);
+    }
 }
 
 /// Extract the largest sub-image from an ICO. Returns the raw payload
@@ -571,6 +701,7 @@ pub fn run(
     _tooltip: &str,
     _confirm_title: &str,
     _confirm_body: &str,
+    _open_url: &str,
 ) -> anyhow::Result<TrayAction> {
     Ok(TrayAction::Cancelled)
 }
@@ -585,7 +716,8 @@ mod linux_stub_tests {
         // claims a confirmed exit. Caller code (launcher tray spawn,
         // tray-helper main) is allowed to depend on this being a fast
         // synchronous return.
-        let action = run(b"", "tooltip", "title", "body").expect("stub must not error");
+        let action = run(b"", "tooltip", "title", "body", "http://localhost:8000")
+            .expect("stub must not error");
         assert_eq!(action, TrayAction::Cancelled);
     }
 }

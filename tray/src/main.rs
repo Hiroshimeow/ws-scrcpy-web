@@ -35,11 +35,13 @@ fn main() -> Result<()> {
     let cfg = common::config::AppConfig::load(&config_dir);
     let port = cfg.web_port.unwrap_or(8000);
 
+    let open_url = format!("http://localhost:{port}");
     let action = common::tray::run(
         ICON_BYTES,
         "ws-scrcpy-web (service)",
         "Exit ws-scrcpy-web?",
         "Stop the service and quit?",
+        &open_url,
     )
     .context("tray loop")?;
 

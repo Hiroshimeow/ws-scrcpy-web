@@ -40,11 +40,25 @@ pub fn spawn(install_mode_is_service: bool) -> Option<thread::JoinHandle<()>> {
 }
 
 fn run_tray() {
+    // Port discovery: read the shared config (Phase 1 of Program Files
+    // migration: <dataRoot>/config.json) for the user-configured port,
+    // falling back to 8000 if absent or malformed. The launcher tray
+    // only ever runs in user mode (service mode hands UI to the
+    // standalone tray helper), so the URL points at the local-mode
+    // Node server.
+    let port = common::config::data_root_from_env()
+        .as_deref()
+        .map(common::config::AppConfig::load)
+        .and_then(|cfg| cfg.web_port)
+        .unwrap_or(8000);
+    let open_url = format!("http://localhost:{port}");
+
     match common::tray::run(
         ICON_BYTES,
         "ws-scrcpy-web",
         "Exit ws-scrcpy-web?",
         "Stop the server and quit?",
+        &open_url,
     ) {
         Ok(common::tray::TrayAction::ConfirmedExit) => {
             log::info("tray: user confirmed exit; terminating process");
