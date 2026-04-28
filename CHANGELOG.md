@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-04-28
+
+### Fixed
+
+- **Redundant `PortChangeModal` after first-run dismiss.** v0.1.10's `WelcomeModal` and `ServiceFirstRunModal` both contain bookmark copy in their info-callouts, but dismissing them with "don't show again" only set the per-modal flag — `bookmarkDismissedForPort` was untouched, so `PortChangeModal` fired on the very next page load asking the user to bookmark a port they had just acknowledged. Both modals now also save the current port to `bookmarkDismissedForPort` when dismissed with the checkbox; later port changes still re-trigger `PortChangeModal` correctly because the saved port mismatches the new one.
+
 ## [0.1.10] - 2026-04-28
 
 ### Fixed

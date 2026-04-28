@@ -1,5 +1,5 @@
 import { Modal } from '../ui/Modal';
-import { setServiceFirstRunDismissed } from './firstRunGate';
+import { setBookmarkDismissedPort, setServiceFirstRunDismissed } from './firstRunGate';
 
 /**
  * One-shot informational modal shown on the FIRST page load of a
@@ -112,6 +112,12 @@ export class ServiceFirstRunModal extends Modal {
         if (this.dismissBtn) this.dismissBtn.disabled = true;
         if (this.dontShowCheckbox?.checked) {
             setServiceFirstRunDismissed();
+            // v0.1.11: same rationale as WelcomeModal — this modal already
+            // shows bookmark copy ("bookmark this URL now"), so dismissing
+            // with the checkbox covers the bookmark prompt for this port.
+            // Without this, PortChangeModal redundantly fired on the next
+            // page load.
+            setBookmarkDismissedPort(this.opts.webPort);
         }
         // Keep persisting serviceFirstRunSeen on the server too — other
         // code paths (e.g., the resume-token UX overlay) may still read
