@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-04-28
+
+### Fixed
+
+- **Updater "check failed: 404" against GitHub Releases.** `buildFeedUrl` returned `https://github.com/<owner>/<repo>/releases/latest/download/` — that's GitHub's browser-friendly redirect alias for asset URLs. Velopack doesn't recognize it as a GitHub source, so it fell through to its static-URL HTTP client which can't navigate the 302→302→`release-assets.githubusercontent.com` chain GitHub serves and surfaced "404." Now returns the bare repo URL (`https://github.com/<owner>/<repo>`); Velopack detects it as a GitHub source and queries `api.github.com/repos/<owner>/<repo>/releases` directly — no redirect chain.
+
 ## [0.1.17] - 2026-04-28
 
 ### Fixed

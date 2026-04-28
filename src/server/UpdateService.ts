@@ -100,12 +100,25 @@ export class UpdateService {
         this.state = { isInstalled: false, currentVersion: '', status: 'idle' };
     }
 
-    /** Build feed URL — env override > opts override > default github releases URL. */
+    /** Build feed URL — env override > opts override > default github repo URL. */
     private buildFeedUrl(githubOwner: string): string {
         const envOverride = process.env['VELOPACK_FEED_URL'];
         if (envOverride) return envOverride;
         if (this.feedUrlOverride) return this.feedUrlOverride;
-        return `https://github.com/${githubOwner}/ws-scrcpy-web/releases/latest/download/`;
+        // v0.1.18: use the bare GitHub repo URL. Velopack's GitHub source
+        // detects this form and queries the GitHub API
+        // (api.github.com/repos/<owner>/<repo>/releases) to enumerate
+        // releases for the configured channel — no redirect chain, no
+        // static-URL probing.
+        //
+        // Pre-v0.1.18 this was `https://github.com/<owner>/<repo>/releases/latest/download/`.
+        // The trailing `/releases/latest/download/` form is GitHub's
+        // browser-friendly redirect alias for asset URLs, but Velopack
+        // doesn't recognize it as a GitHub source — it falls through
+        // to its static-URL HTTP client, which can't navigate the
+        // 302→302→release-assets.githubusercontent.com chain GitHub
+        // serves and returns "404" for the asset fetch.
+        return `https://github.com/${githubOwner}/ws-scrcpy-web`;
     }
 
     /**

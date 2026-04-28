@@ -134,7 +134,7 @@ describe('UpdateService', () => {
             clearIntervalFn: () => undefined,
         });
         svc.init();
-        expect(captured[0]).toBe('https://github.com/someone-else/ws-scrcpy-web/releases/latest/download/');
+        expect(captured[0]).toBe('https://github.com/someone-else/ws-scrcpy-web');
     });
 
     it('init: VELOPACK_FEED_URL env override wins over githubOwner', () => {
@@ -389,7 +389,7 @@ describe('UpdateService', () => {
         await svc.reconfigure('beta', 'forky');
         expect(factory).toHaveBeenCalledTimes(2);
         const secondCall = factory.mock.calls[1];
-        expect(secondCall[0]).toBe('https://github.com/forky/ws-scrcpy-web/releases/latest/download/');
+        expect(secondCall[0]).toBe('https://github.com/forky/ws-scrcpy-web');
         expect(secondCall[1].ExplicitChannel).toBe('beta');
         expect(newCheckFn).toHaveBeenCalled();
     });
