@@ -64,6 +64,48 @@ describe('NetworkScanner — lifecycle', () => {
     });
 });
 
+describe('NetworkScanner — failure surfacing', () => {
+    // Without the catch in start(), ScanMw's `.catch(() => {})` would swallow
+    // the error and the chip would freeze forever waiting on a WS message that
+    // never comes. These tests pin the always-emit-scan.error contract.
+    it('emits scan.error when adbDevices rejects (full scan)', async () => {
+        const scanner = new NetworkScanner(baseDeps({
+            adbDevices: async () => { throw new Error('adb spawn ENOENT'); },
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['10.0.0.1'])], ws);
+        const errors = messages.filter((m) => m.type === 'scan.error');
+        expect(errors).toHaveLength(1);
+        expect((errors[0] as { reason: string }).reason).toMatch(/ENOENT/);
+        // State must be reset so subsequent scans can run
+        expect(scanner.isScanning()).toBe(false);
+    });
+
+    it('emits scan.error when adbDevices rejects (mdns-only scan)', async () => {
+        // mdns-only path also calls adbDevices first inside runTracks, then
+        // adbMdnsServices. A failure on adbDevices must not freeze the UI.
+        const scanner = new NetworkScanner(baseDeps({
+            adbDevices: async () => { throw new Error('adb timeout'); },
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([], ws, { mdnsOnly: true });
+        const errors = messages.filter((m) => m.type === 'scan.error');
+        expect(errors).toHaveLength(1);
+        expect((errors[0] as { reason: string }).reason).toMatch(/timeout/);
+        expect(scanner.isScanning()).toBe(false);
+    });
+
+    it('still emits scan.started before scan.error so client knows the scan was accepted', async () => {
+        const scanner = new NetworkScanner(baseDeps({
+            adbDevices: async () => { throw new Error('any failure'); },
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['10.0.0.1'])], ws);
+        expect(messages[0].type).toBe('scan.started');
+        expect(messages.at(-1)?.type).toBe('scan.error');
+    });
+});
+
 describe('NetworkScanner — mdnsOnly mode', () => {
     it('skips TCP probe entirely when mdnsOnly: true', async () => {
         const probeSpy = vi.fn(async () => ({ isAdb: false as const }));

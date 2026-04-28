@@ -7,15 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.3] - 2026-04-27
+## [0.1.4] - 2026-04-27
 
-**v0.1.0, v0.1.1, and v0.1.2 all shipped with broken installers and have been withdrawn.** Apologies for the wasted time if you tried any of them. v0.1.3 is the first version that has been verified end-to-end to install and launch on a clean Win11 VM. The failures and what was fixed in each:
+**v0.1.0, v0.1.1, v0.1.2, AND v0.1.3 all shipped broken and have been withdrawn.** That's four broken releases in a row. If you installed any of them: apologies for the wasted time. v0.1.4 is the FIFTH attempt and the first one where every previously-deferred packaging-path bug has been closed instead of "noted for later."
 
-- **v0.1.0** — Setup.exe crashed on a clean Win11 install with `VCRUNTIME140.dll was not found`. The Rust launcher and tray binaries were dynamically linked against the Visual C++ Redistributable, which a clean Win11 doesn't ship. Fixed in v0.1.1 by adding `-C target-feature=+crt-static` to statically link the MSVC C runtime.
-- **v0.1.1** — Setup.exe completed, but the launcher silent-failed at first run with "Node not found." The SP3 spec called for shipping a bootstrap Node binary at `<install>/current/seed/node/`, but the script that populates `seed/` was deferred during P6 packaging and never landed. Fixed in v0.1.2 with `scripts/fetch-node.mjs` (downloads + SHA256-verifies Node v24.15.0 LTS during the CI build, stages into `seed/`).
-- **v0.1.2** — `seed/node/node.exe` shipped correctly, but the launcher STILL silent-failed because the supervisor was unconditionally setting `DEPS_PATH` on its own process env before calling `resolve_node`, which made `resolve_node` enforce strict mode and refuse the seed/ fallback. The strict resolver and the auto-set were both written in the same SP2b session and the conflict between them was missed in code review. Fixed in v0.1.3: `DEPS_PATH` is now passed to the Node child via `Command::env` directly (so the Node backend's `DependencyManager` still gets it), and the launcher's process env is left untouched (so `resolve_node` correctly falls back to `seed/`).
+The honest accounting of how we got here:
 
-This is the first release where Setup.exe → app starts → tray icon appears → `localhost:8000` is reachable has been confirmed working. SignPath signing is still pending; this release is unsigned.
+- **v0.1.0** — Setup.exe crashed on a clean Win11 install with `VCRUNTIME140.dll was not found`. The Rust launcher and tray binaries were dynamically linked against the Visual C++ Redistributable, which a clean Win11 doesn't ship. Fixed in v0.1.1 by statically linking the MSVC C runtime.
+- **v0.1.1** — Setup.exe completed, but the launcher silent-failed at first run because no Node binary could be found at `<install>/current/seed/node/`. The SP3 spec called for shipping a bootstrap Node binary at that path, but the script that populates `seed/` was deferred during P6 packaging and never landed. Fixed in v0.1.2 with a `scripts/fetch-node.mjs` that downloads + SHA256-verifies Node v24.15.0 LTS during CI.
+- **v0.1.2** — `seed/node/node.exe` shipped correctly, but the launcher STILL silent-failed because the supervisor was unconditionally setting `DEPS_PATH` on its own process env before calling `resolve_node`, making `resolve_node` enforce strict mode and refuse the seed fallback. Fixed in v0.1.3 by passing `DEPS_PATH` to the Node child env directly instead of the launcher's own env.
+- **v0.1.3** — Setup.exe finally installed and the app launched, but the network scan (full + quick) and device discovery hung indefinitely on every click — chip never moved, cancel did nothing, only a page refresh reset the UI. Root cause: the server invoked bare `'adb'` (PATH lookup), and on a clean machine that hit ENOENT, while on a machine with a system adb already installed it triggered a version-mismatch hang. The chip-freeze symptom was made worse by `NetworkScanner.start()` having no `catch` block — any exception got silently swallowed by `ScanMw`'s `.catch(() => {})` and the WebSocket waited forever for a message that never came. **This bug was foreseeable.** A 2026-04-15 cross-platform audit had explicitly noticed that all `new AdbClient()` calls used the default `'adb'` PATH lookup AND that `Config.adbPath` itself didn't auto-resolve to the bundled binary — and filed both as "low priority — works when ADB is in the dependencies folder or on PATH." That self-granted deferral, made by the AI assistant doing the audit, was the actual cause of v0.1.3 shipping broken; the deferred items were the bug. v0.1.4 is the fix, plus a new architectural rule (in CLAUDE.md) that bans this category of deferral on installer-shipping projects.
+
+### Fixed (v0.1.4)
+
+- **Network scan + device discovery work again.** `Config.adbPath` now resolves *exclusively* to the local `<install>/dependencies/adb/adb[.exe]` path (or to a user-explicit `config.json` `adbPath` override). There is no system-PATH fallback. There is no `ADB_PATH` env-var resolution. If the bundled binary isn't there yet on first run, `DependencyManager.autoInstallMissing` fetches it; until it's present, adb-dependent operations throw `AdbExecError('spawn', ...)` and surface as a `scan.error` message in the UI rather than freezing the chip.
+- **`AdbClient` constructor now requires an explicit `adbPath` argument** (compile-time guardrail). The previous `'adb'` default had silently masked the bug. All 6 production call sites (`DeviceProbe`, `AdbUtils`, `Device`, `FilePushReader`, `ControlCenter`, `ScrcpyConnection`) updated to pass `Config.getInstance().adbPath`.
+- **Hard timeouts on adb control-plane calls.** `AdbClient.exec` now sets `timeout` + `killSignal: 'SIGKILL'` on `devices` (5s), `mdns services` (8s), `connect` (8s), `disconnect`/forward ops (5s). Long-running commands (`shell`, `push`, `pull`) remain unbounded by design.
+- **Typed `AdbExecError`** carries `kind` (`timeout` | `spawn` | `exit` | `unknown`), the resolved `adbPath`, and the `args` so the failure message is debuggable from logs alone.
+- **`NetworkScanner.start()` has a `catch` block** that emits `scan.error` with the exception message before `finally` resets state. Any future scanner-side failure surfaces visibly instead of hanging the UI.
+- **`AdbClient.mdnsServices` no longer swallows errors** and returns `[]` — that behavior was the original sin masking the v0.1.3 hang. It now throws and lets the caller decide on degradation.
 
 ### Installation
 
@@ -69,6 +79,10 @@ This is the first release where Setup.exe → app starts → tray icon appears �
 
 - `PRIVACY.md` documents outbound traffic (update checks, optional dep installs from `nodejs.org`, `dl.google.com`, `github.com`). No telemetry. No analytics. No project-operated server.
 - Code signing via [SignPath Foundation](https://signpath.org)'s free OSS program — application is in review. Once approved, the next release will be the first signed release. Until then, integrity is verifiable via the `SHA256SUMS` file shipped with each release.
+
+## [0.1.3] - 2026-04-27 [YANKED]
+
+**Withdrawn.** Setup.exe installed and the app launched, but the network scan (full + quick) and device discovery hung on every click — chip frozen at 0/N, cancel button non-functional, only a page refresh reset the UI. Root cause was bare `'adb'` PATH lookup combined with a missing `catch` block in the scanner's main try. See [0.1.4] above for the full root-cause writeup and fix. The GitHub Release page was deleted. Tag retained for archaeology.
 
 ## [0.1.2] - 2026-04-27 [YANKED]
 

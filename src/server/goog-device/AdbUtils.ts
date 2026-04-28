@@ -9,7 +9,7 @@ import { Config } from '../Config';
 
 const execFileAsync = promisify(execFile);
 
-const adbClient = new AdbClient();
+const adbClient = new AdbClient(Config.getInstance().adbPath);
 
 export class AdbUtils {
     public static async push(serial: string, localPath: string, remotePath: string): Promise<void> {

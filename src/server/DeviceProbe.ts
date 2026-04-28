@@ -6,6 +6,7 @@ import { ACTION } from '../common/Action';
 import { DEVICE_SERVER_PATH, SERVER_PACKAGE, SERVER_VERSION } from '../common/Constants';
 import type { ProbeResult } from '../common/ProbeResult';
 import { AdbClient } from './AdbClient';
+import { Config } from './Config';
 import { ensureScrcpyServerPushed } from './ensureScrcpyServerPushed';
 import { parseWmSize, parseWmDensity } from './goog-device/wmParsers';
 import { ControlCenter } from './goog-device/services/ControlCenter';
@@ -18,7 +19,7 @@ const log = Logger.for('DeviceProbe');
 const SERVER_FILE = path.join(__dirname, 'assets', 'scrcpy-server');
 
 export class DeviceProbe extends Mw {
-    private adbClient = new AdbClient();
+    private adbClient = new AdbClient(Config.getInstance().adbPath);
 
     public static processRequest(ws: WS, params: RequestParameters): DeviceProbe | undefined {
         const { action, url } = params;

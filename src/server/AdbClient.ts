@@ -15,6 +15,43 @@ export interface MdnsDevice {
     port: number;
 }
 
+export type AdbExecErrorKind = 'timeout' | 'spawn' | 'exit' | 'unknown';
+
+/**
+ * Typed error thrown by AdbClient on any failure path. Carries the resolved
+ * adb path and the args so log readers can spot wrong-binary or timing
+ * issues without grepping the stack.
+ */
+export class AdbExecError extends Error {
+    constructor(
+        public readonly kind: AdbExecErrorKind,
+        public readonly adbPath: string,
+        public readonly args: readonly string[],
+        public readonly cause?: unknown,
+    ) {
+        const argsPreview = args.join(' ');
+        const causeMsg = cause instanceof Error ? cause.message : cause !== undefined ? String(cause) : '';
+        const detail = causeMsg ? ` — ${causeMsg}` : '';
+        super(`adb ${kind} (path=${adbPath}, args="${argsPreview}")${detail}`);
+        this.name = 'AdbExecError';
+    }
+}
+
+interface AdbExecOptions {
+    /** Hard timeout in ms. 0 / undefined = unbounded. */
+    timeoutMs?: number;
+}
+
+// Default timeouts for short-lived control-plane commands. Anything not on
+// this list (push/pull, arbitrary shell) stays unbounded — caller decides.
+const DEFAULT_TIMEOUT_MS = {
+    devices: 5_000,
+    mdnsServices: 8_000,
+    connect: 8_000,
+    disconnect: 5_000,
+    forwardOps: 5_000,
+} as const;
+
 export function parseMdnsOutput(output: string): MdnsDevice[] {
     const results: MdnsDevice[] = [];
     for (const line of output.split('\n')) {
@@ -42,15 +79,42 @@ export function parseSerialFromMdnsName(name: string, service: string): string {
 }
 
 export class AdbClient {
-    constructor(private adbPath = 'adb') {}
+    /**
+     * `adbPath` is required. Callers MUST pass `Config.getInstance().adbPath`
+     * (or an explicit override). The previous default of `'adb'` masked
+     * packaging bugs by silently falling through to whatever adb happened
+     * to be on the system PATH.
+     */
+    constructor(public readonly adbPath: string) {}
 
-    private async exec(args: string[]): Promise<string> {
-        const { stdout } = await execFileAsync(this.adbPath, args, { maxBuffer: 10 * 1024 * 1024 });
-        return stdout;
+    private async exec(args: string[], opts: AdbExecOptions = {}): Promise<string> {
+        const execOpts: { maxBuffer: number; timeout?: number; killSignal?: NodeJS.Signals } = {
+            maxBuffer: 10 * 1024 * 1024,
+        };
+        if (opts.timeoutMs && opts.timeoutMs > 0) {
+            execOpts.timeout = opts.timeoutMs;
+            execOpts.killSignal = 'SIGKILL';
+        }
+        try {
+            const { stdout } = await execFileAsync(this.adbPath, args, execOpts);
+            return stdout;
+        } catch (err) {
+            const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string; code?: string | number };
+            if (e?.killed && (e.signal === 'SIGKILL' || e.signal === 'SIGTERM')) {
+                throw new AdbExecError('timeout', this.adbPath, args, err);
+            }
+            if (e?.code === 'ENOENT' || e?.code === 'EACCES') {
+                throw new AdbExecError('spawn', this.adbPath, args, err);
+            }
+            if (typeof e?.code === 'number') {
+                throw new AdbExecError('exit', this.adbPath, args, err);
+            }
+            throw new AdbExecError('unknown', this.adbPath, args, err);
+        }
     }
 
     async devices(): Promise<AdbDevice[]> {
-        const output = await this.exec(['devices']);
+        const output = await this.exec(['devices'], { timeoutMs: DEFAULT_TIMEOUT_MS.devices });
         return output
             .split('\n')
             .slice(1) // skip "List of devices attached" header
@@ -77,11 +141,11 @@ export class AdbClient {
     }
 
     async forward(serial: string, local: string, remote: string): Promise<void> {
-        await this.exec(['-s', serial, 'forward', local, remote]);
+        await this.exec(['-s', serial, 'forward', local, remote], { timeoutMs: DEFAULT_TIMEOUT_MS.forwardOps });
     }
 
     async listForwards(serial: string): Promise<{ serial: string; local: string; remote: string }[]> {
-        const output = await this.exec(['-s', serial, 'forward', '--list']);
+        const output = await this.exec(['-s', serial, 'forward', '--list'], { timeoutMs: DEFAULT_TIMEOUT_MS.forwardOps });
         return output
             .split('\n')
             .filter((line) => line.trim().length > 0)
@@ -92,15 +156,15 @@ export class AdbClient {
     }
 
     async removeForward(serial: string, local: string): Promise<void> {
-        await this.exec(['-s', serial, 'forward', '--remove', local]);
+        await this.exec(['-s', serial, 'forward', '--remove', local], { timeoutMs: DEFAULT_TIMEOUT_MS.forwardOps });
     }
 
     async reverse(serial: string, remote: string, local: string): Promise<void> {
-        await this.exec(['-s', serial, 'reverse', remote, local]);
+        await this.exec(['-s', serial, 'reverse', remote, local], { timeoutMs: DEFAULT_TIMEOUT_MS.forwardOps });
     }
 
     async removeReverse(serial: string, remote: string): Promise<void> {
-        await this.exec(['-s', serial, 'reverse', '--remove', remote]);
+        await this.exec(['-s', serial, 'reverse', '--remove', remote], { timeoutMs: DEFAULT_TIMEOUT_MS.forwardOps });
     }
 
     async getProperties(serial: string): Promise<Record<string, string>> {
@@ -121,20 +185,23 @@ export class AdbClient {
         });
     }
 
+    /**
+     * Returns mDNS-discovered services. Throws AdbExecError on failure
+     * (timeout, ENOENT, non-zero exit). Callers wanting silent degradation
+     * must wrap. Previously this swallowed errors and returned [], which
+     * masked packaging bugs (notably bare 'adb' falling through to whatever
+     * adb happened to be on the system PATH).
+     */
     async mdnsServices(): Promise<MdnsDevice[]> {
-        try {
-            const output = await this.exec(['mdns', 'services']);
-            return parseMdnsOutput(output);
-        } catch {
-            return [];
-        }
+        const output = await this.exec(['mdns', 'services'], { timeoutMs: DEFAULT_TIMEOUT_MS.mdnsServices });
+        return parseMdnsOutput(output);
     }
 
     async connect(address: string): Promise<string> {
-        return this.exec(['connect', address]);
+        return this.exec(['connect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.connect });
     }
 
     async disconnect(address: string): Promise<string> {
-        return this.exec(['disconnect', address]);
+        return this.exec(['disconnect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.disconnect });
     }
 }

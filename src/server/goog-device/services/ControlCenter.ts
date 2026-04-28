@@ -1,5 +1,6 @@
 import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import { AdbClient } from '../../AdbClient';
+import { Config } from '../../Config';
 import { Logger } from '../../Logger';
 import type { Service } from '../../services/Service';
 import { Device } from '../Device';
@@ -17,7 +18,7 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
     private static instance?: ControlCenter;
 
     private initialized = false;
-    private adbClient = new AdbClient();
+    private adbClient = new AdbClient(Config.getInstance().adbPath);
     private knownDevices = new Map<string, string>(); // serial -> state
     private pollIntervalId?: Timeout;
     private deviceMap: Map<string, Device> = new Map();

@@ -124,6 +124,12 @@ export class NetworkScanner {
             } else {
                 this.emit({ type: 'scan.complete', found: this.foundSoFar });
             }
+        } catch (err) {
+            // Without this, ScanMw's `.catch(() => {})` swallows the error and the
+            // client waits forever on an open WS for messages that never come.
+            // Surface the failure so the chip / info box displays a real reason.
+            const reason = err instanceof Error ? err.message : String(err);
+            this.emit({ type: 'scan.error', reason });
         } finally {
             this.state = 'idle';
             this.cancelFlag = false;

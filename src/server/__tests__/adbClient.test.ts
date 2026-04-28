@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { AdbClient, parseMdnsOutput, parseSerialFromMdnsName } from '../AdbClient';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AdbClient, AdbExecError, parseMdnsOutput, parseSerialFromMdnsName } from '../AdbClient';
 
 describe('parseMdnsOutput', () => {
     it('parses mdns services output with IPs and ports', () => {
@@ -44,18 +47,78 @@ describe('parseMdnsOutput', () => {
 
 describe('AdbClient', () => {
     it('has mdnsServices method', () => {
-        const client = new AdbClient();
+        const client = new AdbClient('adb');
         expect(typeof client.mdnsServices).toBe('function');
     });
 
     it('has connect method', () => {
-        const client = new AdbClient();
+        const client = new AdbClient('adb');
         expect(typeof client.connect).toBe('function');
     });
 
     it('has disconnect method', () => {
-        const client = new AdbClient();
+        const client = new AdbClient('adb');
         expect(typeof client.disconnect).toBe('function');
+    });
+});
+
+describe('AdbClient — error surfacing', () => {
+    it('throws AdbExecError(spawn) when binary does not exist', async () => {
+        const client = new AdbClient('/definitely/not/a/real/binary/adb');
+        await expect(client.devices()).rejects.toBeInstanceOf(AdbExecError);
+        try {
+            await client.devices();
+        } catch (err) {
+            expect(err).toBeInstanceOf(AdbExecError);
+            expect((err as AdbExecError).kind).toBe('spawn');
+            expect((err as AdbExecError).adbPath).toBe('/definitely/not/a/real/binary/adb');
+            expect((err as AdbExecError).args).toEqual(['devices']);
+        }
+    });
+
+    it('throws AdbExecError(exit) when the binary exits non-zero', async () => {
+        // Cross-platform: run node with a one-liner that exits 2. Node is
+        // guaranteed available in this test env (vitest runs under it). The
+        // .devices() call will pass 'devices' as the first arg, which node
+        // will reject — but we override args via mdnsServices to inject our
+        // own script. Simpler: use a tiny shim file we can target with the
+        // real `devices` invocation that ignores args and just exits.
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adb-test-'));
+        const shim = path.join(tmpDir, 'shim.js');
+        fs.writeFileSync(shim, 'process.exit(2);\n');
+        // Make the shim itself the "binary" by spawning node with its path.
+        // But AdbClient.devices passes ['devices'] as args, so we need a
+        // wrapper that's executable directly. Use a small Node child via
+        // shebang on POSIX, or a pwsh/cmd wrapper on Windows that calls node.
+        // Cleanest: invoke node directly and verify via a method call where
+        // the args path doesn't matter. Just spawn node with -e "process.exit(2)"
+        // by setting adbPath = node and exercising via the same exec wrapper
+        // — which means we can't use the public methods, but the exec wrapper
+        // is tested via the public surface. So: use `connect` with a real
+        // node binary and assert it exits non-zero.
+        //
+        // Actually simplest: set adbPath = node, call any method, node will
+        // try to load the first arg ('connect' / 'devices') as a script, fail,
+        // and exit 1. That's a clean non-zero exit, classified as 'exit'.
+        const client = new AdbClient(process.execPath);
+        try {
+            await client.devices();
+            expect.fail('expected throw');
+        } catch (err) {
+            expect(err).toBeInstanceOf(AdbExecError);
+            // Node fails to load 'devices' as a script and exits with code 1.
+            expect((err as AdbExecError).kind).toBe('exit');
+            expect((err as AdbExecError).adbPath).toBe(process.execPath);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('mdnsServices no longer swallows errors', async () => {
+        // Previously this returned [] on any failure, masking packaging bugs.
+        // Now it should throw so callers (scanner / API) can surface a real reason.
+        const client = new AdbClient('/definitely/not/a/real/binary/adb');
+        await expect(client.mdnsServices()).rejects.toBeInstanceOf(AdbExecError);
     });
 });
 

@@ -12,8 +12,6 @@ import {
 import type { ServerItem } from '../types/Configuration';
 import { EnvName } from './EnvName';
 
-const DEFAULT_PORT = APP_CONFIG_DEFAULTS.webPort;
-const DEFAULT_ADB_PATH = 'adb';
 const DEFAULT_SCAN_CONCURRENCY = 64;
 const DEFAULT_SCAN_TCP_TIMEOUT_MS = 300;
 const DEFAULT_SCAN_ADB_CONNECT_TIMEOUT_MS = 5000;
@@ -74,6 +72,40 @@ export function resolveDependenciesPath(
         'or add "dependenciesPath" to config.json. ' +
         'Expected location example: <installFolder>/dependencies/',
     );
+}
+
+/**
+ * Pure resolver: produces the absolute path the server should use when
+ * spawning adb. Per the "Local Dependencies Only" architecture, this MUST
+ * resolve to the app's local dependencies folder. There is no system-PATH
+ * fallback and no host env-var resolution — if adb isn't there, the app
+ * fetches it via `DependencyManager`. Until autoInstall populates it,
+ * adb-dependent operations (scan, device probe, etc.) will fail visibly
+ * via `AdbExecError('spawn', ...)` and surface as `scan.error` — they will
+ * not silently fall through to whatever adb the OS happens to expose.
+ *
+ * Priority chain:
+ *   1. `fileConfig.adbPath` — user-explicit override in config.json. The
+ *      user is responsible for pointing this at a real local binary; we
+ *      do not validate. Useful for shared-deps install layouts.
+ *   2. `<dependenciesPath>/adb/adb.exe` (Windows) or `<dependenciesPath>/adb/adb`
+ *      (POSIX) — the canonical local binary. **Returned unconditionally**:
+ *      the file may not yet exist on first run before `autoInstallMissing`
+ *      completes. AdbClient will throw `AdbExecError('spawn', ...)` cleanly
+ *      in that window and the scanner's catch will surface the reason.
+ */
+export function resolveAdbPath(
+    fileConfig: FlatConfig,
+    dependenciesPath: string,
+    platform: NodeJS.Platform = process.platform,
+): { path: string; source: 'config' | 'bundled' } {
+    if (fileConfig.adbPath) return { path: fileConfig.adbPath, source: 'config' };
+    const exeName = platform === 'win32' ? 'adb.exe' : 'adb';
+    // Use the target-platform's path joiner so cross-platform tests don't
+    // produce host-platform-shaped paths (e.g. backslashes on a Win host
+    // when computing a Linux install layout).
+    const joiner = platform === 'win32' ? path.win32 : path.posix;
+    return { path: joiner.join(dependenciesPath, 'adb', exeName), source: 'bundled' };
 }
 
 /**
@@ -305,14 +337,18 @@ export class Config {
             const appConfig = sanitizeAppConfig(fileConfig, warn);
             const servers = Config.buildServers(fileConfig, appConfig.webPort);
 
-            // ADB_PATH env var overrides file config, which overrides default
-            const adbPath = process.env['ADB_PATH'] ?? fileConfig.adbPath ?? DEFAULT_ADB_PATH;
-
             const dependenciesPath = resolveDependenciesPath(
                 process.env,
                 fileConfig,
                 process.argv[1] ?? '.',
             );
+
+            // ADB resolution must come AFTER dependenciesPath. Always returns a path
+            // inside <dependenciesPath>/adb/ unless config.json explicitly overrides.
+            // No system-PATH fallback by design.
+            const adbResolution = resolveAdbPath(fileConfig, dependenciesPath);
+            const adbPath = adbResolution.path;
+            console.info(`[Config] adbPath=${adbPath} (source=${adbResolution.source})`);
 
             const scanConcurrency = Number.parseInt(process.env['SCAN_CONCURRENCY'] ?? '', 10) || fileConfig.scanConcurrency || DEFAULT_SCAN_CONCURRENCY;
             const scanTcpTimeoutMs = Number.parseInt(process.env['SCAN_TCP_TIMEOUT_MS'] ?? '', 10) || fileConfig.scanTcpTimeoutMs || DEFAULT_SCAN_TCP_TIMEOUT_MS;

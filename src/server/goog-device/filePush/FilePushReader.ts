@@ -4,6 +4,7 @@ import * as path from 'path';
 import { CommandControlMessage, FilePushState } from '../../../app/controlMessage/CommandControlMessage';
 import { FilePushResponseStatus } from '../../../app/googDevice/filePush/FilePushResponseStatus';
 import { AdbClient } from '../../AdbClient';
+import { Config } from '../../Config';
 import { Logger } from '../../Logger';
 
 enum State {
@@ -39,7 +40,7 @@ export class FilePushReader {
         return buffer;
     }
 
-    private adbClient = new AdbClient();
+    private adbClient = new AdbClient(Config.getInstance().adbPath);
     private fileName = '';
     private pushId = -1;
     private state: State = State.INITIAL;

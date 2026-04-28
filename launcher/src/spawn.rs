@@ -73,12 +73,11 @@ pub fn resolve_server_entry() -> Result<PathBuf> {
 
 /// Spawn the Node server with hidden console window.
 ///
-/// `deps_path` is set as DEPS_PATH on the Node child's environment so the
+/// `DEPS_PATH` is set on the CHILD's env (not the launcher's own env) so the
 /// Node backend's DependencyManager knows where to install Node / ADB /
-/// scrcpy-server. **Crucially, this is set on the CHILD's env, not the
-/// launcher's process env** — the launcher's `resolve_node()` would
-/// otherwise see DEPS_PATH and enforce strict mode, defeating the seed/
-/// bootstrap fallback on first run before dependencies/ exists.
+/// scrcpy-server. The Node server's `Config.resolveAdbPath` then computes
+/// `<deps>/adb/adb[.exe]` itself — no env-var indirection, no system-PATH
+/// fallback. If the file isn't there yet, autoInstallMissing fetches it.
 ///
 /// Returns the child handle so the caller (supervisor) can wait on it.
 #[cfg(windows)]
@@ -197,4 +196,5 @@ mod tests {
         let err = resolve_server_entry_with(&exe_dir).unwrap_err();
         assert!(err.to_string().contains("Server entry not found"));
     }
+
 }

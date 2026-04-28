@@ -10,6 +10,7 @@ import { ChannelId } from '../common/ChannelId';
 import { DEVICE_SERVER_PATH, SERVER_PACKAGE, SERVER_VERSION } from '../common/Constants';
 import { AUDIO_DISABLED, AUDIO_ERROR, codecName } from '../common/ScrcpyCodec';
 import { AdbClient } from './AdbClient';
+import { Config } from './Config';
 import { ensureScrcpyServerPushed } from './ensureScrcpyServerPushed';
 import { FrameReader } from './FrameReader';
 import { ControlCenter } from './goog-device/services/ControlCenter';
@@ -32,7 +33,7 @@ interface SessionMetadata {
 }
 
 export class ScrcpyConnection extends Mw {
-    private adbClient = new AdbClient();
+    private adbClient = new AdbClient(Config.getInstance().adbPath);
     private tcpServer?: net.Server;
     private videoSocket?: net.Socket;
     private audioSocket?: net.Socket;

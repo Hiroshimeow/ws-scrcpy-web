@@ -2,6 +2,7 @@ import { TypedEmitter } from '../../common/TypedEmitter';
 import type GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
 import type { NetInterface } from '../../types/NetInterface';
 import { AdbClient } from '../AdbClient';
+import { Config } from '../Config';
 import { Logger } from '../Logger';
 import { classifyDeviceKind } from './deviceKind';
 import { Properties } from './Properties';
@@ -56,7 +57,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             'last.update.timestamp': 0,
             'screen.state': 'unknown',
         };
-        this.adbClient = new AdbClient();
+        this.adbClient = new AdbClient(Config.getInstance().adbPath);
         this.setState(state);
     }
 
