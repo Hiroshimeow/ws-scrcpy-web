@@ -768,6 +768,25 @@ export class SettingsModal extends Modal {
                 this.renderServiceError(errMsg, () => void this.refreshService());
                 return;
             }
+            // v0.1.9 uninstall-flow Path A handoff: when the
+            // service-instance API has spawned a fresh user-session
+            // local launcher and issued a resume token, it returns
+            // `redirectTo` pointing at the new local instance with
+            // the token embedded in URL params. Frontend honors it
+            // by navigating; the local instance reads the token,
+            // validates server-side, and fires the actual uninstall
+            // in its own user-session UAC context. Without this
+            // branch, v0.1.8 silently dropped the redirect and the
+            // user's UI just blinked back to "running" because the
+            // service was never actually uninstalled (the local
+            // instance was supposed to do it).
+            if (data.redirectTo) {
+                btn.textContent = 'switching to user mode for uninstall…';
+                setTimeout(() => {
+                    window.location.href = data.redirectTo!;
+                }, 500);
+                return;
+            }
             await this.refreshService();
         } catch {
             this.renderServiceError("couldn't reach server", () => void this.refreshService());

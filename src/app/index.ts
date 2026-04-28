@@ -46,8 +46,13 @@ function maybeResumeUninstall(): void {
                 setTimeout(() => overlay.remove(), 4000);
                 return;
             }
-            overlay.textContent = 'service uninstalled. you can now use ws-scrcpy-web in user mode.';
-            setTimeout(() => overlay.remove(), 2000);
+            // v0.1.9: include a bookmark-reminder note since the
+            // user's previous bookmark (if any) pointed at the
+            // service-instance port and is now stale.
+            overlay.textContent =
+                `service uninstalled. ws-scrcpy-web is running in user mode now (port ${location.port || '80'}). ` +
+                'if you bookmarked the service-mode page, update it to this URL.';
+            setTimeout(() => overlay.remove(), 5000);
         })
         .catch((err) => {
             overlay.textContent = `uninstall failed: ${(err as Error).message}`;
@@ -60,13 +65,40 @@ function maybeShowWelcomeModal(): void {
         .then((r) => (r.ok ? (r.json() as Promise<Partial<AppConfigEnvelope>>) : null))
         .then((data) => {
             const runtime = data?.runtime;
-            if (!runtime || runtime.firstRunComplete !== false) return;
+            const config = data?.config;
+            if (!runtime || !config) return;
+
+            const isServiceInstance =
+                config.installMode === 'user-service' || config.installMode === 'system-service';
+
+            // v0.1.9: route based on installMode.
+            //   - service instance, first time seen → ServiceFirstRunModal
+            //     (informational + bookmark hint)
+            //   - service instance, already dismissed → no modal
+            //   - non-service, firstRunComplete=false → WelcomeModal
+            //     (existing flow)
+            //   - non-service, firstRunComplete=true → no modal
+            //
+            // The v0.1.8 bug was: service instance with stale
+            // in-memory firstRunComplete=false re-showed WelcomeModal
+            // after install-flow redirect. Gating on installMode
+            // makes that impossible — service instances never see
+            // the install-mode prompt.
+            if (isServiceInstance) {
+                if (config.serviceFirstRunSeen !== true) {
+                    void import('./client/ServiceFirstRunModal').then(({ ServiceFirstRunModal }) => {
+                        new ServiceFirstRunModal({ webPort: runtime.webPort });
+                    });
+                }
+                return;
+            }
+
+            if (runtime.firstRunComplete !== false) return;
             new WelcomeModal({
                 webPort: runtime.webPort,
                 portWasAutoShifted: runtime.portWasAutoShifted,
                 onDecision: () => {
                     // WelcomeModal owns persistence (install or PATCH) for P3+.
-                    // Caller may use this to refresh UI state if needed.
                 },
             });
         })

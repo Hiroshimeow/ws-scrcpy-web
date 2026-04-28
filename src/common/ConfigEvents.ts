@@ -25,6 +25,17 @@ export interface AppConfig {
     updateCheckIntervalMinutes: number;
     channel: UpdateChannel;
     githubOwner: string;
+    /**
+     * v0.1.9: tracks whether the service-instance "remember to bookmark"
+     * informational modal has been dismissed. Separate from
+     * `firstRunComplete` because the two flows are semantically
+     * different: `firstRunComplete` means "the user picked an install
+     * mode" (always true once running as a service); this flag means
+     * "the user has acknowledged the bookmark hint on the service
+     * instance specifically." Defaults to false; flips to true when the
+     * service-instance modal is dismissed.
+     */
+    serviceFirstRunSeen: boolean;
 
     // Pre-existing fields (kept for backward compatibility / runtime usage)
     webPort: number;
@@ -82,6 +93,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
     channel: 'stable',
     githubOwner: 'bilbospocketses',
     webPort: 8000,
+    serviceFirstRunSeen: false,
 };
 
 export const VALID_INSTALL_MODES: ReadonlyArray<InstallMode> = [

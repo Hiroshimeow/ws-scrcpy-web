@@ -172,12 +172,55 @@ export class DependencyManager {
     }
 
     public async autoInstallMissing(): Promise<void> {
+        // v0.1.9: try the seed-promotion path before any network
+        // download. If we ship scrcpy-server as a seed (in
+        // <install>/seed/scrcpy-server/scrcpy-server), copy it into
+        // <deps>/scrcpy-server/scrcpy-server so the runtime path
+        // (DeviceProbe / ScrcpyConnection) can read it. Idempotent —
+        // if the dest already exists, the promotion is a no-op.
+        // Network download still runs after, in case the seed is
+        // missing or the user has an updater-managed newer version.
+        try {
+            this.promoteSeedScrcpyServer();
+        } catch (err) {
+            log.warn(`seed-promote scrcpy-server failed: ${(err as Error).message}`);
+        }
+
         for (const info of this.state.values()) {
             if (info.installedVersion === null && info.latestVersion !== null) {
                 log.info(`First-run: auto-installing ${info.name}`);
                 await this.update(info.name);
             }
         }
+    }
+
+    /**
+     * v0.1.9: copy the bundled scrcpy-server seed to <deps>/scrcpy-server/.
+     * Used by autoInstallMissing on first run so an offline / no-internet
+     * machine still has a working scrcpy-server. The seed is staged into
+     * the installer payload at build time (alongside seed/node/), so
+     * Velopack ships it; subsequent updater fetches replace this copy
+     * with whatever Genymobile released.
+     *
+     * The seed lives at <install-root>/seed/scrcpy-server/scrcpy-server,
+     * which is `<this.depsPath>/../seed/scrcpy-server/scrcpy-server`
+     * because depsPath is `<install-root>/dependencies`. We resolve via
+     * path.dirname to avoid hardcoding the install layout.
+     */
+    private promoteSeedScrcpyServer(): void {
+        const destDir = path.join(this.depsPath, 'scrcpy-server');
+        const destFile = path.join(destDir, 'scrcpy-server');
+        if (fs.existsSync(destFile)) {
+            return; // already promoted or updater-installed
+        }
+        const installRoot = path.dirname(this.depsPath);
+        const seedFile = path.join(installRoot, 'seed', 'scrcpy-server', 'scrcpy-server');
+        if (!fs.existsSync(seedFile)) {
+            return; // no seed available — autoInstallMissing will fall through to network download
+        }
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(seedFile, destFile);
+        log.info(`promoted seed scrcpy-server → ${destFile}`);
     }
 
     public requestRestart(): void {

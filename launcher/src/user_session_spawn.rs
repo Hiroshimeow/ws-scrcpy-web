@@ -60,12 +60,15 @@ pub fn spawn_in_active_user_session(args: &SpawnUserLauncherArgs) -> SpawnResult
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Environment::{
+        CreateEnvironmentBlock, DestroyEnvironmentBlock,
+    };
     use windows::Win32::System::RemoteDesktop::{
         WTSGetActiveConsoleSessionId, WTSQueryUserToken,
     };
     use windows::Win32::System::Threading::{
-        CreateProcessAsUserW, NORMAL_PRIORITY_CLASS, PROCESS_INFORMATION,
-        STARTUPINFOW,
+        CreateProcessAsUserW, CREATE_UNICODE_ENVIRONMENT, NORMAL_PRIORITY_CLASS,
+        PROCESS_INFORMATION, STARTUPINFOW,
     };
     use windows::core::PWSTR;
 
@@ -143,6 +146,19 @@ pub fn spawn_in_active_user_session(args: &SpawnUserLauncherArgs) -> SpawnResult
             None => windows::core::PCWSTR::null(),
         };
 
+        // v0.1.9: build the user's environment block instead of
+        // inheriting our (Local System) env. Without this, the new
+        // process gets %APPDATA% / %LOCALAPPDATA% / %USERPROFILE%
+        // pointing at C:\Windows\system32\config\systemprofile\... —
+        // Velopack init reads %APPDATA% for its update cache and
+        // various launcher startup paths break with Local System's
+        // environment. The v0.1.8 uninstall handoff would silently
+        // fail at this stage: the launcher spawned, started up, but
+        // exited before reaching its supervisor's HTTP listen because
+        // Velopack or path resolution broke.
+        let mut env_block: *mut std::ffi::c_void = std::ptr::null_mut();
+        let env_built = CreateEnvironmentBlock(&mut env_block, user_token, false).is_ok();
+
         let create = CreateProcessAsUserW(
             user_token,
             None, // lpApplicationName — we put the exe in lpCommandLine instead
@@ -150,13 +166,21 @@ pub fn spawn_in_active_user_session(args: &SpawnUserLauncherArgs) -> SpawnResult
             None, // lpProcessAttributes
             None, // lpThreadAttributes
             false,
-            NORMAL_PRIORITY_CLASS,
-            None, // lpEnvironment — inherit
+            // CREATE_UNICODE_ENVIRONMENT is mandatory when
+            // lpEnvironment is non-null AND came from
+            // CreateEnvironmentBlock (which always returns UTF-16).
+            // Without it, CreateProcessAsUserW would interpret the
+            // block as ANSI and produce garbage env vars.
+            NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT,
+            if env_built { Some(env_block) } else { None },
             cwd_pcwstr,
             &si,
             &mut pi,
         );
 
+        if env_built {
+            let _ = DestroyEnvironmentBlock(env_block);
+        }
         let _ = CloseHandle(user_token);
 
         if let Err(e) = create {

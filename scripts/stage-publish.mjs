@@ -147,6 +147,29 @@ function main() {
         console.log('  seed/ skip (will be populated in P6 packaging)');
     }
 
+    // 8a. v0.1.9: stage scrcpy-server seed. Source is the repo's vendored
+    // copy at assets/scrcpy-server (90 KB JAR, version pinned to whatever
+    // Constants.SERVER_VERSION says). Destination is publish/seed/scrcpy-server/
+    // so DependencyManager.promoteSeedScrcpyServer can promote it on
+    // first run for offline-capable installs. Network-driven updates via
+    // the dep updater later replace this with a fresher version under
+    // <deps>/scrcpy-server/.
+    //
+    // Why we still ship a seed even though the dep updater can fetch from
+    // GitHub: fresh installs on a network-restricted host (no internet,
+    // VPN, dev container) need a working scrcpy-server binary to push to
+    // connected devices. The seed guarantees that.
+    const scrcpyAsset = join(REPO_ROOT, 'assets', 'scrcpy-server');
+    if (existsSync(scrcpyAsset)) {
+        step('Stage scrcpy-server seed', () => {
+            const seedScrcpyDir = join(PUBLISH, 'seed', 'scrcpy-server');
+            mkdirSync(seedScrcpyDir, { recursive: true });
+            copyFileSync(scrcpyAsset, join(seedScrcpyDir, 'scrcpy-server'));
+        });
+    } else {
+        console.log('  scrcpy-server seed skip (assets/scrcpy-server not present)');
+    }
+
     // 9. Servy CLI (P3) — Windows only. On Linux, systemd is the service manager
     // (per P4b SystemdClient); no Servy binary is bundled.
     const fetchServyScript = join(__dirname, 'fetch-servy.mjs');

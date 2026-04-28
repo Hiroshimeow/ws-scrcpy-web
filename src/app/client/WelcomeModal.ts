@@ -143,6 +143,21 @@ export class WelcomeModal extends Modal {
         later.textContent = 'you can change this later in settings.';
         container.appendChild(later);
 
+        // v0.1.9 bookmark hint. ws-scrcpy-web is a web app served from
+        // a local port — users naturally want to bookmark it. We tell
+        // them to wait until after they've made the install-mode
+        // decision because picking "service" shifts the port.
+        const bookmarkHint = document.createElement('p');
+        bookmarkHint.style.cssText =
+            'margin: 0 0 16px; padding: 8px 12px; ' +
+            'background: rgba(91, 154, 255, 0.08); border-left: 3px solid #5b9aff; ' +
+            'color: var(--text-color-light); font-size: 13px; line-height: 1.5;';
+        bookmarkHint.textContent =
+            'tip: bookmark this page once you’ve picked an install mode. ' +
+            'choosing "yes install service" shifts the server to a different port, ' +
+            'so wait until after the redirect to bookmark the new URL.';
+        container.appendChild(bookmarkHint);
+
         this.statusEl = document.createElement('p');
         this.statusEl.style.cssText =
             'margin: 0 0 12px; color: var(--text-color-light); font-size: 13px; min-height: 1em;';

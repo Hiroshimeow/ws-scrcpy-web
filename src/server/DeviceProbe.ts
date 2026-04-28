@@ -13,10 +13,30 @@ import { ControlCenter } from './goog-device/services/ControlCenter';
 import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 import { parseScrcpyEncoderList } from './scrcpyEncoderList';
-import '../../assets/scrcpy-server';
 
 const log = Logger.for('DeviceProbe');
-const SERVER_FILE = path.join(__dirname, 'assets', 'scrcpy-server');
+
+/**
+ * v0.1.9: scrcpy-server lives in the local-deps folder, NOT in
+ * dist/assets/. Same architectural pattern as the v0.1.4 adb fix and
+ * v0.1.6 launcher-binPath fix — runtime dependencies are managed by
+ * DependencyManager and live under <deps>/scrcpy-server/scrcpy-server.
+ *
+ * Previously the file was bundled into dist/assets/scrcpy-server via
+ * the webpack `import '../../assets/scrcpy-server'` directive, which
+ * meant Velopack updates would overwrite the user's dep-updater-fetched
+ * version with whatever was bundled at build time. The dep updater
+ * "scrcpy-server update" button updated a path that nothing read, and
+ * was load-bearing-but-broken: silent.
+ *
+ * v0.1.9 removes the webpack import, computes the path lazily from
+ * Config.dependenciesPath, and lets DependencyManager.autoInstallMissing
+ * fetch the binary on first run if missing (the launcher's seed/
+ * promotion handles offline-first-run).
+ */
+function serverFile(): string {
+    return path.join(Config.getInstance().dependenciesPath, 'scrcpy-server', 'scrcpy-server');
+}
 
 export class DeviceProbe extends Mw {
     private adbClient = new AdbClient(Config.getInstance().adbPath);
@@ -115,7 +135,7 @@ export class DeviceProbe extends Mw {
     }
 
     private async listEncodersViaScrcpyServer(): Promise<{ videoEncoders: string[]; audioEncoders: string[] }> {
-        await ensureScrcpyServerPushed(this.adbClient, this.serial, SERVER_FILE);
+        await ensureScrcpyServerPushed(this.adbClient, this.serial, serverFile());
         // cleanup=false leaves the JAR on-device so the subsequent stream session
         // hits a warm dex cache and skips the ~15s dexopt re-run.
         const cmd = `CLASSPATH=${DEVICE_SERVER_PATH} app_process / ${SERVER_PACKAGE} ${SERVER_VERSION} cleanup=false list_encoders=true 2>&1`;

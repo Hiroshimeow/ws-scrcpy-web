@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-28
+
+### Fixed
+
+- **scrcpy-server architectural fix.** The runtime path for the JAR (read by `DeviceProbe.ts` and `ScrcpyConnection.ts`) used to be `<install>/current/dist/assets/scrcpy-server` — the build-bundled copy. Meanwhile `DependencyManager` registered scrcpy-server in the dep updater and downloaded user-clicked-update versions to `<deps>/scrcpy-server/scrcpy-server`. So the dep updater was *load-bearing but invisible*: the path it wrote to was never read by runtime code, and a Velopack app update would silently overwrite the bundled `dist/assets/scrcpy-server` with whatever the build pipeline shipped — possibly older than what the user's dep updater had pulled. Same family of bug as the v0.1.4 bare-`'adb'` and v0.1.6 `process.execPath` issues: runtime code resolving to the wrong location.
+  - Removed `import '../../assets/scrcpy-server';` from `DeviceProbe.ts` and `ScrcpyConnection.ts` (those imports tell webpack to copy the asset into `dist/`).
+  - Replaced `path.join(__dirname, 'assets', 'scrcpy-server')` with a `serverFile()` getter that returns `path.join(Config.getInstance().dependenciesPath, 'scrcpy-server', 'scrcpy-server')`. Same architectural pattern as `Config.adbPath` from v0.1.4.
+  - `DependencyManager.autoInstallMissing` now seed-promotes `<install>/seed/scrcpy-server/scrcpy-server` → `<deps>/scrcpy-server/scrcpy-server` on first run (idempotent — no-op if dest exists). Offline-capable: a fresh install on a network-restricted host still has a working scrcpy-server; the dep updater overwrites the seed-promoted copy with the latest from Genymobile when run.
+  - `scripts/stage-publish.mjs` stages `assets/scrcpy-server` → `publish/seed/scrcpy-server/scrcpy-server` so Velopack ships the seed alongside `seed/node/`.
+- **Uninstall-handoff failure when the user-session launcher inherited Local System's environment.** v0.1.8's `user_session_spawn.rs` called `CreateProcessAsUserW(.. lpEnvironment = None)`, which means the spawned child inherits the **caller's** environment — and the caller is a Local System process, not the user. So the new launcher started up with `%APPDATA%`, `%LOCALAPPDATA%`, `%USERPROFILE%`, `%TEMP%` all pointing at `C:\Windows\system32\config\systemprofile\…`. Velopack init reads `%APPDATA%` for its update cache, various launcher startup paths break, and the spawned launcher exited before reaching its supervisor's HTTP listen — `discoverServicePort` would then time out, the handoff would return false, and the fallback direct uninstall would kill the service from session 0. Result: service uninstalled, but the user's tab said "can't reach server" and no local instance came up.
+  - Fix: build the user's actual environment block via `CreateEnvironmentBlock(env_ptr, user_token, FALSE)` and pass `env_ptr` as `lpEnvironment`. Add `CREATE_UNICODE_ENVIRONMENT` to `dwCreationFlags` (mandatory when `lpEnvironment` came from `CreateEnvironmentBlock`, which always returns UTF-16). Call `DestroyEnvironmentBlock` after spawn returns. Adds `Win32_System_Environment` feature to the windows-rs crate.
+- **`SettingsModal.onUninstallService` now honors `data.redirectTo`.** v0.1.8 added the redirect handling to the install path but missed the uninstall path. When the service-instance API successfully spawned a user-session local launcher and returned 200 with `redirectTo` + `resumeToken`, the frontend ignored both fields and called `refreshService()` instead. UI showed "service still running" because the local instance hadn't fired the actual uninstall yet, button reset, user thought nothing happened. Now the frontend navigates to `redirectTo` (carrying the resume token in URL params) so the local instance can pick up the work in its own UAC context.
+- **WelcomeModal no longer shows on service-mode instances regardless of `firstRunComplete`.** v0.1.8 service install would auto-redirect the user to the new service instance, which then re-showed the welcome modal because its in-memory `firstRunComplete` was still false (Config was loaded before the local instance flipped the flag on disk). Gating the modal trigger on `installMode !== 'user-service' && installMode !== 'system-service'` makes the bug structurally impossible — service instances by definition don't need an install-mode prompt.
+
+### Added
+
+- **Auto-open browser on first run (user mode only).** When a fresh local user instance starts (`firstRunComplete === false` AND `installMode` is not service-mode), the server invokes `cmd /c start "" <url>` (Windows) / `xdg-open <url>` (Linux) / `open <url>` (macOS) so the user's default browser lands directly on the welcome modal instead of requiring them to remember the URL. Best-effort, detached + ignored stdio. New `src/server/openBrowser.ts` module.
+- **Bookmark hint paragraph in WelcomeModal.** Tells the user to wait until after picking install mode before bookmarking, because picking "yes install service" shifts the server to a new port. Styled as an info callout.
+- **`ServiceFirstRunModal`** (modal, not banner). Shows once when a service-mode instance loads for the first time — informational, says "the service will start at boot, this URL stays valid across reboots, bookmark it now." Single dismiss button. Persists `serviceFirstRunSeen: true` via PATCH `/api/config` so it never re-fires.
+- **`serviceFirstRunSeen` flag in `AppConfig`.** Separate from `firstRunComplete` to keep the two flows independent. Validated via `validateField('serviceFirstRunSeen', ...)` and persisted to `config.json`.
+- **Post-uninstall bookmark reminder.** Resume overlay text on the local instance after a service uninstall now reads "service uninstalled. ws-scrcpy-web is running in user mode now (port {LOCAL_PORT}). if you bookmarked the service-mode page, update it to this URL." Visible for 5s instead of 2s.
+
+### Audit notes
+
+- **node-pty path-dependency audit closed.** User confirmed in v0.1.8 testing that node-pty resolution is working correctly on both the local host and the test VM. The audit conclusion from v0.1.8 (resolver chain is local-deps-correct) holds. The earlier-reported "node-pty issue on test box" appears to have been a transient first-run download artifact, not a path-resolution bug.
+
 ## [0.1.8] - 2026-04-28
 
 ### Fixed

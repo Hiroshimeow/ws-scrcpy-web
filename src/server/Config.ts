@@ -42,6 +42,7 @@ export interface FlatConfig {
     webPort?: number;
     installMode?: InstallMode | null;
     firstRunComplete?: boolean;
+    serviceFirstRunSeen?: boolean;
     autoUpdate?: boolean;
     updateCheckIntervalMinutes?: number;
     channel?: 'stable' | 'beta';
@@ -163,7 +164,8 @@ function validateField<K extends keyof AppConfig>(key: K, value: unknown): Valid
             return { ok: true, value: value as AppConfig[K] };
         }
         case 'firstRunComplete':
-        case 'autoUpdate': {
+        case 'autoUpdate':
+        case 'serviceFirstRunSeen': {
             if (typeof value !== 'boolean') {
                 return { ok: false, error: `${key} must be a boolean` };
             }
@@ -204,6 +206,14 @@ function sanitizeAppConfig(raw: FlatConfig, warn: (msg: string) => void): AppCon
     if (raw.firstRunComplete !== undefined) {
         const r = validateField('firstRunComplete', raw.firstRunComplete);
         if (r.ok) out.firstRunComplete = r.value;
+        else warn(`config.json: ${r.error}; using default false`);
+    }
+    if ((raw as { serviceFirstRunSeen?: unknown }).serviceFirstRunSeen !== undefined) {
+        const r = validateField(
+            'serviceFirstRunSeen',
+            (raw as { serviceFirstRunSeen?: unknown }).serviceFirstRunSeen,
+        );
+        if (r.ok) out.serviceFirstRunSeen = r.value;
         else warn(`config.json: ${r.error}; using default false`);
     }
     if (raw.autoUpdate !== undefined) {

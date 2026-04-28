@@ -17,6 +17,7 @@ import { findAvailablePort } from './PortPicker';
 import { DeviceLabelStore } from './DeviceLabelStore';
 import { DeviceProbe } from './DeviceProbe';
 import { Logger } from './Logger';
+import { openBrowser } from './openBrowser';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
 import { ScanMw } from './mw/ScanMw';
@@ -157,6 +158,24 @@ reconcileWebPort()
         });
 
         wsService.registerPathHandler(SCAN_WS_PATH, (ws) => ScanMw.attach(ws));
+
+        // v0.1.9: auto-open browser on FIRST run, but only when this
+        // is a normal user instance (not running as a service —
+        // service instances run in session 0 and shouldn't open a
+        // browser at all; users hit them via the URL after install
+        // handoff redirects them). The open is best-effort; failure
+        // to find xdg-open / cmd.exe is logged and ignored.
+        try {
+            const appCfg = config.getAppConfig();
+            const isServiceMode =
+                appCfg.installMode === 'user-service' || appCfg.installMode === 'system-service';
+            if (appCfg.firstRunComplete === false && !isServiceMode) {
+                const port = config.servers[0]?.port ?? appCfg.webPort;
+                openBrowser(`http://localhost:${port}`);
+            }
+        } catch (err) {
+            Logger.for('Server').warn(`browser open check failed: ${(err as Error).message}`);
+        }
 
         if (process.platform === 'win32') {
             readline

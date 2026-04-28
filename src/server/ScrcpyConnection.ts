@@ -18,10 +18,17 @@ import { Logger } from './Logger';
 import { Mw, type RequestParameters } from './mw/Mw';
 import { type ScrcpyOptions, serializeOptions } from './ScrcpyOptions';
 import { scrcpyOptionsFromQuery } from './scrcpyOptionsFromQuery';
-import '../../assets/scrcpy-server';
 
 const log = Logger.for('ScrcpyConnection');
-const SERVER_FILE = path.join(__dirname, 'assets', 'scrcpy-server');
+
+/**
+ * v0.1.9: scrcpy-server lives in <deps>/scrcpy-server/, managed by
+ * DependencyManager. See DeviceProbe.serverFile() for the full
+ * rationale.
+ */
+function serverFile(): string {
+    return path.join(Config.getInstance().dependenciesPath, 'scrcpy-server', 'scrcpy-server');
+}
 
 interface SessionMetadata {
     deviceName: string;
@@ -120,7 +127,7 @@ export class ScrcpyConnection extends Mw {
         //    a different size. Keeping the JAR in place between sessions keeps
         //    Android's dexopt cache warm and drops ~15s off cold-start on older
         //    devices.
-        await ensureScrcpyServerPushed(this.adbClient, this.serial, SERVER_FILE);
+        await ensureScrcpyServerPushed(this.adbClient, this.serial, serverFile());
 
         // 2. Set up tunnel + launch scrcpy-server + collect 3 sockets.
         const sockets = useTunnelForward
