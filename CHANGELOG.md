@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-04-27
+
+### Fixed
+
+- **Service install no longer requires the user to manually launch as Administrator.** v0.1.6 returned 503 with "service install requires running ws-scrcpy-web as Administrator" because Velopack installs ws-scrcpy-web per-user under `%LocalAppData%` without elevation, and Servy's CLI needs admin to register services with SCM. The v0.1.6 guard correctly identified the problem but pushed the burden onto the user (right-click → Run as administrator on every launch). v0.1.7 elevates *only when needed*: clicking "yes install service" or Uninstall now spawns the launcher binary with a new `--elevate-and-run` argv mode via PowerShell's `Start-Process -Verb RunAs`, which fires the UAC prompt for that single operation. The main app continues to run unelevated. Implementation:
+  - **`launcher/src/elevated_runner.rs` (new)** — Rust handler that reads a JSON args file, runs `servy-cli` + `reg.exe` (HKCU Run-key for tray) + tray spawn directly in the elevated process, and writes a structured result JSON for the parent to read.
+  - **`src/server/service/elevatedRunner.ts` (new)** — Node-side counterpart. Writes args to a temp file, spawns the launcher with `Start-Process -Verb RunAs -Wait -PassThru`, reads the result. UAC denial is detected (PowerShell exits non-zero, no result file) and surfaced as a structured `{ ok: false, errorMessage: 'user declined elevation' }` payload.
+  - **`src/server/service/ServyClient.ts`** — `install()` and `uninstall()` route through `runElevated`. `status()` switches from `servy-cli status` (which would also need admin) to `sc.exe query <name>` (read-only SCM access, no admin needed) so routine status polling never prompts UAC. `start()` / `stop()` / `restart()` throw "not yet wired through elevation helper" — no current UI calls them, and adding them needs the spawn-local-and-redirect flow planned for v0.1.8.
+  - **New `ServiceInstallError` class** carries the elevated helper's structured result so callers can detect UAC denial via `err.isUacDeclined()`. `ServiceApi` maps that case to **HTTP 403** so the frontend can render UAC-aware retry instead of a generic 500.
+  - The v0.1.6 admin guard (`isWindowsAdmin()` + `ServiceApi` 503) is removed entirely; elevation is handled at the operation site, not at the API boundary. `src/server/isWindowsAdmin.ts` is deleted.
+
+### Added
+
+- **Timestamps on every `launcher.log` line.** Format: `YYYY-MM-DD HH:MM:SS.fff` UTC. The v0.1.6 service-mode debugging tonight was slower than it needed to be because adjacent log entries had no time information — multiple "supervisor: server started (pid X)" lines could have been seconds or hours apart. Implementation in `launcher/src/log.rs` is dependency-free (closed-form Unix-epoch-to-civil-date math, no chrono/time crate) so the launcher binary stays tiny.
+- **Server stdout/stderr captured to `<install>/dependencies/server.log`.** Without this, a Node child crash during boot (port-bind failure, native module load error, unhandled rejection) was completely invisible — release-build launchers detach from the console, and we never redirected stdio. The v0.1.6 "service runs but app unreachable" + "no port bound, no idea why" debugging required manually running Node from PowerShell to see the actual error. Now the same information lands in `server.log` automatically.
+- **Single-instance launcher guard with integrity-level namespacing.** Windows named mutex (`Local\WsScrcpyWeb-SingleInstance-User` for medium-integrity, `Local\WsScrcpyWeb-SingleInstance-Admin` for high-integrity) prevents accidental duplicate launches while *intentionally* allowing one non-elevated and one elevated instance to coexist. The legitimate use case: a user has the normal app running in their tray, then needs to do a service install/uninstall — they can right-click → Run as administrator to get a parallel admin instance, do the operation, and exit it. Same-integrity duplicates (two non-elevated, two elevated) are still blocked. Implementation in `launcher/src/single_instance.rs`. Velopack hooks and elevate-and-run helpers skip the guard because they legitimately race with a running instance.
+
+### Known issues queued for v0.1.8
+
+- **Port-change "restart and open new tab" does nothing.** Settings → port change → Apply: server doesn't restart, no new tab opens, page stays as-is. Needs a repro pass on the client/server contract.
+- **Uninstalling from a service-running session kills the user's browser tab.** When the user is interacting with the service-hosted web UI (browser pointed at the service's port) and clicks Uninstall, the elevated helper stops + deletes the service, which terminates the running web server, which kills the user's tab. v0.1.7 workaround: stop the service via `services.msc` first, OR launch a separate non-service local instance (now possible thanks to the integrity-namespaced single-instance guard) and uninstall from there. v0.1.8 will detect service-mode-self-uninstall and spawn-local-and-redirect automatically.
+- **node-pty path-dependency audit.** Earlier user report: node-pty resolution may be looking for a system install rather than the local `dependencies/node-pty/`. Same family of bug as the v0.1.4 bare-`'adb'` and v0.1.6 `process.execPath` issues. Audit deferred to v0.1.8 to keep v0.1.7 shippable.
+
 ## [0.1.6] - 2026-04-27
 
 ### Fixed

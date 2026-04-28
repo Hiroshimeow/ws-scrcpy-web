@@ -14,8 +14,8 @@ import {
 } from '../../common/ServiceEvents';
 import { Config } from '../Config';
 import { detectInstallScope } from '../InstallScope';
-import { isWindowsAdmin } from '../isWindowsAdmin';
 import { Logger } from '../Logger';
+import { ServiceInstallError } from '../service/ServyClient';
 import {
     getServiceClient,
     type ServiceClientFactoryResult,
@@ -48,7 +48,6 @@ export class ServiceApi {
     constructor(
         private readonly factory: () => ServiceClientFactoryResult = () => getServiceClient(),
         private readonly scope: () => 'user' | 'system' = () => detectInstallScope(),
-        private readonly isAdmin: () => boolean = () => isWindowsAdmin(),
         private readonly existsCheck: (p: string) => boolean = (p: string) => fs.existsSync(p),
     ) {}
 
@@ -152,43 +151,29 @@ export class ServiceApi {
         // user-systemd vs system-systemd unit placement.
         const newInstallMode: InstallMode = scope === 'user' ? 'user-service' : 'system-service';
 
-        // Windows-only: Servy CLI requires admin to register services with SCM.
-        // Velopack installs us per-user under %LocalAppData% without elevation
-        // by default, so an unelevated user clicking "yes install service" in
-        // the welcome modal would either hit a UAC prompt that hangs the
-        // request (browser sees "couldn't reach server") or get an access-
-        // denied 500. Detect at the API boundary and return 503 with a clear
-        // "relaunch as admin" message instead.
-        if (result.platform === 'win32' && !this.isAdmin()) {
-            const failure: ServiceActionFailure = {
-                ok: false,
-                error:
-                    'service install requires running ws-scrcpy-web as Administrator. ' +
-                    'Right-click the launcher → Run as administrator, then retry from the welcome modal.',
-            };
-            res.writeHead(503);
-            res.end(JSON.stringify(failure));
-            return true;
-        }
-
+        // v0.1.7: the v0.1.6 admin-elevation guard at this boundary is
+        // gone. ServyClient's install() now invokes a separate elevated
+        // helper process (via PowerShell Start-Process -Verb RunAs); the
+        // UAC prompt happens at that elevation step, not here. This API
+        // remains unelevated.
+        //
         // Resolve the service binary. On Windows we point Servy at the
         // packaged launcher, NOT process.execPath. process.execPath is the
         // currently-running Node binary, which (a) in dev resolves to
-        // whatever Node is on PATH (e.g., nvm4w-managed dev Node — same
-        // architectural failure as the v0.1.4 bare-'adb' bug), and (b) even
-        // when it resolves to the bundled Node, Servy would launch it with
-        // no script argument and Node would idle in REPL mode. The launcher
-        // is itself a local-deps binary in the install root, takes no args,
-        // and supervises Node + dist/index.js correctly — exactly what we
-        // want SCM to invoke.
+        // whatever Node is on PATH (same architectural failure as the
+        // v0.1.4 bare-'adb' bug), and (b) even when bundled, Servy would
+        // launch Node with no script argument and Node would idle in REPL
+        // mode. The launcher is a local-deps binary in the install root,
+        // takes no args, and already knows how to supervise Node +
+        // dist/index.js — exactly what we want SCM to invoke.
         //
-        // startupDir pins the SCM-launched child's CWD to the install root
-        // so the launcher's relative resolution of seed/, dependencies/,
-        // dist/ works. Without it, Servy falls back to the directory of the
-        // executable and the launcher's path resolution silently breaks
-        // (this was the root of the v0.1.5 "service runs but app
-        // unreachable" bug — Servy log showed "Working directory fallback
-        // applied: C:\nvm4w\nodejs").
+        // startupDir pins the SCM-launched child's CWD to the install
+        // root so the launcher's relative seed/, dependencies/, dist/
+        // resolution works. Without it, Servy falls back to the dir of
+        // the executable and the launcher's path resolution silently
+        // breaks (root of the v0.1.5 "service runs but app unreachable"
+        // bug — Servy log showed "Working directory fallback applied:
+        // C:\nvm4w\nodejs").
         let binPath: string;
         let startupDir: string;
         if (result.platform === 'win32') {
@@ -236,6 +221,16 @@ export class ServiceApi {
                 scope,
             });
         } catch (err) {
+            // ServiceInstallError carries a structured result from the
+            // elevated helper. UAC-declined gets its own 403 status so
+            // the frontend can render a UAC-aware retry prompt; other
+            // failures get 500.
+            if (err instanceof ServiceInstallError && err.isUacDeclined()) {
+                const body: ServiceActionFailure = { ok: false, error: err.message };
+                res.writeHead(403);
+                res.end(JSON.stringify(body));
+                return true;
+            }
             const body: ServiceActionFailure = { ok: false, error: (err as Error).message };
             res.writeHead(500);
             res.end(JSON.stringify(body));
@@ -272,18 +267,20 @@ export class ServiceApi {
             return true;
         }
 
-        // Best-effort stop before uninstall. Ignore failures (service may
-        // already be stopped or not installed); uninstall itself will surface
-        // a real error if the service truly can't be torn down.
-        try {
-            await result.client.stop(WS_SCRCPY_SERVICE_NAME);
-        } catch (err) {
-            log.info(`stop before uninstall returned: ${(err as Error).message}`);
-        }
-
+        // v0.1.7: the elevated helper does stop+uninstall in one
+        // elevated process, so we don't pre-stop here anymore. (Calling
+        // ServyClient.stop separately would also throw "not yet wired
+        // through the elevation helper" — the welcome modal flow goes
+        // through uninstall directly.)
         try {
             await result.client.uninstall(WS_SCRCPY_SERVICE_NAME);
         } catch (err) {
+            if (err instanceof ServiceInstallError && err.isUacDeclined()) {
+                const body: ServiceActionFailure = { ok: false, error: err.message };
+                res.writeHead(403);
+                res.end(JSON.stringify(body));
+                return true;
+            }
             const body: ServiceActionFailure = { ok: false, error: (err as Error).message };
             res.writeHead(500);
             res.end(JSON.stringify(body));

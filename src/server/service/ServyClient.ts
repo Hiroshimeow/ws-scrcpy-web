@@ -1,46 +1,37 @@
 /**
  * Windows ServiceClient implementation backed by the Servy CLI (v8.2).
  *
- * Servy is a tiny single-binary service manager bundled into our publish/
- * folder by `scripts/fetch-servy.mjs`. We invoke it synchronously via
- * `execFileSync` — every operation is fast enough (sub-second) that we wrap
- * the result in a resolved Promise to satisfy the cross-platform interface.
+ * Servy is a tiny single-binary service manager bundled by
+ * `scripts/fetch-servy.mjs`. Servy CLI requires admin to register
+ * services with SCM, and Velopack installs ws-scrcpy-web per-user under
+ * %LocalAppData% without elevation, so we cannot call servy-cli
+ * directly from this Node server process.
  *
- * CLI shape (v8.2 — see https://github.com/aelassas/servy):
- *   servy-cli install --name <Name> --displayName <DisplayName>
- *                     --description <Description> --path <Path>
- *                     --startupType Automatic|Manual|Disabled
- *                     --maxRestartAttempts <N>
- *                     --envVars KEY1=VAL1;KEY2=VAL2
- *                     --stdout <Path> --stderr <Path>
- *   servy-cli uninstall --name <Name>
- *   servy-cli start     --name <Name>
- *   servy-cli stop      --name <Name>
- *   servy-cli restart   --name <Name>
- *   servy-cli list                            (status is parsed from this)
- *
- * Account model: no `--user` flag is passed, so Servy runs the service as
- * Local System (its default). Local System is the standard Windows account
- * for services that need to start at boot, write to system locations, and
- * spawn child processes (adb in our case). It side-steps password capture
- * in the welcome modal. The full set of Servy recovery actions is available
- * to Local System, so we let Servy pick its default.
+ * v0.1.7 elevation strategy:
+ *   - install / uninstall / start / stop / restart go through the
+ *     `runElevated` helper in elevatedRunner.ts. That helper spawns our
+ *     own launcher binary with `--elevate-and-run` argv via
+ *     PowerShell's Start-Process -Verb RunAs, which fires the UAC
+ *     prompt. The launcher's elevated_runner.rs handler does the
+ *     actual servy-cli invocation in the elevated context.
+ *   - status() does NOT need admin (read-only SCM query) and is
+ *     implemented via `sc.exe query <name>` directly. No UAC prompt
+ *     for routine status polling, which is what Settings + the
+ *     home-page header poll regularly.
  *
  * v0.1.4 attempted `--account currentUser` and `--binPath`/`--startType`/
- * `--logPath` — none of those are real Servy 8.2 flags; the install wizard
- * hard-failed with "Option 'binPath' is unknown." The 0.1.5 fix uses
- * Servy's actual flag names and drops the account flag (Local System).
- *
- * Status detection: Servy v8.2 has no single-service status subcommand, so we
- * call `servy-cli list` and regex-match the named row to extract the running /
- * stopped state. If the name isn't present in the listing, the service is
- * `not-installed`.
+ * `--logPath` — none of those are real Servy 8.2 flags; the install
+ * wizard hard-failed with "Option 'binPath' is unknown." v0.1.5 used the
+ * correct flags. v0.1.6 added --startupDir, --recoveryAction, and the
+ * post-install start call. v0.1.7 keeps all of that argv shape (now
+ * lives in launcher/src/elevated_runner.rs) and adds elevation.
  */
 
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Logger } from '../Logger';
+import { resolveLauncherPath, runElevated } from './elevatedRunner';
 import type {
     ServiceClient,
     ServiceInstallOptions,
@@ -48,11 +39,6 @@ import type {
 } from './ServiceClient';
 
 const log = Logger.for('ServyClient');
-
-/** HKCU Run-key path — user-scope autostart. Survives without admin elevation. */
-const TRAY_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-/** Run-key value name; matches the binary name conventionally. */
-const TRAY_RUN_VALUE = 'WsScrcpyWebTray';
 
 /**
  * Resolve the absolute path of `servy-cli.exe`.
@@ -94,71 +80,31 @@ function formatEnvVars(envVars: Record<string, string>): string {
 }
 
 /**
- * Wrap execFileSync so the thrown Error includes stderr — by default Node
- * surfaces only the exit code, which makes Servy failures opaque.
- */
-function runServy(servyPath: string, args: string[]): string {
-    try {
-        const stdout = execFileSync(servyPath, args, {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            encoding: 'utf8',
-        });
-        return stdout;
-    } catch (err) {
-        const e = err as NodeJS.ErrnoException & { stderr?: Buffer | string; stdout?: Buffer | string };
-        const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? '';
-        const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? '';
-        const detail = (stderr || stdout || e.message).trim();
-        throw new Error(
-            `servy-cli ${args[0] ?? '?'} failed: ${detail || e.message}`,
-        );
-    }
-}
-
-/**
- * Parse `servy-cli status -n <name>` output.
+ * Parse `sc.exe query <name>` output for the SERVICE_STATE field.
  *
- * Servy 8.2 (verified live in v0.1.5 testing) prints exactly:
- *   Service status for '<name>': <State>
- * where <State> is one of: Stopped, StartPending, StopPending, Running,
- * ContinuePending, PausePending, Paused.
+ * Real output looks like:
+ *   SERVICE_NAME: WsScrcpyWeb
+ *           TYPE               : 10  WIN32_OWN_PROCESS
+ *           STATE              : 4  RUNNING
+ *           WIN32_EXIT_CODE    : 0  (0x0)
+ *           ...
  *
- * v0.1.5 used `servy-cli list` to derive status, but Servy 8.2 has no
- * `list` subcommand — invoking it just prints the help text, which our
- * old `parseServyListStatus` parsed and never matched, so the UI always
- * showed "not installed" even when the service was registered and running.
- * Replaced with a single-service status query in v0.1.6.
+ * SCM state codes (from winsvc.h):
+ *   1 = STOPPED, 2 = START_PENDING, 3 = STOP_PENDING, 4 = RUNNING,
+ *   5 = CONTINUE_PENDING, 6 = PAUSE_PENDING, 7 = PAUSED.
  *
- * For our coarse 3-state UI (`running` | `stopped` | `not-installed`),
- * everything that isn't `Running` collapses to `stopped`. The transient
- * pending states are rare, brief, and indistinguishable from a useful UI
- * perspective.
+ * For our 3-state UI we collapse everything that isn't RUNNING to
+ * 'stopped'. Pending states are brief and indistinguishable from a
+ * useful UX perspective.
  */
-export function parseServyStatus(output: string): ServiceStatus {
-    const m = output.match(/Service status for '[^']+':\s*(\w+)/i);
-    if (!m) {
-        // No match means we got something other than the expected single-line
-        // response — treat conservatively as stopped rather than guessing.
-        return 'stopped';
-    }
-    return m[1].toLowerCase() === 'running' ? 'running' : 'stopped';
-}
-
-/**
- * Match Servy stderr text indicating "the service does not exist." Servy
- * 8.2 returns non-zero exit + an error message containing one of these
- * substrings (English locale; non-English locales may localize, in which
- * case `status()` returns the full error to surface real Servy failures).
- */
-const NOT_INSTALLED_PATTERNS = [
-    /service.*not.*found/i,
-    /service.*does not exist/i,
-    /no.*service.*name/i,
-    /not.*installed/i,
-];
-
-export function isServyNotInstalledError(message: string): boolean {
-    return NOT_INSTALLED_PATTERNS.some((re) => re.test(message));
+export function parseScQueryStatus(output: string): ServiceStatus {
+    // Match either the textual STATE name or the numeric code.
+    // Pattern: "STATE              : 4  RUNNING"
+    const stateLine = output.match(/STATE\s*:\s*(\d+)\s+([A-Z_]+)/i);
+    if (!stateLine) return 'stopped';
+    const code = Number(stateLine[1]);
+    if (code === 4) return 'running'; // SERVICE_RUNNING
+    return 'stopped';
 }
 
 export class ServyClient implements ServiceClient {
@@ -169,188 +115,177 @@ export class ServyClient implements ServiceClient {
     }
 
     public async install(opts: ServiceInstallOptions): Promise<void> {
-        // Servy 8.2 flag names — verified live in the v0.1.5 service log
-        // and against the official wiki at github.com/aelassas/servy/wiki.
-        // Argv shape:
-        //   --path        the executable Servy launches (here: the launcher)
-        //   --startupDir  working directory the SCM hands the child; without
-        //                 it Servy logs "Working directory fallback applied"
-        //                 and the launcher's relative seed/, dependencies/,
-        //                 dist/ resolution breaks
-        //   --params      additional args appended after --path; the launcher
-        //                 takes none, so we omit it
-        //   --recoveryAction RestartProcess   restart the child (not the SCM
-        //                 service) on crash. RestartService and
-        //                 RestartComputer are only available to elevated
-        //                 accounts and Local System; we use RestartProcess
-        //                 because it works for every supported account.
-        //   --stdout / --stderr   pointed at the same file for unified log
-        const args = [
-            'install',
-            '--name', opts.name,
-            '--displayName', opts.displayName,
-            '--description', opts.description,
-            '--path', opts.binPath,
-            '--startupDir', opts.startupDir,
-            '--startupType', opts.startType,
-            '--recoveryAction', 'RestartProcess',
-            '--maxRestartAttempts', String(opts.maxRestartAttempts),
-            '--envVars', formatEnvVars(opts.envVars),
-            '--stdout', opts.logPath,
-            '--stderr', opts.logPath,
-        ];
-        runServy(this.servyPath, args);
-
-        // Auto-start: Servy install does not start the service. Without an
-        // explicit `start`, the user has to either reboot (so --startupType
-        // Automatic kicks in) or manually start via services.msc. Wrap in
-        // try/catch — install already succeeded, so a failed start should
-        // surface as a warning + a "stopped" status, not a failed install.
-        try {
-            runServy(this.servyPath, ['start', '--name', opts.name]);
-        } catch (err) {
-            log.warn(
-                `service installed but auto-start failed: ${(err as Error).message}`,
+        // v0.1.7: install routes through the elevate-and-run helper.
+        // The helper handles all argv translation + post-install start
+        // + tray Run-key registration + tray spawn in the elevated
+        // process. We just hand it the abstract operation params.
+        if (!fs.existsSync(resolveLauncherPath())) {
+            throw new Error(
+                `service install requires the packaged launcher binary at ${resolveLauncherPath()}, ` +
+                    `which is not present (likely a dev/from-source run)`,
             );
         }
-
-        // SP3 P4a — register and spawn the tray helper for user-login autostart.
-        // The Servy registration above succeeded; tray is a UX nicety on top, so
-        // we tolerate failures without bubbling them up. The user's service is
-        // already installed; tray-icon failure is a degraded but functional mode.
-        try {
-            const trayPath = this.resolveTrayHelperPath();
-            this.registerTrayRunKey(trayPath);
-            // Detached + unref'd so the helper process outlives this API call
-            // and continues running independently of the Node server lifecycle.
-            spawn(trayPath, [], { detached: true, stdio: 'ignore' }).unref();
-        } catch (err) {
-            log.warn(
-                `tray helper setup failed (service install succeeded): ${
-                    (err as Error).message
-                }`,
+        const trayHelperPath = this.tryResolveTrayHelperPath();
+        const result = await runElevated('install-service', {
+            servyPath: this.servyPath,
+            name: opts.name,
+            displayName: opts.displayName,
+            description: opts.description,
+            binPath: opts.binPath,
+            startupDir: opts.startupDir,
+            startupType: opts.startType,
+            maxRestartAttempts: opts.maxRestartAttempts,
+            envVars: formatEnvVars(opts.envVars),
+            logPath: opts.logPath,
+            trayHelperPath,
+        });
+        if (!result.ok) {
+            throw new ServiceInstallError(
+                result.errorMessage ?? 'service install failed',
+                result,
             );
+        }
+        if (result.stderr) {
+            log.warn(`service install completed with warnings: ${result.stderr.trim()}`);
         }
     }
 
     public async uninstall(name: string): Promise<void> {
-        runServy(this.servyPath, ['uninstall', '--name', name]);
-
-        // SP3 P4a — best-effort removal of the tray Run-key. The Servy uninstall
-        // above already succeeded; failure to remove the Run-key shouldn't
-        // bubble up. Worst case the user sees a stale Run-key entry on next
-        // login that fails silently when the binary is gone.
-        try {
-            this.unregisterTrayRunKey();
-        } catch (err) {
-            log.warn(
-                `tray Run-key removal failed (service uninstall succeeded): ${
-                    (err as Error).message
-                }`,
+        // v0.1.7: uninstall routes through the elevate-and-run helper too.
+        // The helper stops the service first, then uninstalls, then
+        // cleans up the tray Run-key, all in the elevated process.
+        if (!fs.existsSync(resolveLauncherPath())) {
+            throw new Error(
+                `service uninstall requires the packaged launcher binary at ${resolveLauncherPath()}, ` +
+                    `which is not present (likely a dev/from-source run)`,
+            );
+        }
+        const result = await runElevated('uninstall-service', {
+            servyPath: this.servyPath,
+            name,
+        });
+        if (!result.ok) {
+            throw new ServiceInstallError(
+                result.errorMessage ?? 'service uninstall failed',
+                result,
             );
         }
     }
 
+    /**
+     * Read-only SCM query — does NOT need admin elevation. We use
+     * `sc.exe query <name>` rather than `servy-cli status` because:
+     *   1. sc.exe is a Windows built-in, available unelevated.
+     *   2. servy-cli's status subcommand also requires admin; using
+     *      it would mean a UAC prompt every time the home page or
+     *      Settings panel polls service status, which would be
+     *      maddening.
+     *   3. SCM is the source of truth for SCM state — going through
+     *      Servy is one indirection too many for a read-only check.
+     */
     public async status(name: string): Promise<ServiceStatus> {
         try {
-            const out = runServy(this.servyPath, ['status', '--name', name]);
-            return parseServyStatus(out);
+            const out = execFileSync('sc.exe', ['query', name], {
+                stdio: ['ignore', 'pipe', 'pipe'],
+                encoding: 'utf8',
+                timeout: 5_000,
+            });
+            return parseScQueryStatus(out);
         } catch (err) {
-            // Servy returns non-zero with a "service not found" message when
-            // the named service doesn't exist. Map that one specific case to
-            // 'not-installed'; rethrow anything else so genuine Servy
-            // failures (binary missing, permission denied, etc.) surface to
-            // the API layer instead of being silently swallowed.
-            const message = (err as Error).message;
-            if (isServyNotInstalledError(message)) return 'not-installed';
-            throw err;
+            // sc.exe returns exit 1060 (ERROR_SERVICE_DOES_NOT_EXIST)
+            // when the named service isn't registered. Surfaced via
+            // execFileSync's thrown Error with `code` numeric. Map that
+            // to 'not-installed'; rethrow other errors so genuine
+            // failures (sc.exe missing, etc.) surface to the API layer.
+            const e = err as Error & {
+                stderr?: Buffer | string;
+                stdout?: Buffer | string;
+                code?: number | string;
+                status?: number | null;
+            };
+            const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? '';
+            const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? '';
+            // sc.exe returns 1060 ERROR_SERVICE_DOES_NOT_EXIST. execFileSync
+            // surfaces this as `error.status` (numeric) on the thrown error.
+            const exitCode = typeof e.status === 'number' ? e.status : (typeof e.code === 'number' ? e.code : null);
+            if (
+                exitCode === 1060 ||
+                /service.*does not exist/i.test(stderr) ||
+                /service.*does not exist/i.test(stdout)
+            ) {
+                return 'not-installed';
+            }
+            throw new Error(`sc.exe query ${name} failed: ${stderr || e.message}`);
         }
     }
 
     public async restart(name: string): Promise<void> {
-        runServy(this.servyPath, ['restart', '--name', name]);
+        // restart = stop + start, but Servy's `restart` is one round-trip.
+        // Routes through elevation since it touches SCM control.
+        if (!fs.existsSync(resolveLauncherPath())) {
+            throw new Error(
+                `service restart requires the packaged launcher binary at ${resolveLauncherPath()}`,
+            );
+        }
+        // We don't have a dedicated `restart-service` command in the
+        // elevate-and-run helper today; the welcome-modal + Settings UI
+        // doesn't expose restart as a primitive (port-change uses the
+        // .restart marker / exit-75 path through the Node side, not
+        // SCM-restart). If/when we add that UI, we'll add the helper
+        // command. For now, fail loudly so it's not silently broken.
+        throw new Error(
+            'restart is not yet wired through the elevation helper in v0.1.7. ' +
+                'Use stop + start, or restart from services.msc.',
+        );
     }
 
     public async stop(name: string): Promise<void> {
-        runServy(this.servyPath, ['stop', '--name', name]);
+        // Stop is part of uninstall, but a standalone stop also requires
+        // SCM control. Same pattern as restart — not yet exposed because
+        // no UI calls it today (UninstallService stops as part of its
+        // flow). Fail loudly rather than silently break.
+        throw new Error(
+            'standalone stop is not yet wired through the elevation helper in v0.1.7. ' +
+                'Use uninstall, or stop from services.msc.',
+        );
     }
 
     /**
-     * Resolve the absolute path of the tray helper exe. Mirrors
-     * `resolveServyPath`'s dual-layout strategy:
-     *   1. Installed (Velopack): sibling of the launcher in `process.cwd()`.
-     *   2. Dev / from-source: `<cwd>/publish/ws-scrcpy-web-tray.exe`.
-     *
-     * Throws a descriptive error listing both attempted paths if neither
-     * exists — install() catches and downgrades this to a warning.
+     * Find the tray helper exe if present, returning `undefined` when
+     * absent. The elevated helper handles tray Run-key registration
+     * itself; we just hand it the path (or null) so it can no-op when
+     * the helper isn't installed.
      */
-    private resolveTrayHelperPath(): string {
+    private tryResolveTrayHelperPath(): string | undefined {
         const installedCandidate = path.join(process.cwd(), 'ws-scrcpy-web-tray.exe');
         if (fs.existsSync(installedCandidate)) return installedCandidate;
         const cwdPublishCandidate = path.join(process.cwd(), 'publish', 'ws-scrcpy-web-tray.exe');
         if (fs.existsSync(cwdPublishCandidate)) return cwdPublishCandidate;
-        throw new Error(
-            `ws-scrcpy-web-tray.exe not found (looked at ${installedCandidate} and ${cwdPublishCandidate})`,
-        );
+        return undefined;
+    }
+}
+
+/**
+ * Error thrown by ServyClient install/uninstall when the elevated helper
+ * returns ok=false. Carries the structured result so callers can render
+ * UAC-denied vs servy-failure differently in the UI.
+ */
+export class ServiceInstallError extends Error {
+    constructor(
+        message: string,
+        public readonly result: import('./elevatedRunner').ElevatedResult,
+    ) {
+        super(message);
+        this.name = 'ServiceInstallError';
     }
 
     /**
-     * Register the tray helper to auto-start at user login via HKCU Run-key.
-     * Idempotent — `/f` overwrites any existing value with the same name.
-     *
-     * Uses `reg.exe` with array-form args (no shell interpolation) so a path
-     * containing spaces or special chars cannot inject extra arguments.
+     * Heuristic: did the user decline the UAC prompt? Distinguishable
+     * from servy-failures because the elevated helper never wrote a
+     * result file in that case, so the runner synthesizes a result with
+     * `errorMessage` matching this pattern.
      */
-    private registerTrayRunKey(trayHelperPath: string): void {
-        execFileSync(
-            'reg.exe',
-            [
-                'add',
-                TRAY_RUN_KEY,
-                '/v', TRAY_RUN_VALUE,
-                '/t', 'REG_SZ',
-                '/d', trayHelperPath,
-                '/f',
-            ],
-            { stdio: ['ignore', 'pipe', 'pipe'] },
-        );
-    }
-
-    /**
-     * Remove the tray helper Run-key entry. Tolerant of "value does not exist"
-     * (already removed / never installed); other reg.exe failures rethrow.
-     *
-     * reg.exe localizes its error messages, so we match a couple of English
-     * substrings observed on en-US Windows. On non-English locales we may
-     * surface a spurious error; install/uninstall both wrap this in a try
-     * block that logs and proceeds, so the worst-case impact is a noisy log
-     * rather than a failed uninstall.
-     */
-    private unregisterTrayRunKey(): void {
-        try {
-            execFileSync(
-                'reg.exe',
-                [
-                    'delete',
-                    TRAY_RUN_KEY,
-                    '/v', TRAY_RUN_VALUE,
-                    '/f',
-                ],
-                { stdio: ['ignore', 'pipe', 'pipe'] },
-            );
-        } catch (err) {
-            const e = err as NodeJS.ErrnoException & {
-                stderr?: Buffer | string;
-                stdout?: Buffer | string;
-            };
-            const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? '';
-            const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? '';
-            const detail = `${stderr}\n${stdout}\n${e.message ?? ''}`;
-            if (/cannot find/i.test(detail) || /system was unable to find/i.test(detail)) {
-                // Run-key was already absent — desired post-state achieved.
-                return;
-            }
-            throw err;
-        }
+    public isUacDeclined(): boolean {
+        return /declined elevation/i.test(this.result.errorMessage ?? '');
     }
 }

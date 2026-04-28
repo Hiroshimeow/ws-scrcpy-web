@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod elevated_runner;
 mod hooks;
 mod log;
 mod paths;
+mod single_instance;
 mod spawn;
 mod supervisor;
 mod tray;
@@ -13,15 +15,51 @@ fn main() {
         env!("CARGO_PKG_VERSION")
     ));
 
+    let args: Vec<String> = std::env::args().collect();
+
+    // Elevate-and-run dispatch comes BEFORE Velopack hooks because the
+    // helper is invoked through a UAC prompt and is a single-shot
+    // operation — no need to bring up the supervisor, no need to register
+    // Velopack hooks (this process started elevated solely to do the
+    // service install/uninstall and exit).
+    if let Some(code) = elevated_runner::handle(&args) {
+        log::info(&format!("elevate-and-run exiting with code {code}"));
+        std::process::exit(code);
+    }
+
     // Velopack lifecycle-arg dispatch must happen BEFORE
     // VelopackApp::build().run(). The Rust velopack crate (0.0.x) does NOT
     // expose fast-callback builder methods (those are C# only), so we parse
     // the flags ourselves and exit synchronously per Contract 4.
-    let args: Vec<String> = std::env::args().collect();
     if let Some(code) = hooks::handle_velopack_hook(&args) {
         log::info(&format!("hook handler exiting with code {code}"));
         std::process::exit(code);
     }
+
+    // Single-instance guard. Runs AFTER hook + elevate-and-run dispatch
+    // (those are short-lived single-shot operations that can legitimately
+    // run alongside the main launcher). Acquired BEFORE Velopack init,
+    // tray spawn, supervisor — any side effect of "we are running."
+    //
+    // Failure modes:
+    //   - Mutex acquire failed unexpectedly: log + proceed without guard.
+    //     This shouldn't normally happen and we'd rather have one extra
+    //     instance than refuse to start.
+    //   - Mutex already held: another instance is running; exit 0.
+    let mutex_name = single_instance::current_mutex_name();
+    let _instance_guard = match single_instance::acquire(&mutex_name) {
+        Ok(Some(guard)) => Some(guard),
+        Ok(None) => {
+            log::info("another ws-scrcpy-web-launcher instance is already running; exiting");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            log::error(&format!(
+                "could not acquire single-instance mutex (proceeding without guard): {e:#}"
+            ));
+            None
+        }
+    };
 
     // Per SP3 P2 Contract 5: VelopackApp::build().run() MUST be the first
     // executable code path on the normal-launch branch. May terminate or

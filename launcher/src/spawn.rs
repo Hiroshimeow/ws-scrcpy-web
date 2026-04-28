@@ -11,6 +11,7 @@
 // Server entry is `<exe_dir>/dist/index.js`.
 
 use anyhow::{Context, Result, bail};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
@@ -71,6 +72,30 @@ pub fn resolve_server_entry() -> Result<PathBuf> {
     resolve_server_entry_with(exe_dir)
 }
 
+/// Open the server.log file in append mode for stdout/stderr redirection.
+///
+/// Without this redirection, the Node child's output goes to the void in
+/// release builds (no attached console). Server-side crashes (e.g., port
+/// already bound, native module load failures, unhandled rejections in
+/// startup) become silent and undebuggable. The v0.1.6 "service runs but
+/// app unreachable" + "no port bound, no idea why" debugging tonight was
+/// only possible by manually running Node from PowerShell — now the same
+/// information is captured automatically.
+///
+/// Returns `Ok(None)` if we couldn't open the log file (we still spawn the
+/// child with stdio inherited so the user's terminal sees output if any).
+fn open_server_log(deps_path: &Path) -> Option<std::fs::File> {
+    let log_path = deps_path.join("server.log");
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok()
+}
+
 /// Spawn the Node server with hidden console window.
 ///
 /// `DEPS_PATH` is set on the CHILD's env (not the launcher's own env) so the
@@ -89,11 +114,24 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
     let exe = std::env::current_exe()?;
     let work_dir = exe.parent().context("exe has no parent dir")?.to_path_buf();
 
-    let child = Command::new(&node)
-        .arg(&entry)
+    let mut cmd = Command::new(&node);
+    cmd.arg(&entry)
         .current_dir(&work_dir)
         .env("DEPS_PATH", deps_path)
-        .creation_flags(CREATE_NO_WINDOW)
+        .creation_flags(CREATE_NO_WINDOW);
+
+    // Plumb the child's stdout AND stderr into <deps>/server.log so a
+    // crashed startup leaves a forensic trail. Both go to the same file
+    // (interleaved); separating them is rarely worth the duplicate I/O.
+    if let Some(log) = open_server_log(deps_path) {
+        let log_clone = log.try_clone().ok();
+        cmd.stdout(std::process::Stdio::from(log));
+        if let Some(c) = log_clone {
+            cmd.stderr(std::process::Stdio::from(c));
+        }
+    }
+
+    let child = cmd
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", node, entry))?;
 
@@ -107,10 +145,20 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
     let exe = std::env::current_exe()?;
     let work_dir = exe.parent().context("exe has no parent dir")?.to_path_buf();
 
-    let child = Command::new(&node)
-        .arg(&entry)
+    let mut cmd = Command::new(&node);
+    cmd.arg(&entry)
         .current_dir(&work_dir)
-        .env("DEPS_PATH", deps_path)
+        .env("DEPS_PATH", deps_path);
+
+    if let Some(log) = open_server_log(deps_path) {
+        let log_clone = log.try_clone().ok();
+        cmd.stdout(std::process::Stdio::from(log));
+        if let Some(c) = log_clone {
+            cmd.stderr(std::process::Stdio::from(c));
+        }
+    }
+
+    let child = cmd
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", node, entry))?;
 

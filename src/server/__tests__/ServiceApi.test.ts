@@ -171,7 +171,9 @@ describe('ServiceApi', () => {
         // v0.1.6 injected isAdmin + existsCheck — stub both true so the
         // Windows install path runs through to the client without short-
         // circuiting on the admin guard or the launcher-exe-missing 500.
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => true);
+        // v0.1.7: ServiceApi no longer takes an isAdmin injection. The
+        // existsCheck stub stays so the launcher-exe presence check passes.
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(200);
@@ -206,7 +208,7 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'system', () => true, () => true);
+        const api = new ServiceApi(() => factoryResult, () => 'system', () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         const body = JSON.parse((res as any).getBody());
@@ -214,25 +216,39 @@ describe('ServiceApi', () => {
         expect((installFn.mock.calls[0]?.[0] as { account?: unknown }).account).toBeUndefined();
     });
 
-    it('POST /install returns 503 when not running as Administrator (Windows)', async () => {
-        const installFn = vi.fn<(opts: Parameters<ServiceClient['install']>[0]) => Promise<void>>(async () => undefined);
-        const client = fakeClient({ install: installFn });
+    it('POST /install returns 403 when ServyClient throws ServiceInstallError with isUacDeclined=true', async () => {
+        // v0.1.7: ServiceApi no longer guards on admin elevation up
+        // front; instead, ServyClient.install() spawns an elevated
+        // helper which prompts for UAC. If the user declines the prompt,
+        // the helper throws a ServiceInstallError; ServiceApi maps that
+        // specific case to 403 so the frontend can render a UAC-aware
+        // retry prompt.
+        const { ServiceInstallError } = await import('../service/ServyClient');
+        const installFn = vi.fn(async () => {
+            throw new ServiceInstallError(
+                'user declined elevation. Service install requires Administrator',
+                {
+                    ok: false,
+                    exitCode: -1,
+                    stdout: '',
+                    stderr: '',
+                    errorMessage: 'user declined elevation. Service install requires Administrator',
+                },
+            );
+        });
+        const client = fakeClient({ install: installFn as any });
         const factoryResult: ServiceClientFactoryResult = {
             client,
             supported: true,
             platform: 'win32',
         };
-        // isAdmin returns false — admin guard should short-circuit BEFORE
-        // touching the client. No UAC prompt, no hung fetch, just a clean
-        // actionable error.
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => false, () => true);
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
-        expect((res as any).getStatus()).toBe(503);
+        expect((res as any).getStatus()).toBe(403);
         const body = JSON.parse((res as any).getBody());
         expect(body.ok).toBe(false);
-        expect(body.error).toMatch(/Administrator/i);
-        expect(installFn).not.toHaveBeenCalled();
+        expect(body.error).toMatch(/declined elevation/i);
     });
 
     it('POST /install returns 500 when the launcher exe is missing (dev runs)', async () => {
@@ -246,7 +262,7 @@ describe('ServiceApi', () => {
         // existsCheck returns false — service install can't proceed without
         // the packaged launcher binary. Caller gets a clear 500 with the
         // expected path mentioned, NOT a confusing Servy error message.
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => false);
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => false);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(500);
@@ -267,7 +283,9 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => true);
+        // v0.1.7: ServiceApi no longer takes an isAdmin injection. The
+        // existsCheck stub stays so the launcher-exe presence check passes.
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(500);
@@ -276,15 +294,15 @@ describe('ServiceApi', () => {
         expect(body.error).toMatch(/Service already exists/);
     });
 
-    it('POST /uninstall calls stop then uninstall and reverts installMode', async () => {
-        const stopFn = vi.fn(async () => undefined);
+    it('POST /uninstall calls uninstall and reverts installMode', async () => {
+        // v0.1.7: ServiceApi no longer calls stop() separately before
+        // uninstall — the elevated helper does stop+uninstall in one
+        // elevated process.
         const uninstallFn = vi.fn(async () => undefined);
         const client = fakeClient({
-            stop: stopFn,
             uninstall: uninstallFn,
             status: vi.fn(async () => 'not-installed' as const),
         });
-        // Seed installMode='user-service' before uninstall.
         Config.getInstance().updateAppConfig({ installMode: 'user-service' });
         const factoryResult: ServiceClientFactoryResult = {
             client,
@@ -299,20 +317,24 @@ describe('ServiceApi', () => {
         expect(body.ok).toBe(true);
         expect(body.status).toBe('not-installed');
         expect(body.installMode).toBe('user');
-        expect(stopFn).toHaveBeenCalledWith('WsScrcpyWeb');
         expect(uninstallFn).toHaveBeenCalledWith('WsScrcpyWeb');
     });
 
-    it('POST /uninstall ignores stop() failures and proceeds to uninstall', async () => {
-        const stopFn = vi.fn(async () => {
-            throw new Error('not running');
+    it('POST /uninstall returns 403 when ServiceInstallError reports UAC declined', async () => {
+        const { ServiceInstallError } = await import('../service/ServyClient');
+        const uninstallFn = vi.fn(async () => {
+            throw new ServiceInstallError(
+                'user declined elevation. Service uninstall requires Administrator',
+                {
+                    ok: false,
+                    exitCode: -1,
+                    stdout: '',
+                    stderr: '',
+                    errorMessage: 'user declined elevation. Service uninstall requires Administrator',
+                },
+            );
         });
-        const uninstallFn = vi.fn(async () => undefined);
-        const client = fakeClient({
-            stop: stopFn,
-            uninstall: uninstallFn,
-            status: vi.fn(async () => 'not-installed' as const),
-        });
+        const client = fakeClient({ uninstall: uninstallFn as any });
         const factoryResult: ServiceClientFactoryResult = {
             client,
             supported: true,
@@ -321,8 +343,9 @@ describe('ServiceApi', () => {
         const api = new ServiceApi(() => factoryResult, () => 'user');
         const { req, res } = makeReqRes('/api/service/uninstall', 'POST');
         await api.handle(req, res);
-        expect((res as any).getStatus()).toBe(200);
-        expect(uninstallFn).toHaveBeenCalled();
+        expect((res as any).getStatus()).toBe(403);
+        const body = JSON.parse((res as any).getBody());
+        expect(body.error).toMatch(/declined elevation/i);
     });
 
     it('POST /uninstall returns 500 when uninstall itself fails', async () => {
