@@ -38,6 +38,17 @@ export interface ServiceInstallOptions {
     description: string;
     /** Absolute path to the binary the service should launch. */
     binPath: string;
+    /**
+     * Working directory the SCM hands the service-launched child process.
+     *
+     * Required: the launcher resolves `seed/`, `dependencies/`, `dist/`
+     * relative to its CWD, so we MUST pin this to the install root. Without
+     * it, Servy logs "Working directory fallback applied" (using the dir of
+     * the executable) and the launcher's path resolution silently breaks.
+     *
+     * On Linux this becomes the systemd unit's `WorkingDirectory=` directive.
+     */
+    startupDir: string;
     /** Service start type. */
     startType: ServiceStartType;
     /** Restart attempts before SCM gives up on the service. */

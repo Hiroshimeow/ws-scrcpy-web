@@ -53,6 +53,7 @@ const baseOpts: ServiceInstallOptions = {
     displayName: 'ws-scrcpy-web',
     description: 'ws-scrcpy-web — browser-based scrcpy front-end for Android devices.',
     binPath: '/opt/ws-scrcpy-web/ws-scrcpy-web-launcher',
+    startupDir: '/opt/ws-scrcpy-web',
     startType: 'Automatic',
     maxRestartAttempts: 3,
     envVars: { DEPS_PATH: '/opt/ws-scrcpy-web/dependencies' },

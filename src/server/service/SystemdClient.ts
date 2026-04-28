@@ -89,6 +89,7 @@ export function renderUnitFile(opts: ServiceInstallOptions, scope: SystemdScope)
         '[Service]',
         'Type=simple',
         `ExecStart=${opts.binPath}`,
+        `WorkingDirectory=${opts.startupDir}`,
         'Restart=on-failure',
         'RestartSec=5',
         `StartLimitBurst=${opts.maxRestartAttempts}`,

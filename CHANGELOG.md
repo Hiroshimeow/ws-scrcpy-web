@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-04-27
+
+### Fixed
+
+- **Windows service mode now actually runs the app.** v0.1.5 fixed Servy's install flag names so the wizard stopped erroring out, but service install was still broken in three deeper ways that only surfaced once you clicked through the install:
+  - **`binPath` was wrong.** `ServiceApi.ts` passed `process.execPath` — the currently-running Node binary — as the executable Servy should launch. Servy then ran `node.exe` with no script argument, Node sat idle in REPL mode, port 8000 never bound, the wrapper reported RUNNING to SCM but the app was unreachable. Same architectural failure pattern as the v0.1.4 bare-`'adb'` bug: trusting an ambient resolution (`process.execPath` resolves through PATH in dev) instead of an explicit local-deps path. v0.1.6 binds `binPath` to `<install>/ws-scrcpy-web-launcher.exe`, the packaged launcher, which already knows how to spawn Node + supervise + manage the lifecycle. Existence-check before passing to Servy so dev/from-source runs return a clear 500 rather than installing a broken service.
+  - **`startupDir` was never set.** Servy logs showed `Working directory fallback applied: C:\nvm4w\nodejs` — Servy fell back to the directory of the (wrong) `binPath`, and the launcher's relative resolution of `seed/`, `dependencies/`, `dist/` silently broke. v0.1.6 adds `startupDir` to `ServiceInstallOptions` and pins it to the install root on Windows. SystemdClient on Linux now emits a `WorkingDirectory=` directive from the same field.
+  - **Service didn't auto-start after install.** Servy's `install` subcommand only registers the service; it doesn't start it. With `--startupType Automatic`, Windows would have started it at next boot, but the welcome modal's "yes install service" UX leads users to expect the service to come up live. v0.1.6 calls `servy-cli start --name <name>` immediately after `install`. Wrapped in try/catch so a start failure surfaces as a warning + a "stopped" status, not a failed install.
+- **Service status was always "not installed."** v0.1.5 used `servy-cli list` to derive status, but **Servy 8.2 has no `list` subcommand at all** — invoking `list` fell through to Servy's help text, which our `parseServyListStatus` parsed and never matched. UI showed "not installed" even when the service was registered and running. v0.1.6 replaces the list-parser with `parseServyStatus` that calls `servy-cli status --name <name>` and matches Servy 8.2's actual output (`Service status for '<name>': <State>`). Servy returns non-zero with a "service not found" message when the service is absent; we map that one specific case to `'not-installed'` and rethrow other errors so genuine failures (binary missing, permission denied) surface to the API layer.
+- **Admin elevation was unguarded.** Servy CLI requires Administrator to register services with SCM, but Velopack installs ws-scrcpy-web per-user under `%LocalAppData%` without elevation by default. An unelevated user clicking "yes install service" would either hit a UAC prompt that hung `execFileSync` (browser sees "couldn't reach server") or get a confusing 500. v0.1.6 adds `isWindowsAdmin()` (probes via `net session`) and `ServiceApi` returns `503` with an actionable "service install requires running ws-scrcpy-web as Administrator" message before invoking Servy when the process isn't elevated.
+- Added `--recoveryAction RestartProcess` to install argv. v0.1.5 omitted `--recoveryAction` and Servy logs showed `recoveryAction: None`, so a child crash had no recovery — the wrapper would just stop. RestartProcess works for every supported account (including Local Service / Network Service if we ever switch off Local System).
+
+### Migration note for users on v0.1.4 / v0.1.5
+
+If you installed the Windows service via the welcome modal on v0.1.4 or v0.1.5, the service is registered with a broken configuration that points at Node-with-no-script. Clean up before reinstalling:
+
+```
+servy-cli.exe stop -n WsScrcpyWeb
+servy-cli.exe uninstall -n WsScrcpyWeb
+```
+
+Then run ws-scrcpy-web v0.1.6 as Administrator and re-enable service mode from Settings → Service.
+
 ## [0.1.5] - 2026-04-27
 
 ### Fixed

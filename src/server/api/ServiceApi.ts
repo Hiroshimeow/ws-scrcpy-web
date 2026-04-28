@@ -1,5 +1,6 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { InstallMode } from '../../common/ConfigEvents';
 import {
@@ -13,6 +14,7 @@ import {
 } from '../../common/ServiceEvents';
 import { Config } from '../Config';
 import { detectInstallScope } from '../InstallScope';
+import { isWindowsAdmin } from '../isWindowsAdmin';
 import { Logger } from '../Logger';
 import {
     getServiceClient,
@@ -46,6 +48,8 @@ export class ServiceApi {
     constructor(
         private readonly factory: () => ServiceClientFactoryResult = () => getServiceClient(),
         private readonly scope: () => 'user' | 'system' = () => detectInstallScope(),
+        private readonly isAdmin: () => boolean = () => isWindowsAdmin(),
+        private readonly existsCheck: (p: string) => boolean = (p: string) => fs.existsSync(p),
     ) {}
 
     public async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -148,12 +152,70 @@ export class ServiceApi {
         // user-systemd vs system-systemd unit placement.
         const newInstallMode: InstallMode = scope === 'user' ? 'user-service' : 'system-service';
 
-        // The service launches the same Node binary the launcher would. We
-        // bind to process.execPath because Velopack rewrites it on update;
-        // dev runs (where there's no install layout) go through this path
-        // intentionally so the smoke test reports a useful Servy error rather
-        // than silently misconfiguring.
-        const binPath = process.execPath;
+        // Windows-only: Servy CLI requires admin to register services with SCM.
+        // Velopack installs us per-user under %LocalAppData% without elevation
+        // by default, so an unelevated user clicking "yes install service" in
+        // the welcome modal would either hit a UAC prompt that hangs the
+        // request (browser sees "couldn't reach server") or get an access-
+        // denied 500. Detect at the API boundary and return 503 with a clear
+        // "relaunch as admin" message instead.
+        if (result.platform === 'win32' && !this.isAdmin()) {
+            const failure: ServiceActionFailure = {
+                ok: false,
+                error:
+                    'service install requires running ws-scrcpy-web as Administrator. ' +
+                    'Right-click the launcher → Run as administrator, then retry from the welcome modal.',
+            };
+            res.writeHead(503);
+            res.end(JSON.stringify(failure));
+            return true;
+        }
+
+        // Resolve the service binary. On Windows we point Servy at the
+        // packaged launcher, NOT process.execPath. process.execPath is the
+        // currently-running Node binary, which (a) in dev resolves to
+        // whatever Node is on PATH (e.g., nvm4w-managed dev Node — same
+        // architectural failure as the v0.1.4 bare-'adb' bug), and (b) even
+        // when it resolves to the bundled Node, Servy would launch it with
+        // no script argument and Node would idle in REPL mode. The launcher
+        // is itself a local-deps binary in the install root, takes no args,
+        // and supervises Node + dist/index.js correctly — exactly what we
+        // want SCM to invoke.
+        //
+        // startupDir pins the SCM-launched child's CWD to the install root
+        // so the launcher's relative resolution of seed/, dependencies/,
+        // dist/ works. Without it, Servy falls back to the directory of the
+        // executable and the launcher's path resolution silently breaks
+        // (this was the root of the v0.1.5 "service runs but app
+        // unreachable" bug — Servy log showed "Working directory fallback
+        // applied: C:\nvm4w\nodejs").
+        let binPath: string;
+        let startupDir: string;
+        if (result.platform === 'win32') {
+            const installRoot = process.cwd();
+            const launcherExe = path.join(installRoot, 'ws-scrcpy-web-launcher.exe');
+            if (!this.existsCheck(launcherExe)) {
+                const failure: ServiceActionFailure = {
+                    ok: false,
+                    error:
+                        `service mode requires the packaged launcher binary at ${launcherExe}, ` +
+                        `which is not present (likely a dev/from-source run rather than a Velopack install). ` +
+                        `Install ws-scrcpy-web via Setup.exe and retry.`,
+                };
+                res.writeHead(500);
+                res.end(JSON.stringify(failure));
+                return true;
+            }
+            binPath = launcherExe;
+            startupDir = installRoot;
+        } else {
+            // Linux: SystemdClient takes the launcher binary directly via
+            // process.execPath (the AppImage entrypoint). Working directory
+            // is the launcher's parent dir.
+            binPath = process.execPath;
+            startupDir = path.dirname(process.execPath);
+        }
+
         const logPath = path.join(cfg.dependenciesPath, 'service.log');
         const envVars: Record<string, string> = {
             DEPS_PATH: cfg.dependenciesPath,
@@ -165,6 +227,7 @@ export class ServiceApi {
                 displayName: WS_SCRCPY_SERVICE_DISPLAY_NAME,
                 description: WS_SCRCPY_SERVICE_DESCRIPTION,
                 binPath,
+                startupDir,
                 startType: 'Automatic',
                 maxRestartAttempts: 3,
                 envVars,

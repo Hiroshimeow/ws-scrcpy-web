@@ -168,7 +168,10 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'user');
+        // v0.1.6 injected isAdmin + existsCheck — stub both true so the
+        // Windows install path runs through to the client without short-
+        // circuiting on the admin guard or the launcher-exe-missing 500.
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(200);
@@ -185,6 +188,11 @@ describe('ServiceApi', () => {
         expect(opts?.startType).toBe('Automatic');
         expect(opts?.maxRestartAttempts).toBe(3);
         expect(opts?.envVars.DEPS_PATH).toBeDefined();
+        // v0.1.6: binPath must be the launcher exe in the install root,
+        // NOT process.execPath. startupDir must equal the install root so
+        // SCM hands the launched child the right CWD.
+        expect(opts?.binPath).toMatch(/ws-scrcpy-web-launcher\.exe$/);
+        expect(opts?.startupDir).toBe(process.cwd());
     });
 
     it('POST /install calls client.install with installMode=system-service for system scope', async () => {
@@ -198,12 +206,54 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'system');
+        const api = new ServiceApi(() => factoryResult, () => 'system', () => true, () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         const body = JSON.parse((res as any).getBody());
         expect(body.installMode).toBe('system-service');
         expect((installFn.mock.calls[0]?.[0] as { account?: unknown }).account).toBeUndefined();
+    });
+
+    it('POST /install returns 503 when not running as Administrator (Windows)', async () => {
+        const installFn = vi.fn<(opts: Parameters<ServiceClient['install']>[0]) => Promise<void>>(async () => undefined);
+        const client = fakeClient({ install: installFn });
+        const factoryResult: ServiceClientFactoryResult = {
+            client,
+            supported: true,
+            platform: 'win32',
+        };
+        // isAdmin returns false — admin guard should short-circuit BEFORE
+        // touching the client. No UAC prompt, no hung fetch, just a clean
+        // actionable error.
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => false, () => true);
+        const { req, res } = makeReqRes('/api/service/install', 'POST');
+        await api.handle(req, res);
+        expect((res as any).getStatus()).toBe(503);
+        const body = JSON.parse((res as any).getBody());
+        expect(body.ok).toBe(false);
+        expect(body.error).toMatch(/Administrator/i);
+        expect(installFn).not.toHaveBeenCalled();
+    });
+
+    it('POST /install returns 500 when the launcher exe is missing (dev runs)', async () => {
+        const installFn = vi.fn<(opts: Parameters<ServiceClient['install']>[0]) => Promise<void>>(async () => undefined);
+        const client = fakeClient({ install: installFn });
+        const factoryResult: ServiceClientFactoryResult = {
+            client,
+            supported: true,
+            platform: 'win32',
+        };
+        // existsCheck returns false — service install can't proceed without
+        // the packaged launcher binary. Caller gets a clear 500 with the
+        // expected path mentioned, NOT a confusing Servy error message.
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => false);
+        const { req, res } = makeReqRes('/api/service/install', 'POST');
+        await api.handle(req, res);
+        expect((res as any).getStatus()).toBe(500);
+        const body = JSON.parse((res as any).getBody());
+        expect(body.ok).toBe(false);
+        expect(body.error).toMatch(/ws-scrcpy-web-launcher\.exe/);
+        expect(installFn).not.toHaveBeenCalled();
     });
 
     it('POST /install returns 500 with stderr-rich error when client.install throws', async () => {
@@ -217,7 +267,7 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'user');
+        const api = new ServiceApi(() => factoryResult, () => 'user', () => true, () => true);
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(500);

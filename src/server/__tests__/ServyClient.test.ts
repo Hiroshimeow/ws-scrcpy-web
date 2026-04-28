@@ -21,7 +21,7 @@ vi.mock('node:fs', async () => {
     };
 });
 
-import { parseServyListStatus, ServyClient } from '../service/ServyClient';
+import { isServyNotInstalledError, parseServyStatus, ServyClient } from '../service/ServyClient';
 
 /** Build a minimal stand-in for the `ChildProcess` returned by `spawn`. */
 function fakeChildProcess() {
@@ -47,24 +47,32 @@ describe('ServyClient', () => {
             displayName: 'ws-scrcpy-web',
             description: 'desc',
             binPath: 'C:\\app\\node.exe',
+            startupDir: 'C:\\app',
             startType: 'Automatic',
             maxRestartAttempts: 3,
             envVars: { DEPS_PATH: 'C:\\deps', FOO: 'bar' },
             logPath: 'C:\\app\\service.log',
         });
-        expect(execFileSyncMock).toHaveBeenCalledTimes(1);
-        const [cmd, args] = execFileSyncMock.mock.calls[0];
+        // Two execFileSync calls: install + auto-start.
+        expect(execFileSyncMock).toHaveBeenCalledTimes(2);
+        const [installCall, startCall] = execFileSyncMock.mock.calls;
+        const [cmd, args] = installCall;
         expect(cmd).toBe('C:\\fake\\servy-cli.exe');
         // Servy 8.2 flag names (NOT --binPath / --account / --startType /
         // --logPath — those were the v0.1.4 bug). No --user flag = service
-        // runs as Local System.
+        // runs as Local System. --startupDir + --recoveryAction added in
+        // v0.1.6 to fix "service runs but app unreachable" — without
+        // startupDir Servy fell back to the dir of the binary path; without
+        // recoveryAction the service's recovery defaulted to None.
         expect(args).toEqual([
             'install',
             '--name', 'WsScrcpyWeb',
             '--displayName', 'ws-scrcpy-web',
             '--description', 'desc',
             '--path', 'C:\\app\\node.exe',
+            '--startupDir', 'C:\\app',
             '--startupType', 'Automatic',
+            '--recoveryAction', 'RestartProcess',
             '--maxRestartAttempts', '3',
             '--envVars', 'DEPS_PATH=C:\\deps;FOO=bar',
             '--stdout', 'C:\\app\\service.log',
@@ -77,6 +85,11 @@ describe('ServyClient', () => {
         expect(args).not.toContain('--startType');
         expect(args).not.toContain('--logPath');
         expect(args).not.toContain('--user');
+        // Auto-start (v0.1.6 fix): Servy install does not start the
+        // service. Without an explicit start, the user has to reboot or
+        // manually start via services.msc.
+        expect(startCall[0]).toBe('C:\\fake\\servy-cli.exe');
+        expect(startCall[1]).toEqual(['start', '--name', 'WsScrcpyWeb']);
     });
 
     it('uninstall calls servy-cli uninstall --name', async () => {
@@ -100,26 +113,37 @@ describe('ServyClient', () => {
         expect(args).toEqual(['restart', '--name', 'WsScrcpyWeb']);
     });
 
-    it('status uses servy-cli list and parses Running rows', async () => {
-        execFileSyncMock.mockReturnValue(
-            [
-                'Name           DisplayName     Status     StartType    Account',
-                'WsScrcpyWeb    ws-scrcpy-web   Running    Automatic    currentUser',
-                'OtherSvc       Other           Stopped    Manual       LocalSystem',
-            ].join('\n'),
-        );
+    it('status calls `servy-cli status --name X` and parses Running', async () => {
+        execFileSyncMock.mockReturnValue("Service status for 'WsScrcpyWeb': Running\n");
         const client = new ServyClient('servy.exe');
         const status = await client.status('WsScrcpyWeb');
         expect(status).toBe('running');
         const [, args] = execFileSyncMock.mock.calls[0];
-        expect(args).toEqual(['list']);
+        expect(args).toEqual(['status', '--name', 'WsScrcpyWeb']);
     });
 
-    it('status returns not-installed when service is absent from list output', async () => {
-        execFileSyncMock.mockReturnValue('Name  DisplayName  Status\nOther  Other  Running\n');
+    it('status returns not-installed when servy-cli reports the service does not exist', async () => {
+        // v0.1.6: Servy returns non-zero with "service not found" stderr
+        // when the named service is absent. We translate that one specific
+        // case to 'not-installed' instead of bubbling as a generic error.
+        execFileSyncMock.mockImplementation(() => {
+            const err = new Error('non-zero') as NodeJS.ErrnoException & { stderr: string };
+            err.stderr = "Service 'WsScrcpyWeb' not found";
+            throw err;
+        });
         const client = new ServyClient('servy.exe');
         const status = await client.status('WsScrcpyWeb');
         expect(status).toBe('not-installed');
+    });
+
+    it('status rethrows non-not-installed servy errors (so genuine failures surface)', async () => {
+        execFileSyncMock.mockImplementation(() => {
+            const err = new Error('non-zero') as NodeJS.ErrnoException & { stderr: string };
+            err.stderr = 'Access is denied';
+            throw err;
+        });
+        const client = new ServyClient('servy.exe');
+        await expect(client.status('WsScrcpyWeb')).rejects.toThrow(/Access is denied/);
     });
 
     it('install also registers tray Run-key and spawns the helper when present', async () => {
@@ -131,16 +155,20 @@ describe('ServyClient', () => {
             displayName: 'ws-scrcpy-web',
             description: 'desc',
             binPath: 'C:\\app\\node.exe',
+            startupDir: 'C:\\app',
             startType: 'Automatic',
             maxRestartAttempts: 3,
             envVars: {},
             logPath: 'C:\\app\\service.log',
         });
 
-        // Two execFileSync calls: servy install + reg.exe add.
-        expect(execFileSyncMock).toHaveBeenCalledTimes(2);
-        const [servyCall, regCall] = execFileSyncMock.mock.calls;
-        expect(servyCall[0]).toBe('C:\\fake\\servy-cli.exe');
+        // Three execFileSync calls: servy install + servy start (v0.1.6
+        // auto-start) + reg.exe add for tray Run-key.
+        expect(execFileSyncMock).toHaveBeenCalledTimes(3);
+        const [servyInstallCall, servyStartCall, regCall] = execFileSyncMock.mock.calls;
+        expect(servyInstallCall[0]).toBe('C:\\fake\\servy-cli.exe');
+        expect(servyStartCall[0]).toBe('C:\\fake\\servy-cli.exe');
+        expect(servyStartCall[1]).toEqual(['start', '--name', 'WsScrcpyWeb']);
         expect(regCall[0]).toBe('reg.exe');
         const regArgs = regCall[1] as string[];
         expect(regArgs[0]).toBe('add');
@@ -175,6 +203,7 @@ describe('ServyClient', () => {
                 displayName: 'ws-scrcpy-web',
                 description: 'desc',
                 binPath: 'C:\\app\\node.exe',
+                startupDir: 'C:\\app',
                 startType: 'Automatic',
                 maxRestartAttempts: 3,
                 envVars: {},
@@ -182,10 +211,42 @@ describe('ServyClient', () => {
             }),
         ).resolves.toBeUndefined();
 
-        // Servy install ran; reg.exe and spawn did NOT.
-        expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+        // Servy install + Servy start ran; reg.exe and spawn did NOT (tray absent).
+        expect(execFileSyncMock).toHaveBeenCalledTimes(2);
         expect(execFileSyncMock.mock.calls[0][0]).toBe('C:\\fake\\servy-cli.exe');
+        expect(execFileSyncMock.mock.calls[1][0]).toBe('C:\\fake\\servy-cli.exe');
+        expect(execFileSyncMock.mock.calls[1][1]).toEqual(['start', '--name', 'WsScrcpyWeb']);
         expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    it('install succeeds even when servy-cli start fails (auto-start is best-effort)', async () => {
+        // First execFileSync (install) succeeds, second (start) throws. The
+        // service is installed correctly; the user can manually start later.
+        execFileSyncMock
+            .mockImplementationOnce(() => '')
+            .mockImplementationOnce(() => {
+                const err = new Error('non-zero exit') as NodeJS.ErrnoException & {
+                    stderr: string;
+                };
+                err.stderr = 'Could not start service';
+                throw err;
+            });
+        const client = new ServyClient('C:\\fake\\servy-cli.exe');
+        await expect(
+            client.install({
+                name: 'WsScrcpyWeb',
+                displayName: 'ws-scrcpy-web',
+                description: 'desc',
+                binPath: 'C:\\app\\node.exe',
+                startupDir: 'C:\\app',
+                startType: 'Automatic',
+                maxRestartAttempts: 3,
+                envVars: {},
+                logPath: 'C:\\app\\service.log',
+            }),
+        ).resolves.toBeUndefined();
+        // Both calls were attempted.
+        expect(execFileSyncMock).toHaveBeenCalledTimes(2);
     });
 
     it('uninstall calls reg.exe delete with correct argv', async () => {
@@ -251,6 +312,7 @@ describe('ServyClient', () => {
                 displayName: 'X',
                 description: 'd',
                 binPath: 'b',
+                startupDir: 'd',
                 startType: 'Automatic',
                 maxRestartAttempts: 1,
                 envVars: {},
@@ -260,41 +322,56 @@ describe('ServyClient', () => {
     });
 });
 
-describe('parseServyListStatus', () => {
-    it('parses Running case-insensitively', () => {
-        expect(
-            parseServyListStatus(
-                'WsScrcpyWeb    ws-scrcpy-web   running    Automatic    currentUser',
-                'WsScrcpyWeb',
-            ),
-        ).toBe('running');
+describe('parseServyStatus (Servy 8.2 single-service status)', () => {
+    // Real Servy 8.2 output format, captured live during v0.1.5 testing:
+    //   `Service status for 'WsScrcpyWeb': Running`
+    it('parses Running', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': Running")).toBe('running');
     });
 
-    it('parses Stopped', () => {
-        expect(
-            parseServyListStatus(
-                'WsScrcpyWeb    ws-scrcpy-web   Stopped    Automatic    currentUser',
-                'WsScrcpyWeb',
-            ),
-        ).toBe('stopped');
+    it('treats Stopped as stopped', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': Stopped")).toBe('stopped');
     });
 
-    it('matches case-insensitive service names', () => {
-        expect(
-            parseServyListStatus(
-                'wsscrcpyweb    ws-scrcpy-web   Running    Automatic    currentUser',
-                'WsScrcpyWeb',
-            ),
-        ).toBe('running');
+    it('treats StartPending as stopped (transient state collapsed for our 3-state UI)', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': StartPending")).toBe('stopped');
     });
 
-    it('returns not-installed for missing rows', () => {
-        expect(parseServyListStatus('SomethingElse  Other  Running', 'WsScrcpyWeb')).toBe(
-            'not-installed',
-        );
+    it('treats StopPending as stopped', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': StopPending")).toBe('stopped');
     });
 
-    it('returns not-installed for empty output', () => {
-        expect(parseServyListStatus('', 'WsScrcpyWeb')).toBe('not-installed');
+    it('treats Paused as stopped', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': Paused")).toBe('stopped');
+    });
+
+    it('handles trailing whitespace and CRLF', () => {
+        expect(parseServyStatus("Service status for 'WsScrcpyWeb': Running\r\n")).toBe('running');
+    });
+
+    it('returns stopped when output does not match the expected format', () => {
+        // Conservative fallback — if Servy ever changes its output format we
+        // surface "stopped" rather than guessing wrong.
+        expect(parseServyStatus('something completely different')).toBe('stopped');
+    });
+});
+
+describe('isServyNotInstalledError', () => {
+    it('matches "service not found"', () => {
+        expect(isServyNotInstalledError('servy-cli status failed: Service not found')).toBe(true);
+    });
+
+    it('matches "service does not exist"', () => {
+        expect(isServyNotInstalledError("Service 'WsScrcpyWeb' does not exist")).toBe(true);
+    });
+
+    it('matches "not installed"', () => {
+        expect(isServyNotInstalledError('Service is not installed')).toBe(true);
+    });
+
+    it('does not match unrelated errors (so they bubble up)', () => {
+        expect(isServyNotInstalledError('Access is denied')).toBe(false);
+        expect(isServyNotInstalledError('servy-cli not found on PATH')).toBe(false);
+        expect(isServyNotInstalledError('')).toBe(false);
     });
 });

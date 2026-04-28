@@ -116,37 +116,49 @@ function runServy(servyPath: string, args: string[]): string {
 }
 
 /**
- * Parse `servy-cli list` output to find the named service's status.
+ * Parse `servy-cli status -n <name>` output.
  *
- * v8.2 list output is a fixed-width table with columns:
- *   Name  DisplayName  Status  StartType  Account
+ * Servy 8.2 (verified live in v0.1.5 testing) prints exactly:
+ *   Service status for '<name>': <State>
+ * where <State> is one of: Stopped, StartPending, StopPending, Running,
+ * ContinuePending, PausePending, Paused.
  *
- * We match the row whose first whitespace-delimited token equals `name`
- * (case-insensitive — Windows service names are case-insensitive). The
- * second-to-last meaningful column tells us Running / Stopped.
+ * v0.1.5 used `servy-cli list` to derive status, but Servy 8.2 has no
+ * `list` subcommand — invoking it just prints the help text, which our
+ * old `parseServyListStatus` parsed and never matched, so the UI always
+ * showed "not installed" even when the service was registered and running.
+ * Replaced with a single-service status query in v0.1.6.
  *
- * If the service isn't listed at all, return 'not-installed'.
+ * For our coarse 3-state UI (`running` | `stopped` | `not-installed`),
+ * everything that isn't `Running` collapses to `stopped`. The transient
+ * pending states are rare, brief, and indistinguishable from a useful UI
+ * perspective.
  */
-export function parseServyListStatus(output: string, name: string): ServiceStatus {
-    const lines = output.split(/\r?\n/);
-    const target = name.toLowerCase();
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const cols = trimmed.split(/\s{2,}|\t+/).filter((c) => c.length > 0);
-        if (cols.length === 0) continue;
-        if (cols[0].toLowerCase() !== target) continue;
-        // Look across remaining columns for the status keyword. Servy reports
-        // "Running" or "Stopped" (with a capital). Match case-insensitively
-        // for resilience against locale / formatting drift.
-        const joined = cols.slice(1).join(' ').toLowerCase();
-        if (/\brunning\b/.test(joined)) return 'running';
-        if (/\bstopped\b/.test(joined)) return 'stopped';
-        // Found the row but couldn't classify — treat as stopped (safer
-        // default than 'not-installed', since the row is present).
+export function parseServyStatus(output: string): ServiceStatus {
+    const m = output.match(/Service status for '[^']+':\s*(\w+)/i);
+    if (!m) {
+        // No match means we got something other than the expected single-line
+        // response — treat conservatively as stopped rather than guessing.
         return 'stopped';
     }
-    return 'not-installed';
+    return m[1].toLowerCase() === 'running' ? 'running' : 'stopped';
+}
+
+/**
+ * Match Servy stderr text indicating "the service does not exist." Servy
+ * 8.2 returns non-zero exit + an error message containing one of these
+ * substrings (English locale; non-English locales may localize, in which
+ * case `status()` returns the full error to surface real Servy failures).
+ */
+const NOT_INSTALLED_PATTERNS = [
+    /service.*not.*found/i,
+    /service.*does not exist/i,
+    /no.*service.*name/i,
+    /not.*installed/i,
+];
+
+export function isServyNotInstalledError(message: string): boolean {
+    return NOT_INSTALLED_PATTERNS.some((re) => re.test(message));
 }
 
 export class ServyClient implements ServiceClient {
@@ -157,24 +169,50 @@ export class ServyClient implements ServiceClient {
     }
 
     public async install(opts: ServiceInstallOptions): Promise<void> {
-        // Servy 8.2 flag names — verified against `servy-cli install --help`
-        // shipped in dependencies/servy/v8.2/. The 0.1.4 build passed wrong
-        // flag names (--binPath, --account, --startType, --logPath) and the
-        // wizard hard-failed; see CHANGELOG [0.1.5]. We point both --stdout
-        // and --stderr at the same file for a unified service log.
+        // Servy 8.2 flag names — verified live in the v0.1.5 service log
+        // and against the official wiki at github.com/aelassas/servy/wiki.
+        // Argv shape:
+        //   --path        the executable Servy launches (here: the launcher)
+        //   --startupDir  working directory the SCM hands the child; without
+        //                 it Servy logs "Working directory fallback applied"
+        //                 and the launcher's relative seed/, dependencies/,
+        //                 dist/ resolution breaks
+        //   --params      additional args appended after --path; the launcher
+        //                 takes none, so we omit it
+        //   --recoveryAction RestartProcess   restart the child (not the SCM
+        //                 service) on crash. RestartService and
+        //                 RestartComputer are only available to elevated
+        //                 accounts and Local System; we use RestartProcess
+        //                 because it works for every supported account.
+        //   --stdout / --stderr   pointed at the same file for unified log
         const args = [
             'install',
             '--name', opts.name,
             '--displayName', opts.displayName,
             '--description', opts.description,
             '--path', opts.binPath,
+            '--startupDir', opts.startupDir,
             '--startupType', opts.startType,
+            '--recoveryAction', 'RestartProcess',
             '--maxRestartAttempts', String(opts.maxRestartAttempts),
             '--envVars', formatEnvVars(opts.envVars),
             '--stdout', opts.logPath,
             '--stderr', opts.logPath,
         ];
         runServy(this.servyPath, args);
+
+        // Auto-start: Servy install does not start the service. Without an
+        // explicit `start`, the user has to either reboot (so --startupType
+        // Automatic kicks in) or manually start via services.msc. Wrap in
+        // try/catch — install already succeeded, so a failed start should
+        // surface as a warning + a "stopped" status, not a failed install.
+        try {
+            runServy(this.servyPath, ['start', '--name', opts.name]);
+        } catch (err) {
+            log.warn(
+                `service installed but auto-start failed: ${(err as Error).message}`,
+            );
+        }
 
         // SP3 P4a — register and spawn the tray helper for user-login autostart.
         // The Servy registration above succeeded; tray is a UX nicety on top, so
@@ -214,8 +252,19 @@ export class ServyClient implements ServiceClient {
     }
 
     public async status(name: string): Promise<ServiceStatus> {
-        const out = runServy(this.servyPath, ['list']);
-        return parseServyListStatus(out, name);
+        try {
+            const out = runServy(this.servyPath, ['status', '--name', name]);
+            return parseServyStatus(out);
+        } catch (err) {
+            // Servy returns non-zero with a "service not found" message when
+            // the named service doesn't exist. Map that one specific case to
+            // 'not-installed'; rethrow anything else so genuine Servy
+            // failures (binary missing, permission denied, etc.) surface to
+            // the API layer instead of being silently swallowed.
+            const message = (err as Error).message;
+            if (isServyNotInstalledError(message)) return 'not-installed';
+            throw err;
+        }
     }
 
     public async restart(name: string): Promise<void> {
