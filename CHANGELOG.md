@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-04-28
+
+### Fixed
+
+- **scrcpy-server missing on clean-VM installs.** v0.1.9's `checkInstalled` for scrcpy-server returned `SERVER_VERSION` unconditionally without checking the filesystem, so `autoInstallMissing` skipped both the seed-promote and the network-download paths. The seed-promote path itself was also pointed one directory too high (`<installRoot>/seed/...` vs the actual `<installRoot>/current/seed/...`). Both fixed; `dependencies/scrcpy-server/` now populates on first run.
+- **node-pty unavailable on clean VM (false-positive v0.1.8 fix).** `NodePtyResolver` always fetched the prebuilt manifest from GitHub before doing anything else, so a clean VM with restrictive networking returned `available: false` even with a perfectly good `pty.node` already shipped in the installer. v0.1.10 tries the bundled `import('node-pty')` first and only falls back to the manifest+download path if that import fails (e.g., ABI mismatch after a Node auto-update).
+- **First-run modal re-fired after service uninstall + reinstall.** Pre-v0.1.10 gating used server-side `firstRunComplete` / `serviceFirstRunSeen` flags, which got reset across uninstall/reinstall cycles. Modal gating now runs entirely off localStorage flags that survive mode flips and are only set when the user explicitly checks "don't show again."
+
+### Added
+
+- **"Don't show again" checkboxes on `WelcomeModal` and `ServiceFirstRunModal`.** Dismissal only persists when the box is checked; otherwise the modal returns on the next page load. Resets only via browser cache clear (no in-app reset by design).
+- **`PortChangeModal`** — bookmark reminder shown on every page load when the saved `bookmarkDismissedForPort` ≠ current port. Same "don't show again" pattern; changing ports later auto-clears the effective dismissal because the saved port no longer matches.
+- **`firstRunGate.ts`** — typed wrapper around the three new localStorage keys (`wsScrcpy.welcomeDismissed`, `wsScrcpy.serviceFirstRunDismissed`, `wsScrcpy.bookmarkDismissedForPort`) with private-mode-safe getters/setters.
+
 ## [0.1.9] - 2026-04-28
 
 ### Fixed
