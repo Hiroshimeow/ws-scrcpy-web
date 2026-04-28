@@ -240,9 +240,12 @@ export class SettingsModal extends Modal {
 
         if (!s.isInstalled) {
             // Dev mode — single inline note, no controls (per spec § E + contracts).
+            // v0.1.17: surface the running version so it's obvious what build
+            // is on disk even when the updater can't run.
             const devNote = document.createElement('p');
             devNote.className = 'settings-stub-note';
-            devNote.textContent = 'dev mode — packaging features disabled';
+            const versionStr = s.currentVersion ? `current: v${s.currentVersion} — ` : '';
+            devNote.textContent = `${versionStr}dev mode — packaging features disabled`;
             this.updatesBody.appendChild(devNote);
             return;
         }

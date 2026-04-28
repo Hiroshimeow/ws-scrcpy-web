@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-04-28
+
+### Fixed
+
+- **In-app updater detection used the wrong marker file.** v0.1.0–v0.1.16 looked for `sq.version` (Squirrel.Windows naming, Velopack's predecessor) at the install root. Velopack actually drops `Update.exe` there. Combined with the v0.1.15 `installRoot` fix, this was the second of two stacked wrong assumptions keeping the updater in permanent dev mode. Now checks `Update.exe` on Windows; Linux AppImage continues to be treated as dev mode.
+- **`server.log` had no timestamps.** `Logger` already wrote ISO timestamps to its own `ws-scrcpy-web.log` file, but the `console.log/warn/error` output that the launcher captures into `server.log` was bare `[tag] message`. `console.*` calls now include the timestamp prefix too, so `server.log` and `launcher.log` align side-by-side.
+
+### Added
+
+- **Current app version surfaced in Settings → Updates section.** Both production and dev mode now show `current: vX.Y.Z` at the top of the Updates panel — makes it obvious what build is on disk even when the updater can't run. New `getAppVersion()` helper reads `package.json` directly (replaces the `npm_package_version` env-var path which only worked under `npm start`).
+- **First-run dependency-warning note in `WelcomeModal`.** Amber callout warning users that the dep manager fetches Node, ADB, and scrcpy-server in the background on first launch — up to ~3 minutes on slower networks — and that any "missing dependency" warnings during that window clear themselves automatically. Stops users from clicking around assuming something's wrong.
+
 ## [0.1.16] - 2026-04-28
 
 ### Notes

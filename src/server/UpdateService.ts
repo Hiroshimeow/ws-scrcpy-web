@@ -3,6 +3,7 @@ import * as fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import * as path from 'path';
 import { UpdateManager, type UpdateInfo, type UpdateOptions } from 'velopack';
+import { getAppVersion } from './appVersion';
 import type { UpdateChannel } from '../common/ConfigEvents';
 import type { UpdateState } from '../common/UpdateEvents';
 import { Config } from './Config';
@@ -113,12 +114,27 @@ export class UpdateService {
      * immediate check is fire-and-forget via void.
      */
     public init(): void {
-        const sqVersionPath = path.join(this.installRoot, 'sq.version');
-        const sqExists = this.existsSync(sqVersionPath);
+        // v0.1.17: detect Velopack install via Update.exe (Windows) instead
+        // of sq.version. sq.version is Squirrel.Windows naming (Velopack's
+        // predecessor); Velopack drops Update.exe at the install root next
+        // to current/. The pre-v0.1.17 sq.version check failed silently on
+        // every production install (the file was never created) — combined
+        // with the v0.1.15 installRoot fix this is the second of two
+        // wrong assumptions that put the updater in permanent dev mode.
+        //
+        // Linux AppImage: no Update.exe equivalent. Treated as dev mode for
+        // now — Velopack auto-update on AppImage is a separate concern and
+        // the Linux Velopack flow isn't shipped in v0.1.x anyway.
+        const markerName = process.platform === 'win32' ? 'Update.exe' : '__no_marker__';
+        const markerPath = path.join(this.installRoot, markerName);
+        const markerExists = this.existsSync(markerPath);
 
-        if (!sqExists) {
-            this.state = { isInstalled: false, currentVersion: '', status: 'idle' };
-            log.info(`dev mode (sq.version not found at ${sqVersionPath})`);
+        if (!markerExists) {
+            // v0.1.17: surface the package.json version even in dev mode so
+            // the UI can show "current: vX.Y.Z (dev mode)" rather than a
+            // bare "dev mode" with no clue what's actually running.
+            this.state = { isInstalled: false, currentVersion: getAppVersion(), status: 'idle' };
+            log.info(`dev mode (${markerName} not found at ${markerPath})`);
             return;
         }
 
@@ -138,9 +154,9 @@ export class UpdateService {
             // Fire one immediate check on startup — fire-and-forget.
             void this.checkForUpdates();
         } catch (err) {
-            // sq.version present but mgr construction threw — corrupted install or SDK bug.
+            // Marker present but mgr construction threw — corrupted install or SDK bug.
             log.warn(
-                `sq.version exists but UpdateManager construction failed: ${(err as Error).message}. ` +
+                `${markerName} exists but UpdateManager construction failed: ${(err as Error).message}. ` +
                     `Treating as dev mode.`,
             );
             this.mgr = null;

@@ -1,5 +1,6 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
+import { getAppVersion } from '../appVersion';
 import { Config } from '../Config';
 
 /**
@@ -16,7 +17,9 @@ import { Config } from '../Config';
  * paths, no env). Just enough for cross-instance identification.
  */
 export class WhoamiApi {
-    private static readonly version = process.env.npm_package_version ?? '0.0.0';
+    // v0.1.17: read package.json directly via getAppVersion(); npm_package_version
+    // is only set when launched via `npm`, not when the packaged launcher spawns Node.
+    private static readonly version = getAppVersion();
 
     async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
         const url = req.url || '';

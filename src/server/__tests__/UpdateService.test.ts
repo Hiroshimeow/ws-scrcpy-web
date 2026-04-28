@@ -84,7 +84,7 @@ describe('UpdateService', () => {
 
     // ── Dev mode detection ──────────────────────────────────────────────
 
-    it('init: sq.version absent → isInstalled=false, status=idle', () => {
+    it('init: Update.exe absent → isInstalled=false, status=idle', () => {
         const factory = vi.fn(() => fakeMgr());
         const svc = new UpdateService({
             installRoot: '/fake/root',
@@ -95,11 +95,14 @@ describe('UpdateService', () => {
         const s = svc.getStatus();
         expect(s.isInstalled).toBe(false);
         expect(s.status).toBe('idle');
-        expect(s.currentVersion).toBe('');
+        // v0.1.17: dev mode now surfaces the package.json version so the UI
+        // can show "current: vX.Y.Z (dev mode)". Just check it's a non-empty
+        // semver-shaped string — the actual value tracks package.json.
+        expect(s.currentVersion).toMatch(/^\d+\.\d+\.\d+/);
         expect(factory).not.toHaveBeenCalled();
     });
 
-    it('init: sq.version present + factory throws → isInstalled=false, logs warning', () => {
+    it('init: Update.exe present + factory throws → isInstalled=false, logs warning', () => {
         const factory = vi.fn(() => {
             throw new Error('native addon broken');
         });

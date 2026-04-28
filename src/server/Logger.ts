@@ -49,7 +49,11 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} ${message}`;
-        console.log(this.tag, ...args);
+        // v0.1.17: prefix console output too so server.log (launcher-
+        // redirected stdout/stderr from the Node child) shows timestamps,
+        // matching launcher.log. Pre-v0.1.17 only ws-scrcpy-web.log got
+        // timestamps; server.log was bare [tag] message.
+        console.log(`${ts} ${this.tag}`, ...args);
         writeToFile(line);
     }
 
@@ -57,7 +61,7 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} WARN ${message}`;
-        console.warn(this.tag, ...args);
+        console.warn(`${ts} ${this.tag} WARN`, ...args);
         writeToFile(line);
     }
 
@@ -65,7 +69,7 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} ERROR ${message}`;
-        console.error(this.tag, ...args);
+        console.error(`${ts} ${this.tag} ERROR`, ...args);
         writeToFile(line);
     }
 }

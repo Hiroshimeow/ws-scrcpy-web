@@ -168,6 +168,24 @@ export class WelcomeModal extends Modal {
             'so wait until after the redirect to bookmark the new URL.';
         container.appendChild(bookmarkHint);
 
+        // v0.1.17 dependency-warning note. On first launch the dep manager
+        // fetches Node, ADB, and scrcpy-server in the background — this can
+        // run up to ~3 minutes on slower networks. During that window the
+        // FirstRunBanner shows "installing dependencies…" with errors-in-
+        // progress that look alarming but resolve themselves. Without this
+        // note users assume something's wrong and start clicking around.
+        const depHint = document.createElement('p');
+        depHint.style.cssText =
+            'margin: 0 0 16px; padding: 8px 12px; ' +
+            'background: rgba(255, 191, 73, 0.08); border-left: 3px solid #ffbf49; ' +
+            'color: var(--text-color-light); font-size: 13px; line-height: 1.5;';
+        depHint.textContent =
+            'heads up: on first launch we fetch Node, ADB, and scrcpy-server in the background. ' +
+            'this can take up to ~3 minutes on slower networks, and you may see "missing dependency" ' +
+            'warnings near the top of the page during that window. they clear themselves once ' +
+            'the downloads finish — no action needed.';
+        container.appendChild(depHint);
+
         this.statusEl = document.createElement('p');
         this.statusEl.style.cssText =
             'margin: 0 0 12px; color: var(--text-color-light); font-size: 13px; min-height: 1em;';
