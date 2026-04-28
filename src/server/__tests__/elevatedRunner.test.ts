@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { buildPsRunAsCommand, parseResult, toSnakeCase } from '../service/elevatedRunner';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+    buildPsRunAsCommand,
+    parseResult,
+    pollForResultFile,
+    toSnakeCase,
+} from '../service/elevatedRunner';
 
 describe('toSnakeCase', () => {
     it('converts camelCase keys to snake_case at the top level', () => {
@@ -84,12 +92,15 @@ describe('buildPsRunAsCommand', () => {
         resultPath: 'C:\\Users\\me\\AppData\\Local\\Temp\\result.json',
     };
 
-    it('produces a Start-Process -Verb RunAs invocation', () => {
+    it('produces a Start-Process -Verb RunAs invocation (no -Wait, no -PassThru)', () => {
         const cmd = buildPsRunAsCommand(params);
         expect(cmd).toContain('Start-Process');
         expect(cmd).toContain('-Verb RunAs');
-        expect(cmd).toContain('-Wait');
-        expect(cmd).toContain('-PassThru');
+        // v0.1.8: -Wait + -PassThru removed because they're unreliable
+        // for cross-session (elevated) children. Result-file polling
+        // replaces them.
+        expect(cmd).not.toContain('-Wait');
+        expect(cmd).not.toContain('-PassThru');
         expect(cmd).toContain("'C:\\app\\ws-scrcpy-web-launcher.exe'");
     });
 
@@ -107,13 +118,81 @@ describe('buildPsRunAsCommand', () => {
             launcherPath: "C:\\app'with'quotes\\launcher.exe",
         };
         const cmd = buildPsRunAsCommand(evil);
-        // Single quotes in the value get doubled, which is the PowerShell
-        // single-quote escape. So `'` becomes `''`.
         expect(cmd).toContain("'C:\\app''with''quotes\\launcher.exe'");
     });
 
-    it('propagates the elevated child exit code via $p.ExitCode', () => {
+    it('uses ErrorActionPreference Stop so a UAC-decline propagates as a non-zero PS exit', () => {
         const cmd = buildPsRunAsCommand(params);
-        expect(cmd).toContain('exit $p.ExitCode');
+        expect(cmd).toContain('$ErrorActionPreference = "Stop"');
+    });
+});
+
+describe('pollForResultFile', () => {
+    let tmpDir: string;
+    let resultPath: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'elev-poll-'));
+        resultPath = path.join(tmpDir, 'result.json');
+    });
+
+    afterEach(() => {
+        try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+            /* ignore */
+        }
+    });
+
+    it('returns null after timeout when the result file never appears', async () => {
+        // Use a tiny timeout for tests; sleep is real so the poll
+        // exhausts in real time. 50ms total timeout, 10ms interval.
+        const result = await pollForResultFile(resultPath, 50, 10);
+        expect(result).toBeNull();
+    });
+
+    it('returns the parsed result once the file is written', async () => {
+        // Write the result file 30ms after the poll starts. The poll
+        // should pick it up on its next tick and return.
+        setTimeout(() => {
+            fs.writeFileSync(
+                resultPath,
+                JSON.stringify({ ok: true, exit_code: 0, stdout: 'done', stderr: '' }),
+            );
+        }, 30);
+        const result = await pollForResultFile(resultPath, 1000, 10);
+        expect(result).not.toBeNull();
+        expect(result!.ok).toBe(true);
+        expect(result!.stdout).toBe('done');
+    });
+
+    it('tolerates a partially-written result file by waiting for the next tick', async () => {
+        // Write partial JSON first, then complete it. Polling should
+        // skip the partial version and return the complete one.
+        fs.writeFileSync(resultPath, '{"ok":');
+        setTimeout(() => {
+            fs.writeFileSync(
+                resultPath,
+                JSON.stringify({ ok: true, exit_code: 0, stdout: '', stderr: '' }),
+            );
+        }, 30);
+        const result = await pollForResultFile(resultPath, 1000, 10);
+        expect(result).not.toBeNull();
+        expect(result!.ok).toBe(true);
+    });
+
+    it('returns immediately if the file already exists at start of poll', async () => {
+        fs.writeFileSync(
+            resultPath,
+            JSON.stringify({ ok: false, exit_code: 4, stdout: '', stderr: 'err', error_message: 'boom' }),
+        );
+        const start = Date.now();
+        const result = await pollForResultFile(resultPath, 5000, 10);
+        const elapsed = Date.now() - start;
+        expect(result).not.toBeNull();
+        expect(result!.ok).toBe(false);
+        expect(result!.errorMessage).toBe('boom');
+        // Should resolve well under the timeout.
+        expect(elapsed).toBeLessThan(500);
     });
 });

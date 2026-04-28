@@ -15,6 +15,12 @@ import {
 import { Config } from '../Config';
 import { detectInstallScope } from '../InstallScope';
 import { Logger } from '../Logger';
+import { discoverServicePort } from '../service/discoverServicePort';
+import {
+    runElevated,
+    resolveLauncherPath as resolveLauncherPathForElevation,
+} from '../service/elevatedRunner';
+import { consumeToken, issueToken } from '../service/resumeToken';
 import { ServiceInstallError } from '../service/ServyClient';
 import {
     getServiceClient,
@@ -49,6 +55,13 @@ export class ServiceApi {
         private readonly factory: () => ServiceClientFactoryResult = () => getServiceClient(),
         private readonly scope: () => 'user' | 'system' = () => detectInstallScope(),
         private readonly existsCheck: (p: string) => boolean = (p: string) => fs.existsSync(p),
+        // v0.1.8: injection points for the install + uninstall handoff
+        // helpers. Tests stub these to short-circuit slow real network
+        // probing and elevation. Production callers omit and the API
+        // uses the real implementations.
+        private readonly discover: (
+            opts: { ownPid: number; startPort: number; range: number; timeoutMs: number },
+        ) => Promise<string | null> = discoverServicePort,
     ) {}
 
     public async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -65,7 +78,7 @@ export class ServiceApi {
                 return await this.handleInstall(req, res);
             }
             if (req.method === 'POST' && url === '/api/service/uninstall') {
-                return await this.handleUninstall(res);
+                return await this.handleUninstall(req, res);
             }
 
             res.writeHead(404);
@@ -245,17 +258,52 @@ export class ServiceApi {
         }
 
         const status = await result.client.status(WS_SCRCPY_SERVICE_NAME);
+
+        // v0.1.8 install-flow auto-redirect (Windows only — Linux
+        // SystemdClient already runs the service in the user session,
+        // no port-shift, no handoff needed). Discover the new
+        // service-instance's port by polling localhost:8000..8099 for
+        // the /api/whoami endpoint that returns a pid != ours.
+        let redirectTo: string | undefined;
+        if (result.platform === 'win32') {
+            try {
+                const ownPort = cfg.servers[0]?.port ?? 8000;
+                const found = await this.discover({
+                    ownPid: process.pid,
+                    startPort: ownPort,
+                    range: 100,
+                    timeoutMs: 30_000,
+                });
+                if (found) {
+                    redirectTo = found;
+                    // Schedule our own shutdown shortly after the
+                    // response goes out. The user's browser will have
+                    // navigated to `redirectTo` by then; killing this
+                    // local instance avoids two app instances + two
+                    // tray icons. 5s is enough for the 200 response to
+                    // flush and the browser to load the new port.
+                    setTimeout(() => {
+                        log.info('install-flow handoff complete; local instance exiting');
+                        process.exit(0);
+                    }, 5000).unref();
+                }
+            } catch (err) {
+                log.warn(`port-discovery for redirectTo failed: ${(err as Error).message}`);
+            }
+        }
+
         const body: ServiceActionSuccess = {
             ok: true,
             status,
             installMode: newInstallMode,
+            ...(redirectTo ? { redirectTo } : {}),
         };
         res.writeHead(200);
         res.end(JSON.stringify(body));
         return true;
     }
 
-    private async handleUninstall(res: ServerResponse): Promise<boolean> {
+    private async handleUninstall(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
         const result = this.factory();
         if (!result.supported) {
             const body: ServiceActionFailure = {
@@ -267,11 +315,48 @@ export class ServiceApi {
             return true;
         }
 
-        // v0.1.7: the elevated helper does stop+uninstall in one
-        // elevated process, so we don't pre-stop here anymore. (Calling
-        // ServyClient.stop separately would also throw "not yet wired
-        // through the elevation helper" — the welcome modal flow goes
-        // through uninstall directly.)
+        const cfg = Config.getInstance();
+
+        // v0.1.8: if a resume token is present in the request headers,
+        // validate it before doing anything else. The token comes from
+        // the service-instance handoff (frontend reads it from the
+        // URL params and forwards it as `X-Resume-Token`). Valid
+        // token → consume + proceed with uninstall. Invalid → 401
+        // (don't proceed; the request is unauthenticated for this
+        // sensitive action). Absent → normal uninstall click from a
+        // local instance, no token required.
+        const headerToken = req.headers?.['x-resume-token'];
+        const tokenStr = Array.isArray(headerToken) ? headerToken[0] : headerToken;
+        if (typeof tokenStr === 'string' && tokenStr.length > 0) {
+            const consumed = consumeToken(cfg.dependenciesPath, tokenStr, 'uninstall-service');
+            if (!consumed) {
+                const body: ServiceActionFailure = {
+                    ok: false,
+                    error: 'invalid or expired resume token',
+                };
+                res.writeHead(401);
+                res.end(JSON.stringify(body));
+                return true;
+            }
+            // Valid resume token → caller is the redirected local
+            // instance from the service-context handoff. Proceed
+            // directly with the uninstall (no second handoff).
+        } else {
+            // No resume token → could be a direct click from the
+            // local UI, OR could be a click from the service UI that
+            // hasn't been redirected yet. Detect the service-context
+            // case and do the handoff.
+            const installMode = cfg.getAppConfig().installMode;
+            const runningAsService = installMode === 'user-service' || installMode === 'system-service';
+            const isWindows = result.platform === 'win32';
+
+            if (isWindows && runningAsService && this.isLikelyLocalSystem()) {
+                const handoff = await this.handoffUninstallToUserSession(cfg.dependenciesPath, res);
+                if (handoff) return true;
+                log.warn('uninstall handoff failed; attempting direct uninstall (browser tab will likely disconnect)');
+            }
+        }
+
         try {
             await result.client.uninstall(WS_SCRCPY_SERVICE_NAME);
         } catch (err) {
@@ -288,7 +373,6 @@ export class ServiceApi {
         }
 
         // Revert installMode: drop the '-service' suffix.
-        const cfg = Config.getInstance();
         const current = cfg.getAppConfig().installMode;
         let newMode: InstallMode = 'user';
         if (current === 'system-service' || current === 'system') newMode = 'system';
@@ -303,6 +387,79 @@ export class ServiceApi {
             ok: true,
             status,
             installMode: newMode,
+        };
+        res.writeHead(200);
+        res.end(JSON.stringify(body));
+        return true;
+    }
+
+    /**
+     * Best-effort detection of "are we running as Local System (i.e.
+     * inside the service)?". Returns true when `os.userInfo().username`
+     * is `SYSTEM` (the canonical username for the LocalSystem account
+     * on Windows). Returns false on any other identity, including the
+     * user's own account when they're running locally.
+     *
+     * Not bulletproof — a user could theoretically be logged in as
+     * `SYSTEM` (extremely unusual), and `os.userInfo()` can fail in
+     * some edge cases. The downside of a false positive is we attempt
+     * the WTS handoff and it fails, then we fall through to direct
+     * uninstall. The downside of a false negative is the user's tab
+     * disconnects on uninstall (the v0.1.7 behavior). Acceptable.
+     */
+    private isLikelyLocalSystem(): boolean {
+        try {
+            const info = require('node:os').userInfo() as { username: string };
+            return info.username.toLowerCase() === 'system';
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Spawn a user-session local launcher via the WTS cross-session
+     * handler in the Rust launcher, then poll for it to come up,
+     * issue a resume token, and return the handoff response. Returns
+     * `true` if the handoff succeeded and the response was sent;
+     * `false` if any step failed (caller falls back to direct
+     * uninstall).
+     */
+    private async handoffUninstallToUserSession(
+        installRoot: string,
+        res: ServerResponse,
+    ): Promise<boolean> {
+        const launcherPath = resolveLauncherPathForElevation();
+        const spawnResult = await runElevated('spawn-user-launcher', { launcherPath });
+        if (!spawnResult.ok) {
+            log.warn(`uninstall handoff: spawn-user-launcher failed: ${spawnResult.errorMessage ?? '(no message)'}`);
+            return false;
+        }
+
+        // Poll for the new launcher's port. Ports start at 8000; the
+        // service is on whichever port we currently bind. The new
+        // local launcher will auto-shift to a free one.
+        const found = await this.discover({
+            ownPid: process.pid,
+            startPort: 8000,
+            range: 100,
+            timeoutMs: 30_000,
+        });
+        if (!found) {
+            log.warn('uninstall handoff: new local launcher did not become reachable within 30s');
+            return false;
+        }
+
+        const token = issueToken(installRoot, 'uninstall-service');
+        const redirectTo = `${found}/?resume=uninstall-service&token=${encodeURIComponent(token)}`;
+
+        const body: ServiceActionSuccess = {
+            ok: true,
+            // Service is still running at this point — the local
+            // launcher will do the actual uninstall.
+            status: 'running',
+            installMode: 'user-service',
+            redirectTo,
+            resumeToken: token,
         };
         res.writeHead(200);
         res.end(JSON.stringify(body));

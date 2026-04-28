@@ -8,6 +8,8 @@ mod single_instance;
 mod spawn;
 mod supervisor;
 mod tray;
+#[cfg(windows)]
+mod user_session_spawn;
 
 fn main() {
     log::info(&format!(

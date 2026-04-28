@@ -15,9 +15,15 @@ export class CapabilitiesApi {
 
         const handle = getNodePty();
         const shell = handle?.available === true;
+        // v0.1.8: surface the reason when shell is unavailable so the
+        // frontend can show an actionable error (download failed,
+        // missing prebuilt for this Node ABI, native module load
+        // failure, etc.) instead of just hiding the shell modal
+        // silently.
+        const shellReason = handle?.available === false ? handle.reason : undefined;
         res.setHeader('Content-Type', 'application/json');
         res.writeHead(200);
-        res.end(JSON.stringify({ shell }));
+        res.end(JSON.stringify({ shell, ...(shellReason ? { shellReason } : {}) }));
         return true;
     }
 }

@@ -173,7 +173,14 @@ describe('ServiceApi', () => {
         // circuiting on the admin guard or the launcher-exe-missing 500.
         // v0.1.7: ServiceApi no longer takes an isAdmin injection. The
         // existsCheck stub stays so the launcher-exe presence check passes.
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
+        const api = new ServiceApi(
+            () => factoryResult,
+            () => 'user',
+            () => true,
+            // discover stub: short-circuit port discovery so tests
+            // don't actually probe localhost ports for 30s.
+            async () => null,
+        );
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(200);
@@ -208,7 +215,12 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'system', () => true);
+        const api = new ServiceApi(
+            () => factoryResult,
+            () => 'system',
+            () => true,
+            async () => null,
+        );
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         const body = JSON.parse((res as any).getBody());
@@ -242,7 +254,14 @@ describe('ServiceApi', () => {
             supported: true,
             platform: 'win32',
         };
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
+        const api = new ServiceApi(
+            () => factoryResult,
+            () => 'user',
+            () => true,
+            // discover stub: short-circuit port discovery so tests
+            // don't actually probe localhost ports for 30s.
+            async () => null,
+        );
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(403);
@@ -285,7 +304,14 @@ describe('ServiceApi', () => {
         };
         // v0.1.7: ServiceApi no longer takes an isAdmin injection. The
         // existsCheck stub stays so the launcher-exe presence check passes.
-        const api = new ServiceApi(() => factoryResult, () => 'user', () => true);
+        const api = new ServiceApi(
+            () => factoryResult,
+            () => 'user',
+            () => true,
+            // discover stub: short-circuit port discovery so tests
+            // don't actually probe localhost ports for 30s.
+            async () => null,
+        );
         const { req, res } = makeReqRes('/api/service/install', 'POST');
         await api.handle(req, res);
         expect((res as any).getStatus()).toBe(500);

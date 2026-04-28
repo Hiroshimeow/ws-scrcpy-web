@@ -30,8 +30,7 @@
 //     errorMessage is null, but combined stderr may have warnings.
 
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-import { execFile } from 'child_process';
-import * as crypto from 'node:crypto';
+import { execFile, spawn } from 'child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -84,6 +83,22 @@ export interface UninstallServiceArgs {
 }
 
 /**
+ * Args for the `spawn-user-launcher` command (v0.1.8 uninstall Path A).
+ *
+ * Used ONLY when the caller is running as Local System (the
+ * service-instance Node process). The Rust handler does the WTS-API
+ * dance (WTSGetActiveConsoleSessionId + WTSQueryUserToken +
+ * CreateProcessAsUserW) to spawn the launcher in the active user's
+ * interactive session. The new launcher is unprivileged user-session
+ * — same as a normal user-side launch.
+ */
+export interface SpawnUserLauncherArgs {
+    launcherPath: string;
+    /** Currently unused; reserved for future "auto-resume" semantics. */
+    launcherArgs?: string[];
+}
+
+/**
  * Resolve the absolute path of the launcher binary that should be
  * elevated. In a Velopack install this is `<install>/ws-scrcpy-web-launcher.exe`.
  * In dev runs we don't have a packaged launcher; callers should check
@@ -107,8 +122,8 @@ export function launcherIsAvailable(): boolean {
  * differently.
  */
 export async function runElevated(
-    command: 'install-service' | 'uninstall-service',
-    args: InstallServiceArgs | UninstallServiceArgs,
+    command: 'install-service' | 'uninstall-service' | 'spawn-user-launcher',
+    args: InstallServiceArgs | UninstallServiceArgs | SpawnUserLauncherArgs,
 ): Promise<ElevatedResult> {
     if (process.platform !== 'win32') {
         throw new Error('runElevated is Windows-only');
@@ -128,70 +143,106 @@ export async function runElevated(
     const argsPath = path.join(tmpDir, 'args.json');
     const resultPath = path.join(tmpDir, 'result.json');
 
+    // The `spawn-user-launcher` command is only invoked from the
+    // SERVICE-instance Node process, which is already running as Local
+    // System and so doesn't need UAC. PowerShell Start-Process
+    // -Verb RunAs from Local System is also problematic — there's no
+    // interactive desktop to show a UAC dialog on. Skip the PS wrapper
+    // entirely for this command and direct-spawn the launcher.
+    const useDirect = command === 'spawn-user-launcher';
+
     try {
         fs.writeFileSync(argsPath, JSON.stringify(wireArgs, null, 2), 'utf8');
 
-        // PowerShell's Start-Process -Verb RunAs is the standard way to
-        // get a UAC prompt for an arbitrary executable. -Wait blocks
-        // until the elevated child exits. -PassThru gives us the
-        // process object so we can read ExitCode reliably (Start-Process
-        // doesn't propagate exit codes by default; -PassThru + -Wait
-        // does).
-        //
-        // We embed the args directly in the PS command string. Each path
-        // is a temp-dir path we just generated; they are all absolute
-        // and don't contain user-controlled shell metacharacters that
-        // would let an attacker inject. Even so, every value goes through
-        // a defensive single-quote-escape before interpolation.
-        const psScript = buildPsRunAsCommand({
-            launcherPath,
-            command,
-            argsPath,
-            resultPath,
-        });
+        // v0.1.8: switched from `Start-Process -Wait -PassThru` to a
+        // result-file polling pattern. The previous design hung in
+        // production: PowerShell's -Wait is unreliable for
+        // -Verb RunAs because the elevated process runs in a different
+        // logon session and -Wait can't always track cross-session
+        // children.
         log.info(
-            `runElevated(${command}) launching ${launcherPath} via Start-Process -Verb RunAs`,
+            `runElevated(${command}) launching ${launcherPath} (direct=${useDirect}, file-poll)`,
         );
 
-        let psExitCode = 0;
-        try {
-            await execFileAsync(
-                'powershell.exe',
-                [
-                    '-NoProfile',
-                    '-NonInteractive',
-                    '-ExecutionPolicy', 'Bypass',
-                    '-Command', psScript,
-                ],
-                { windowsHide: true, maxBuffer: 1024 * 1024 },
-            );
-        } catch (err) {
-            // Non-zero exit from PowerShell almost always means UAC was
-            // declined (Windows returns 1223 ERROR_CANCELLED, which PS
-            // surfaces as a terminating error). The result file will be
-            // absent in that case.
-            const e = err as NodeJS.ErrnoException & { code?: string | number };
-            psExitCode = typeof e.code === 'number' ? e.code : -1;
-            log.warn(
-                `runElevated PowerShell exit ${psExitCode}: ${(err as Error).message ?? '(no message)'}`,
-            );
+        if (useDirect) {
+            // Direct spawn — caller is already privileged (Local
+            // System service-instance invoking spawn-user-launcher).
+            // No UAC needed. We don't await the child; we just kick
+            // it off and rely on the result-file polling for sync.
+            try {
+                const child = spawn(
+                    launcherPath,
+                    ['--elevate-and-run', command, argsPath, resultPath],
+                    { detached: true, stdio: 'ignore', windowsHide: true },
+                );
+                child.unref();
+            } catch (err) {
+                return {
+                    ok: false,
+                    exitCode: -1,
+                    stdout: '',
+                    stderr: (err as Error).message ?? '',
+                    errorMessage: `direct elevated spawn failed: ${(err as Error).message ?? ''}`,
+                };
+            }
+        } else {
+            // Standard PowerShell elevation path — fires UAC for the
+            // user to accept. Used for install-service and
+            // uninstall-service from the user-session local launcher.
+            const psScript = buildPsRunAsCommand({
+                launcherPath,
+                command,
+                argsPath,
+                resultPath,
+            });
+            let psFailed = false;
+            let psErrorMessage = '';
+            try {
+                await execFileAsync(
+                    'powershell.exe',
+                    [
+                        '-NoProfile',
+                        '-NonInteractive',
+                        '-ExecutionPolicy', 'Bypass',
+                        '-Command', psScript,
+                    ],
+                    { windowsHide: true, maxBuffer: 1024 * 1024 },
+                );
+            } catch (err) {
+                // PS exits non-zero only when Start-Process itself
+                // failed — usually UAC declined (Windows
+                // ERROR_CANCELLED 1223).
+                psFailed = true;
+                psErrorMessage = (err as Error).message ?? '(no message)';
+                log.warn(`runElevated PowerShell start failed: ${psErrorMessage}`);
+            }
+
+            if (psFailed) {
+                return {
+                    ok: false,
+                    exitCode: -1,
+                    stdout: '',
+                    stderr: psErrorMessage,
+                    errorMessage:
+                        'user declined elevation. Service install requires Administrator privileges; ' +
+                        'click Yes on the UAC prompt to continue.',
+                };
+            }
         }
 
-        if (!fs.existsSync(resultPath)) {
-            // No result JSON written — almost certainly UAC denied.
+        const result = await pollForResultFile(resultPath, ELEVATION_TIMEOUT_MS);
+        if (result === null) {
             return {
                 ok: false,
-                exitCode: psExitCode,
+                exitCode: -1,
                 stdout: '',
                 stderr: '',
                 errorMessage:
-                    'user declined elevation. Service install requires Administrator privileges; ' +
-                    'click Yes on the UAC prompt to continue.',
+                    `elevated helper did not complete within ${ELEVATION_TIMEOUT_MS / 1000}s. ` +
+                    'The UAC prompt may have been dismissed without action, or the helper may have crashed.',
             };
         }
-
-        const raw = fs.readFileSync(resultPath, 'utf8');
-        return parseResult(raw);
+        return result;
     } finally {
         // Best-effort cleanup. Leaving temp files around isn't dangerous
         // (we use a fresh dir per call), but it's sloppy.
@@ -201,6 +252,62 @@ export async function runElevated(
             /* ignore */
         }
     }
+}
+
+/** 5 minutes — UAC dialog can legitimately stay up this long. */
+const ELEVATION_TIMEOUT_MS = 5 * 60 * 1000;
+/** Polling cadence for the result file. 200ms is fast enough that the
+ *  user-perceived latency between the elevated helper finishing and our
+ *  resolve is < 200ms, while not hammering the filesystem. */
+const POLL_INTERVAL_MS = 200;
+
+/**
+ * Poll for the elevated helper's result file. Returns the parsed result
+ * once the file appears, or `null` after the timeout. We tolerate the
+ * file briefly being written-but-not-yet-flushed: parseResult handles
+ * malformed JSON by returning a structured error, but we wait for at
+ * least one consecutive successful parse before returning to avoid
+ * racing the helper's write.
+ */
+export async function pollForResultFile(
+    resultPath: string,
+    timeoutMs: number,
+    intervalMs: number = POLL_INTERVAL_MS,
+    sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<ElevatedResult | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (fs.existsSync(resultPath)) {
+            // File exists. Try to read+parse. If the helper is still
+            // mid-write, parse may produce a malformed-JSON error; if
+            // so, wait one more tick and try again. Once the file is
+            // fully written and reads cleanly, return the parsed
+            // result.
+            try {
+                const raw = fs.readFileSync(resultPath, 'utf8');
+                const parsed = parseResult(raw);
+                // Heuristic: if parseResult returned a "could not
+                // parse" error AND the file is < 1KB, it's probably
+                // mid-write. Wait a tick and re-read. If it's > 1KB
+                // and still malformed, the helper produced bad JSON —
+                // surface that.
+                if (
+                    parsed.ok === false &&
+                    /could not parse/i.test(parsed.errorMessage ?? '') &&
+                    raw.length < 1024
+                ) {
+                    await sleep(intervalMs);
+                    continue;
+                }
+                return parsed;
+            } catch {
+                // File disappeared between existsSync and readFileSync,
+                // or some other I/O error. Treat as still-in-progress.
+            }
+        }
+        await sleep(intervalMs);
+    }
+    return null;
 }
 
 /**
@@ -255,11 +362,20 @@ interface PsRunAsParams {
 }
 
 /**
- * Build the PowerShell command string for `Start-Process -Verb RunAs -Wait
- * -PassThru`. Each argument value is single-quote-escaped (PowerShell
- * single-quoted strings only need `'` doubled) and passed as a member of
- * the `-ArgumentList` array so PowerShell quotes them correctly when
- * forming the Win32 lpCommandLine.
+ * Build the PowerShell command string for `Start-Process -Verb RunAs`.
+ * Each argument value is single-quote-escaped (PowerShell single-quoted
+ * strings only need `'` doubled) and passed as a member of the
+ * `-ArgumentList` array so PowerShell quotes them correctly when forming
+ * the Win32 lpCommandLine.
+ *
+ * v0.1.8: dropped `-Wait -PassThru`. Those flags interact badly with
+ * `-Verb RunAs` because the elevated child runs in a different logon
+ * session — `-Wait` was not reliably waiting for the cross-session
+ * child to exit. We now use a result-file polling pattern (see
+ * `pollForResultFile`) and let PowerShell exit immediately after kicking
+ * off the elevation. PowerShell's exit code now only signals whether
+ * the elevation request itself succeeded (UAC accepted vs declined),
+ * not the elevated child's eventual exit code.
  *
  * Exported for unit-testing.
  */
@@ -275,14 +391,13 @@ export function buildPsRunAsCommand(params: PsRunAsParams): string {
         .join(',');
     // Start-Process exits 0 on success; on UAC denial it throws a
     // Win32Exception that PowerShell surfaces as a terminating error,
-    // which makes execFile reject with non-zero exit. -PassThru +
-    // .ExitCode lets us also propagate the elevated child's exit code
-    // when the child ran but failed.
+    // which makes execFile reject with non-zero exit. The Node side
+    // uses that as the UAC-declined signal. The result file is the
+    // source of truth for the elevated operation's outcome.
     return [
         '$ErrorActionPreference = "Stop";',
-        `$p = Start-Process -FilePath ${q(params.launcherPath)} ` +
+        `Start-Process -FilePath ${q(params.launcherPath)} ` +
             `-ArgumentList ${argList} ` +
-            `-Verb RunAs -Wait -PassThru -WindowStyle Hidden;`,
-        'exit $p.ExitCode',
+            `-Verb RunAs -WindowStyle Hidden`,
     ].join(' ');
 }

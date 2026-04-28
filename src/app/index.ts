@@ -14,6 +14,47 @@ import { WelcomeModal } from './client/WelcomeModal';
 import type { AppConfigEnvelope } from '../common/ConfigEvents';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 
+function maybeResumeUninstall(): void {
+    const params = new URLSearchParams(location.search);
+    if (params.get('resume') !== 'uninstall-service') return;
+    const token = params.get('token') ?? '';
+    if (!token) return;
+
+    // Strip the resume params from the URL bar so a refresh doesn't
+    // re-fire the action (the server-side token is single-use, but
+    // the visual URL would still be confusing).
+    const cleanUrl = `${location.origin}${location.pathname}${location.hash}`;
+    history.replaceState(null, '', cleanUrl);
+
+    // Show a status overlay while the uninstall runs.
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,0.85);color:#fff;' +
+        'display:flex;align-items:center;justify-content:center;z-index:99999;' +
+        'font-family:system-ui,sans-serif;font-size:1.1rem;padding:2rem;text-align:center;';
+    overlay.textContent = 'finishing service uninstall…';
+    document.body.appendChild(overlay);
+
+    fetch('/api/service/uninstall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Resume-Token': token },
+    })
+        .then(async (r) => {
+            const data = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+            if (!r.ok || !data?.ok) {
+                overlay.textContent = `uninstall failed: ${data?.error ?? `HTTP ${r.status}`}`;
+                setTimeout(() => overlay.remove(), 4000);
+                return;
+            }
+            overlay.textContent = 'service uninstalled. you can now use ws-scrcpy-web in user mode.';
+            setTimeout(() => overlay.remove(), 2000);
+        })
+        .catch((err) => {
+            overlay.textContent = `uninstall failed: ${(err as Error).message}`;
+            setTimeout(() => overlay.remove(), 4000);
+        });
+}
+
 function maybeShowWelcomeModal(): void {
     fetch('/api/config')
         .then((r) => (r.ok ? (r.json() as Promise<Partial<AppConfigEnvelope>>) : null))
@@ -82,6 +123,15 @@ window.onload = async (): Promise<void> => {
     });
 
     maybeShowWelcomeModal();
+
+    // v0.1.8 uninstall handoff: if we arrived with
+    // ?resume=uninstall-service&token=..., the previous (service)
+    // instance is asking us to auto-fire the uninstall. Validate the
+    // token server-side via the existing uninstall endpoint
+    // (server consumes the token; the API call only succeeds if it
+    // matches a recently-issued one). On success, the user is
+    // dropped on a clean home page.
+    maybeResumeUninstall();
 
     const devicesDiv = document.createElement('div');
     devicesDiv.id = 'devices';

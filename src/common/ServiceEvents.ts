@@ -32,6 +32,28 @@ export interface ServiceActionSuccess {
     ok: true;
     status: ServiceStatus;
     installMode: 'user' | 'system' | 'user-service' | 'system-service';
+    /**
+     * v0.1.8 install-flow auto-redirect: when the install succeeds and
+     * the new service-instance has been verified reachable on a port
+     * different from this (local) instance's port, this field carries
+     * the URL the frontend should navigate to. The local instance
+     * schedules its own shutdown shortly after responding so the user
+     * doesn't end up with two app instances fighting for the tray.
+     *
+     * Absent when no redirect is needed (e.g., service install
+     * succeeded but the new instance is unreachable for some reason —
+     * frontend should fall back to refreshing the home page).
+     */
+    redirectTo?: string;
+    /**
+     * v0.1.8 uninstall-flow Path A handoff: present when the request
+     * came from a service-context API and the server has spawned a
+     * fresh user-session local launcher to take over. Frontend
+     * navigates to `redirectTo` with this token in the URL params; the
+     * new local instance reads `?resume=uninstall-service&token=...`,
+     * validates it, and auto-fires the uninstall click.
+     */
+    resumeToken?: string;
 }
 
 /** Failure response shape for /api/service/install and /api/service/uninstall. */

@@ -291,6 +291,22 @@ export class WelcomeModal extends Modal {
             // load even if the backend's /install handler omits that flag.
             // Failure here is non-fatal — install itself succeeded.
             await this.patchConfig({ firstRunComplete: true });
+
+            // v0.1.8: if the server discovered a new service-instance
+            // port and asked us to redirect, hand off cleanly. The
+            // local instance will exit shortly after responding to us;
+            // the user's browser ends up on the service instance with
+            // no double-tray confusion.
+            if (data.redirectTo) {
+                this.setStatus('service mode active. switching you over…');
+                // Brief delay so the status text is actually visible and
+                // the local instance has time to flush its response.
+                setTimeout(() => {
+                    window.location.href = data.redirectTo!;
+                }, 500);
+                return;
+            }
+
             this.opts.onDecision('service');
             this.close();
         } catch {

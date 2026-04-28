@@ -1,5 +1,7 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { AppConfigEnvelope, AppConfigPatchResponse } from '../../common/ConfigEvents';
 import { Config, ConfigValidationError } from '../Config';
 import { Logger } from '../Logger';
@@ -52,11 +54,42 @@ export class ConfigApi {
                     return true;
                 }
                 try {
-                    const result = Config.getInstance().updateAppConfig(parsed as Record<string, unknown>);
+                    const cfg = Config.getInstance();
+                    const result = cfg.updateAppConfig(parsed as Record<string, unknown>);
                     const response: AppConfigPatchResponse = {
                         config: result.config,
                         restartRequired: result.restartRequired,
                     };
+
+                    // v0.1.8: when a port change requires a restart,
+                    // build the redirect URL pointing at the new port
+                    // and schedule the actual restart via the existing
+                    // .restart marker + exit-75 mechanism. The
+                    // launcher's supervisor will pick up the marker,
+                    // restart Node, and the new server binds the new
+                    // port. The browser redirects 3s after the
+                    // response, by which time the new server should
+                    // be listening.
+                    if (result.restartRequired) {
+                        response.redirectTo = `http://localhost:${result.config.webPort}`;
+                        const markerPath = path.join(cfg.dependenciesPath, '.restart');
+                        try {
+                            fs.writeFileSync(markerPath, `restart-requested-${Date.now()}`);
+                        } catch (err) {
+                            log.warn(
+                                `could not write .restart marker (port change won't take effect until manual restart): ${(err as Error).message}`,
+                            );
+                        }
+                        // Schedule own exit AFTER responding. exit-75
+                        // is the supervisor's restart signal. Delay
+                        // long enough for the response body + headers
+                        // to fully flush over the socket.
+                        setTimeout(() => {
+                            log.info('port change committed; exiting with 75 to trigger restart');
+                            process.exit(75);
+                        }, 1000).unref();
+                    }
+
                     res.writeHead(200);
                     res.end(JSON.stringify(response));
                     return true;

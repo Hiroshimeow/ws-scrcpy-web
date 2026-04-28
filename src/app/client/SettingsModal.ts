@@ -139,10 +139,20 @@ export class SettingsModal extends Modal {
             const data = (await r.json()) as AppConfigPatchResponse;
             this.currentWebPort = data.config.webPort;
             if (data.restartRequired) {
+                // v0.1.8: server schedules its own exit-75 ~1s after
+                // responding, supervisor restarts Node on the new
+                // port. Browser redirects 4s after the response —
+                // gives the supervisor time to bring the new server
+                // up before navigation hits the new URL.
                 this.setServerStatus(
-                    'server will restart on the new port. browser will redirect.',
+                    'server restarting on new port. redirecting in a moment…',
                     false,
                 );
+                if (data.redirectTo) {
+                    setTimeout(() => {
+                        window.location.href = data.redirectTo!;
+                    }, 4000);
+                }
             } else {
                 this.setServerStatus('saved.', false);
             }
@@ -724,6 +734,14 @@ export class SettingsModal extends Modal {
                         ? data.error
                         : `install failed (${r.status})`;
                 this.renderServiceError(errMsg, () => void this.refreshService());
+                return;
+            }
+            // v0.1.8 install-flow auto-redirect.
+            if (data.redirectTo) {
+                btn.textContent = 'switching to service mode…';
+                setTimeout(() => {
+                    window.location.href = data.redirectTo!;
+                }, 500);
                 return;
             }
             await this.refreshService();

@@ -52,6 +52,13 @@ export interface AppConfigEnvelope {
 export interface AppConfigPatchResponse {
     config: AppConfig;
     restartRequired: boolean;
+    /**
+     * v0.1.8: when `restartRequired` is true, the server will request a
+     * supervisor-driven restart shortly after responding. This URL is
+     * where the frontend should redirect the user once the new server
+     * is up. Absent when no restart is needed.
+     */
+    redirectTo?: string;
 }
 
 /**

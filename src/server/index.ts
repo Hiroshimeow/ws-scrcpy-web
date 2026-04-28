@@ -9,6 +9,7 @@ import { DeviceDiscoveryApi } from './api/DeviceDiscoveryApi';
 import { ServerShutdownApi } from './api/ServerShutdownApi';
 import { ServiceApi } from './api/ServiceApi';
 import { UpdatesApi } from './api/UpdatesApi';
+import { WhoamiApi } from './api/WhoamiApi';
 import { Config } from './Config';
 import { UpdateService } from './UpdateService';
 import { DependencyManager } from './DependencyManager';
@@ -92,6 +93,9 @@ const updateService = new UpdateService();
 updateService.init();
 const updatesApi = new UpdatesApi(updateService);
 HttpServer.addApiHandler(updatesApi);
+
+const whoamiApi = new WhoamiApi();
+HttpServer.addApiHandler(whoamiApi);
 
 // Wire the scanner singleton
 const scanAdb = new AdbClient(config.adbPath);

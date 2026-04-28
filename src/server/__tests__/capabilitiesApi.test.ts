@@ -42,13 +42,19 @@ describe('CapabilitiesApi', () => {
         expect(JSON.parse((res as any).getBody())).toEqual({ shell: true });
     });
 
-    it('returns { shell: false } when the cached handle is unavailable', async () => {
+    it('returns { shell: false, shellReason } when the cached handle is unavailable', async () => {
         mockedHandle = { available: false, reason: 'no-manifest' };
         const api = new CapabilitiesApi();
         const { req, res } = makeReqRes('/api/capabilities');
         const handled = await api.handle(req, res);
         expect(handled).toBe(true);
-        expect(JSON.parse((res as any).getBody())).toEqual({ shell: false });
+        // v0.1.8: shellReason is surfaced so the frontend can render
+        // an actionable failure mode rather than silently hiding the
+        // shell modal.
+        expect(JSON.parse((res as any).getBody())).toEqual({
+            shell: false,
+            shellReason: 'no-manifest',
+        });
     });
 
     it('returns { shell: false } when no handle is cached yet', async () => {

@@ -49,6 +49,8 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 use crate::log;
+#[cfg(windows)]
+use crate::user_session_spawn::{spawn_in_active_user_session, SpawnUserLauncherArgs};
 
 /// Args we accept from the Node caller. Each `command` has its own
 /// expected schema; we deserialize as a generic JSON value first and then
@@ -110,6 +112,17 @@ pub fn handle(args: &[String]) -> Option<i32> {
         },
         "uninstall-service" => match read_args::<UninstallServiceArgs>(&args_path) {
             Ok(a) => uninstall_service(&a),
+            Err(e) => fail(3, &format!("could not read args JSON: {e}")),
+        },
+        // Cross-session user-session spawn for the v0.1.8 uninstall
+        // Path A flow. Caller is the SERVICE-instance Node process
+        // (running as Local System), which has SE_TCB_NAME and so can
+        // call WTSQueryUserToken. We bridge through this elevated-run
+        // command so the WTS-API code lives in one Rust module and
+        // the Node side has a uniform interface.
+        #[cfg(windows)]
+        "spawn-user-launcher" => match read_args::<SpawnUserLauncherArgs>(&args_path) {
+            Ok(a) => spawn_user_launcher_command(&a),
             Err(e) => fail(3, &format!("could not read args JSON: {e}")),
         },
         unknown => fail(2, &format!("unknown elevate-and-run command: {unknown}")),
@@ -233,6 +246,28 @@ fn install_service(args: &InstallServiceArgs) -> ElevatedResult {
     }
 }
 
+#[cfg(windows)]
+fn spawn_user_launcher_command(args: &SpawnUserLauncherArgs) -> ElevatedResult {
+    let r = spawn_in_active_user_session(args);
+    if r.ok {
+        ElevatedResult {
+            ok: true,
+            exit_code: 0,
+            stdout: format!("spawned pid {} in session {}", r.pid, r.session_id),
+            stderr: String::new(),
+            error_message: None,
+        }
+    } else {
+        ElevatedResult {
+            ok: false,
+            exit_code: 4,
+            stdout: String::new(),
+            stderr: r.error_message.clone().unwrap_or_default(),
+            error_message: r.error_message,
+        }
+    }
+}
+
 fn uninstall_service(args: &UninstallServiceArgs) -> ElevatedResult {
     log::info(&format!("uninstall-service: name={}", args.name));
 
@@ -258,6 +293,17 @@ fn uninstall_service(args: &UninstallServiceArgs) -> ElevatedResult {
 
     // Tray Run-key cleanup — best-effort.
     let _ = unregister_tray_run_key();
+
+    // v0.1.8: also kill the running tray helper process if any. The
+    // Run-key removal above only prevents auto-start on next login;
+    // the currently-running tray icon would otherwise sit there
+    // pointing at a service that no longer exists. taskkill /F /IM
+    // hits both elevated and non-elevated tray instances in the
+    // current session. Best-effort — no tray process means no kill,
+    // not an error.
+    let _ = Command::new("taskkill")
+        .args(["/F", "/IM", "ws-scrcpy-web-tray.exe"])
+        .output();
 
     ElevatedResult {
         ok: true,
