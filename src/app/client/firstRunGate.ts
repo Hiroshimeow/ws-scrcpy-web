@@ -74,3 +74,21 @@ export function getBookmarkDismissedPort(): number | null {
 export function setBookmarkDismissedPort(port: number): void {
     safeSet(KEY_BOOKMARK_PORT, String(port));
 }
+
+/**
+ * v0.1.12: clear all first-run / bookmark dismissal flags. Used by the
+ * Settings → "Reset welcome prompts" button so the user can re-see the
+ * WelcomeModal / ServiceFirstRunModal / PortChangeModal without having to
+ * clear their entire browser cache. Does NOT touch other localStorage
+ * keys (audio prefs, theme, scan history) — narrowly scoped to the
+ * three first-run gates.
+ */
+export function resetAllDismissals(): void {
+    try {
+        window.localStorage.removeItem(KEY_WELCOME);
+        window.localStorage.removeItem(KEY_SERVICE_FIRST_RUN);
+        window.localStorage.removeItem(KEY_BOOKMARK_PORT);
+    } catch {
+        // Private mode / quota / disabled — silent fall-through.
+    }
+}

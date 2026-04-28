@@ -7,6 +7,7 @@ import { ChannelCode } from '../../../common/ChannelCode';
 import type { Multiplexer } from '../../../packages/multiplexer/Multiplexer';
 import type { Message } from '../../../types/Message';
 import type { XtermClientMessage, XtermServiceParameters } from '../../../types/XtermMessage';
+import { Config } from '../../Config';
 import { Logger } from '../../Logger';
 import { Mw, type RequestParameters } from '../../mw/Mw';
 
@@ -52,7 +53,13 @@ export class RemoteShell extends Mw {
         env['COLORTERM'] = 'truecolor';
         const { cols = 80, rows = 24 } = params;
         const cwd = process.cwd();
-        const file = OS_WINDOWS ? 'adb.exe' : 'adb';
+        // v0.1.12: resolve adb via Config.adbPath instead of bare 'adb.exe'.
+        // Same family of bug as the v0.1.4 AdbClient bare-'adb' issue and
+        // the v0.1.9 scrcpy-server `dist/assets/` path issue — `pty.spawn`
+        // here was looking up adb.exe on system PATH, which clean Win11 VMs
+        // don't have. Resolves to <deps>/adb/adb.exe per the Local
+        // Dependencies Only rule.
+        const file = Config.getInstance().adbPath;
         const term = handle.pty.spawn(file, ['-s', params.udid, 'shell'], {
             name: 'xterm-256color',
             cols,

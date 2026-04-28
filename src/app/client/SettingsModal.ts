@@ -1,4 +1,5 @@
 import { Modal } from '../ui/Modal';
+import { resetAllDismissals } from './firstRunGate';
 import type { AppConfigEnvelope, AppConfigPatchResponse, UpdateChannel } from '../../common/ConfigEvents';
 import type {
     ServiceStatusResponse,
@@ -806,12 +807,93 @@ export class SettingsModal extends Modal {
         heading.textContent = 'App';
         section.appendChild(heading);
 
-        const note = document.createElement('p');
-        note.className = 'settings-stub-note';
-        note.textContent = '(uninstall in P7)';
-        section.appendChild(note);
+        section.appendChild(this.buildResetPromptsRow());
 
         return section;
+    }
+
+    /**
+     * v0.1.12: "Reset welcome prompts" button. Clears the three localStorage
+     * gates (welcomeDismissed, serviceFirstRunDismissed, bookmarkDismissedForPort)
+     * so the first-run / bookmark modals will fire again on the next page load.
+     *
+     * Two-step UX: clicking "reset" reveals an inline confirmation row
+     * with explanatory copy and confirm/cancel buttons. Clears + reloads
+     * on confirm so the user sees the modals immediately rather than
+     * having to manually refresh.
+     *
+     * Only clears first-run gates — does NOT touch audio prefs, theme,
+     * scan history, or any other localStorage keys.
+     */
+    private buildResetPromptsRow(): HTMLElement {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+        const desc = document.createElement('p');
+        desc.style.cssText = 'margin: 0; color: var(--text-color-light); font-size: 13px;';
+        desc.textContent =
+            'reset welcome and bookmark prompts so they appear again next page load. ' +
+            'useful if you dismissed them and want to re-read the bookmark hints.';
+        wrap.appendChild(desc);
+
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'reset welcome prompts';
+        resetBtn.style.cssText =
+            'border: 0.5px solid var(--text-color, #ddd); border-radius: 6px; ' +
+            'background: transparent; color: #5b9aff; padding: 8px 16px; cursor: pointer; ' +
+            'align-self: flex-start;';
+
+        const confirmRow = document.createElement('div');
+        confirmRow.style.cssText =
+            'display: none; flex-direction: column; gap: 8px; ' +
+            'padding: 12px; border-radius: 6px; ' +
+            'background: rgba(91, 154, 255, 0.08); border-left: 3px solid #5b9aff;';
+
+        const confirmText = document.createElement('p');
+        confirmText.style.cssText =
+            'margin: 0; color: var(--text-color-light); font-size: 13px; line-height: 1.5;';
+        confirmText.textContent =
+            'this will clear the localStorage flags that suppress the welcome modal, ' +
+            'service-mode modal, and per-port bookmark reminder. the page will reload ' +
+            'so the appropriate modal can re-fire. it does not affect server settings, ' +
+            'install mode, audio preferences, or scan history.';
+        confirmRow.appendChild(confirmText);
+
+        const confirmButtons = document.createElement('div');
+        confirmButtons.style.cssText = 'display: flex; gap: 12px;';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.textContent = 'confirm reset';
+        confirmBtn.style.cssText =
+            'border: 0.5px solid var(--text-color, #ddd); border-radius: 6px; ' +
+            'background: transparent; color: #5b9aff; padding: 6px 14px; cursor: pointer;';
+        confirmBtn.addEventListener('click', () => {
+            resetAllDismissals();
+            window.location.reload();
+        });
+        confirmButtons.appendChild(confirmBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'cancel';
+        cancelBtn.style.cssText =
+            'border: 0.5px solid var(--text-color, #ddd); border-radius: 6px; ' +
+            'background: transparent; color: var(--text-color-light); padding: 6px 14px; cursor: pointer;';
+        cancelBtn.addEventListener('click', () => {
+            confirmRow.style.display = 'none';
+            resetBtn.style.display = '';
+        });
+        confirmButtons.appendChild(cancelBtn);
+
+        confirmRow.appendChild(confirmButtons);
+
+        resetBtn.addEventListener('click', () => {
+            resetBtn.style.display = 'none';
+            confirmRow.style.display = 'flex';
+        });
+
+        wrap.appendChild(resetBtn);
+        wrap.appendChild(confirmRow);
+        return wrap;
     }
 
 }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-04-28
+
+### Fixed
+
+- **Shell modal "File not found:" on clean VM.** `RemoteShell.createTerminal` was passing bare `'adb.exe'` to `pty.spawn`, which falls back to system `PATH` — a clean Win11 VM has no adb on PATH, so the spawn ENOENT'd silently and the xterm went black. Same family of bug as the v0.1.4 `AdbClient` bare-`'adb'` issue and the v0.1.9 `scrcpy-server dist/assets/` issue. Now resolves via `Config.getInstance().adbPath` (`<deps>/adb/adb.exe`) per the Local Dependencies Only rule.
+
+### Added
+
+- **Settings → "Reset welcome prompts" button.** Clears the three v0.1.10 localStorage gates (`welcomeDismissed`, `serviceFirstRunDismissed`, `bookmarkDismissedForPort`) and reloads the page so the appropriate modals re-fire. Two-step UX with explanatory copy on confirm; only touches first-run gates, not audio prefs / theme / scan history. Uninstall does not (and cannot reliably) clear browser localStorage; this gives users a clean reset path that doesn't require clearing their entire browser cache.
+
 ## [0.1.11] - 2026-04-28
 
 ### Fixed

@@ -5,6 +5,7 @@ import {
     getBookmarkDismissedPort,
     isServiceFirstRunDismissed,
     isWelcomeDismissed,
+    resetAllDismissals,
     setBookmarkDismissedPort,
     setServiceFirstRunDismissed,
     setWelcomeDismissed,
@@ -77,6 +78,37 @@ describe('firstRunGate', () => {
             setBookmarkDismissedPort(8000);
             const currentPort = 9090;
             expect(getBookmarkDismissedPort() !== currentPort).toBe(true);
+        });
+    });
+
+    describe('resetAllDismissals (v0.1.12)', () => {
+        it('clears all three flags', () => {
+            setWelcomeDismissed();
+            setServiceFirstRunDismissed();
+            setBookmarkDismissedPort(8000);
+
+            resetAllDismissals();
+
+            expect(isWelcomeDismissed()).toBe(false);
+            expect(isServiceFirstRunDismissed()).toBe(false);
+            expect(getBookmarkDismissedPort()).toBeNull();
+        });
+
+        it('does not touch unrelated localStorage keys', () => {
+            window.localStorage.setItem('audio.preferredBitrate', '128');
+            window.localStorage.setItem('theme.mode', 'dark');
+            setWelcomeDismissed();
+
+            resetAllDismissals();
+
+            expect(window.localStorage.getItem('audio.preferredBitrate')).toBe('128');
+            expect(window.localStorage.getItem('theme.mode')).toBe('dark');
+            expect(isWelcomeDismissed()).toBe(false);
+        });
+
+        it('is idempotent — calling on a clean state is a no-op', () => {
+            expect(() => resetAllDismissals()).not.toThrow();
+            expect(isWelcomeDismissed()).toBe(false);
         });
     });
 });
