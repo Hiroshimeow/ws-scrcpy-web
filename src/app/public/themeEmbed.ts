@@ -38,6 +38,19 @@ function isTheme(value: unknown): value is Theme {
     return value === 'dark' || value === 'light';
 }
 
+/**
+ * Posts a `<messageType>-ready` handshake to the parent window so the host
+ * page knows ws-scrcpy-web has loaded and what its current theme is.
+ *
+ * No-op when not embedded (i.e., when `target === window`, which is true at
+ * the top of a frame tree).
+ *
+ * Uses `'*'` as `targetOrigin` because at handshake time the iframe does not
+ * yet know the parent's origin — discovering it is the *purpose* of the
+ * handshake. The payload is the iframe's own current theme, which is
+ * non-sensitive. The reverse direction (parent → iframe with a new theme)
+ * should use `event.origin` from the handshake for `targetOrigin`.
+ */
 export function notifyThemeReady(target?: Window, opts: ThemeEmbedOptions = {}): void {
     const dest = target ?? window.parent;
     if (!dest || dest === window) return;

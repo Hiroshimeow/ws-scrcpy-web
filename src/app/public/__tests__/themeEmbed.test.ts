@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getTheme, setTheme, installThemeEmbedListener } from '../themeEmbed';
+import { getTheme, setTheme, installThemeEmbedListener, notifyThemeReady } from '../themeEmbed';
 
 describe('getTheme / setTheme', () => {
     beforeEach(() => {
@@ -93,8 +93,6 @@ describe('installThemeEmbedListener', () => {
         expect(getTheme()).toBe('dark');
     });
 });
-
-import { notifyThemeReady } from '../themeEmbed';
 
 describe('notifyThemeReady', () => {
     beforeEach(() => {
