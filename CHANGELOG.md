@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.3] - 2026-04-28
+
+### Fixed
+
+- **In-app updater spawn-loop after failed apply (root cause of v0.1.22 yank).** The Velopack JS SDK's `VelopackApp` defaults `_autoApply = true`, so every Node startup auto-detected a previously-staged nupkg in `<localappdata>\WsScrcpyWeb\packages\` and auto-fired `Update.exe apply`, then exited the Node process. After any failed apply (lock contention, UAC dismissed, or other Update.exe failure), the staged package stayed, and every subsequent app launch re-fired the loop — visible as "UAC prompt for updater that closes silently with the app never coming back." Fix: `VelopackApp.build().setAutoApplyOnStartup(false).run()` in `src/server/index.ts`. Apply now fires ONLY on explicit `UpdateService.applyUpdate` user click. Users with a stuck staged package can recover by closing the app instead of being trapped.
+
+### Notes
+
+- Updating from v0.1.23-beta.1 to this beta is still subject to the underlying Update.exe swap failure (separate root-cause investigation). Use a fresh MSI install of beta.3 instead. To clear a stuck staged package without uninstall, delete `%LocalAppData%\WsScrcpyWeb\packages\*.nupkg`.
+
 ## [0.1.23-beta.2] - 2026-04-28
 
 No code changes. Cut as an in-app update target so v0.1.23-beta.1 fresh installs can exercise the in-app updater path under the new argv-logging diagnostic + unknown-flag catch-all from beta.1. The launcher.log entry for the post-Update.exe respawn will reveal which velopack lifecycle flag was tripping `VelopackApp::build().run()` to silent-exit, which feeds the proper handler in v0.1.23 (final).

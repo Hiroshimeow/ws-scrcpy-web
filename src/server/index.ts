@@ -33,8 +33,18 @@ import { WebSocketServer } from './services/WebSocketServer';
 
 // Velopack JS SDK init must run before any other side-effecting startup logic.
 // In dev mode (no install layout) this returns gracefully without altering state.
+//
+// `setAutoApplyOnStartup(false)` is critical: the JS SDK's default is `true`,
+// which auto-fires `Update.exe apply` on every Node startup if a previously-
+// staged nupkg exists in `<localappdata>\<AppId>\packages\`. v0.1.23-beta.1
+// → beta.2 testing showed this caused an infinite Update.exe / UAC loop after
+// any failed apply: the staged package stayed, and every subsequent app
+// launch auto-fired Update.exe again, prompting UAC every time. Apply must
+// be triggered exclusively by an explicit user click via
+// UpdateService.applyUpdate so users can recover from a stuck swap by
+// closing the app, instead of being trapped in a re-fire loop.
 try {
-    VelopackApp.build().run();
+    VelopackApp.build().setAutoApplyOnStartup(false).run();
 } catch (err) {
     Logger.for('Velopack').warn(`VelopackApp.build().run() failed: ${(err as Error)?.message ?? String(err)}`);
 }
