@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24-beta.6] - 2026-04-29
+
+### Fixed
+
+- The in-app theme toggle button's icon and tooltip now stay in sync
+  with the current theme regardless of how it changed. Previously the
+  button only updated its own visual state when clicked directly, so
+  it went stale when the theme was set via the iframe theme bridge or
+  via `WsScrcpy.setTheme(...)`. Implemented via a `MutationObserver`
+  on `<html data-theme>` with self-disconnect when the button is
+  removed from the DOM (e.g., modal close).
+
 ## [0.1.24-beta.5] - 2026-04-29
 
 > v0.1.24-beta.4 was a failed re-cut (release CI rejected the tag because
