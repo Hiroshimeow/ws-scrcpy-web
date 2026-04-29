@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.12] - 2026-04-29
+
+No code changes. Cut as an in-app update target so v0.1.23-beta.11 fresh installs can exercise the post-apply auto-relaunch path now that the Rust-SDK auto-apply default is disabled. Pairs with the beta.9 Job Object kill-on-close release fix as the second half of the in-app updater story: beta.9 lets `Update.exe` survive launcher exit; beta.11 stops the post-swap launcher from re-firing `Update.exe` in a loop.
+
 ## [0.1.23-beta.11] - 2026-04-29
 
 ### Fixed
