@@ -31,3 +31,29 @@ export function setTheme(theme: Theme): void {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(STORAGE_KEY, theme);
 }
+
+const DEFAULT_MESSAGE_TYPE = 'ws-scrcpy-web:theme';
+
+function isTheme(value: unknown): value is Theme {
+    return value === 'dark' || value === 'light';
+}
+
+export function installThemeEmbedListener(opts: ThemeEmbedOptions = {}): () => void {
+    const messageType = opts.messageType ?? DEFAULT_MESSAGE_TYPE;
+    const allowedOrigins = opts.allowedOrigins ?? '*';
+
+    const handler = (event: MessageEvent): void => {
+        if (allowedOrigins !== '*' && !allowedOrigins.includes(event.origin)) {
+            return;
+        }
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if ((data as { type?: unknown }).type !== messageType) return;
+        const theme = (data as { theme?: unknown }).theme;
+        if (!isTheme(theme)) return;
+        setTheme(theme);
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+}
