@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getTheme, setTheme, installThemeEmbedListener, notifyThemeReady } from '../themeEmbed';
+import { getTheme, setTheme, installThemeEmbedListener, notifyThemeReady, notifyThemeChanged } from '../themeEmbed';
 
 describe('getTheme / setTheme', () => {
     beforeEach(() => {
@@ -92,6 +92,36 @@ describe('installThemeEmbedListener', () => {
         postFromOrigin('https://example.com', { type: 'ws-scrcpy-web:theme', theme: 'light' });
         expect(getTheme()).toBe('dark');
     });
+
+    it('responds to theme-request by re-posting theme-ready to event.source', () => {
+        const source = { postMessage: vi.fn() } as unknown as Window;
+        const dispose = installThemeEmbedListener();
+        setTheme('light');
+        const evt = new MessageEvent('message', {
+            data: { type: 'ws-scrcpy-web:theme-request' },
+            origin: 'https://example.com',
+            source,
+        });
+        window.dispatchEvent(evt);
+        expect(source.postMessage).toHaveBeenCalledWith(
+            { type: 'ws-scrcpy-web:theme-ready', theme: 'light' },
+            'https://example.com',
+        );
+        dispose();
+    });
+
+    it('ignores theme-request from non-allowed origin', () => {
+        const source = { postMessage: vi.fn() } as unknown as Window;
+        const dispose = installThemeEmbedListener({ allowedOrigins: ['https://allowed.example'] });
+        const evt = new MessageEvent('message', {
+            data: { type: 'ws-scrcpy-web:theme-request' },
+            origin: 'https://blocked.example',
+            source,
+        });
+        window.dispatchEvent(evt);
+        expect(source.postMessage).not.toHaveBeenCalled();
+        dispose();
+    });
 });
 
 describe('notifyThemeReady', () => {
@@ -134,6 +164,39 @@ describe('notifyThemeReady', () => {
         notifyThemeReady(target, { messageType: 'custom:theme' });
         expect(target.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: 'custom:theme-ready' }),
+            '*',
+        );
+    });
+});
+
+describe('notifyThemeChanged', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        document.documentElement.removeAttribute('data-theme');
+    });
+
+    it('posts {type: <base>-changed, theme} to the given target', () => {
+        const target = { postMessage: vi.fn() } as unknown as Window;
+        setTheme('light');
+        notifyThemeChanged(target);
+        expect(target.postMessage).toHaveBeenCalledWith(
+            { type: 'ws-scrcpy-web:theme-changed', theme: 'light' },
+            '*',
+        );
+    });
+
+    it('is a no-op when target equals window (not embedded)', () => {
+        const spy = vi.spyOn(window, 'postMessage');
+        notifyThemeChanged(window);
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it('honors custom messageType (suffixed with -changed)', () => {
+        const target = { postMessage: vi.fn() } as unknown as Window;
+        notifyThemeChanged(target, { messageType: 'custom:theme' });
+        expect(target.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'custom:theme-changed' }),
             '*',
         );
     });

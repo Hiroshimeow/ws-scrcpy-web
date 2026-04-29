@@ -62,6 +62,7 @@ export function notifyThemeReady(target?: Window, opts: ThemeEmbedOptions = {}):
 export function installThemeEmbedListener(opts: ThemeEmbedOptions = {}): () => void {
     const messageType = opts.messageType ?? DEFAULT_MESSAGE_TYPE;
     const allowedOrigins = opts.allowedOrigins ?? '*';
+    const requestType = `${messageType}-request`;
 
     const handler = (event: MessageEvent): void => {
         if (allowedOrigins !== '*' && !allowedOrigins.includes(event.origin)) {
@@ -69,7 +70,18 @@ export function installThemeEmbedListener(opts: ThemeEmbedOptions = {}): () => v
         }
         const data = event.data;
         if (!data || typeof data !== 'object') return;
-        if ((data as { type?: unknown }).type !== messageType) return;
+        const type = (data as { type?: unknown }).type;
+
+        if (type === requestType) {
+            const src = event.source as Window | null;
+            if (src) {
+                const readyType = `${messageType}-ready`;
+                src.postMessage({ type: readyType, theme: getTheme() }, event.origin);
+            }
+            return;
+        }
+
+        if (type !== messageType) return;
         const theme = (data as { theme?: unknown }).theme;
         if (!isTheme(theme)) return;
         setTheme(theme);
@@ -77,4 +89,26 @@ export function installThemeEmbedListener(opts: ThemeEmbedOptions = {}): () => v
 
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
+}
+
+/**
+ * Posts a `<messageType>-changed` notification to the parent window so the
+ * host page learns that ws-scrcpy-web's own UI just changed the theme.
+ *
+ * Use this when the iframe's theme changed via ws-scrcpy-web's own controls
+ * (e.g., the in-app theme toggle button). The host can listen for this
+ * message and update its own theme to stay in sync.
+ *
+ * No-op when not embedded (i.e., when `target === window`).
+ *
+ * Uses `'*'` as `targetOrigin` for the same reason as `notifyThemeReady`:
+ * at the time this fires, the iframe doesn't have a guaranteed parent
+ * origin to lock to. The payload is a non-sensitive theme value.
+ */
+export function notifyThemeChanged(target?: Window, opts: ThemeEmbedOptions = {}): void {
+    const dest = target ?? window.parent;
+    if (!dest || dest === window) return;
+    const baseType = opts.messageType ?? DEFAULT_MESSAGE_TYPE;
+    const changedType = `${baseType}-changed`;
+    dest.postMessage({ type: changedType, theme: getTheme() }, '*');
 }
