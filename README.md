@@ -43,6 +43,92 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 - **Server logging** -- all server output logged to `ws-scrcpy-web.log` with timestamps, tag prefixes, and 5MB rotation
 - Docker support (Dockerfile included)
 
+## Embedding
+
+### Embedding: theme bridge
+
+When ws-scrcpy-web is embedded in a cross-origin iframe, the host page can sync
+its dark/light theme via `postMessage`. ws-scrcpy-web's listener and handshake
+fire automatically on load — no extra wiring needed inside ws-scrcpy-web.
+
+**Protocol** (all message types are namespaced with `ws-scrcpy-web:`):
+
+| Direction | Message type | Payload | When |
+|-----------|--------------|---------|------|
+| iframe → parent | `theme-ready` | `{theme: 'dark' \| 'light'}` | One-shot on load; re-sent on demand (see below) |
+| iframe → parent | `theme-changed` | `{theme: 'dark' \| 'light'}` | When ws-scrcpy-web's in-app theme toggle changes the theme |
+| parent → iframe | `theme` | `{theme: 'dark' \| 'light'}` | Host pushes a new theme to the iframe |
+| parent → iframe | `theme-request` | `{}` | Host asks the iframe to re-announce `theme-ready` |
+
+**Minimum host integration:**
+
+```javascript
+// 1) Reply to the iframe's load handshake with your current theme.
+window.addEventListener('message', (e) => {
+    if (e.data?.type === 'ws-scrcpy-web:theme-ready') {
+        const iframe = document.getElementById('ws-scrcpy-iframe');
+        iframe.contentWindow.postMessage(
+            { type: 'ws-scrcpy-web:theme', theme: getMyHostTheme() },
+            e.origin,
+        );
+    }
+    // 2) Sync your host theme when ws-scrcpy-web's in-app toggle fires.
+    if (e.data?.type === 'ws-scrcpy-web:theme-changed') {
+        if (e.data.theme === 'dark' || e.data.theme === 'light') {
+            setMyHostTheme(e.data.theme);
+        }
+    }
+});
+
+// 3) When the host's theme changes, push it to the iframe.
+function pushThemeToIframe(theme) {
+    const iframe = document.getElementById('ws-scrcpy-iframe');
+    if (!iframe?.contentWindow) return;
+    const origin = new URL(iframe.src, location.href).origin;
+    iframe.contentWindow.postMessage({ type: 'ws-scrcpy-web:theme', theme }, origin);
+}
+```
+
+**Race condition note.** The iframe posts `theme-ready` once at module load. If
+your host attaches its `message` listener AFTER iframe load (e.g., inside
+`iframe.onload`), the one-shot post arrives before you're listening. Three
+ways to avoid losing it:
+
+1. **Recommended:** attach the host's `message` listener BEFORE the iframe
+   element is added to the DOM, OR before its `src` attribute is set.
+2. **Or:** post `{type: 'ws-scrcpy-web:theme-request'}` to the iframe once
+   you're ready — ws-scrcpy-web replies with a fresh `theme-ready`.
+3. **Don't** rely on `iframe.onload` as your listener-attach point; the
+   handshake may already have fired by then.
+
+**Programmatic API.** When the bundle loads as a UMD library, the helpers
+land on `window.WsScrcpy.*`:
+
+```javascript
+WsScrcpy.getTheme();                       // 'dark' | 'light'
+WsScrcpy.setTheme('light');                // applies + persists
+WsScrcpy.installThemeEmbedListener();      // already called on load
+WsScrcpy.notifyThemeReady();               // already called on load
+WsScrcpy.notifyThemeChanged();             // called by in-app toggle button
+```
+
+ESM consumers can `import` the same names from the package entry.
+
+**Security: `allowedOrigins`.** The default listener accepts theme messages
+from any origin (`allowedOrigins: '*'`). This is permissive by design so the
+helper is drop-in for any embedder. Locked-down deployments should call
+
+```javascript
+WsScrcpy.installThemeEmbedListener({
+    allowedOrigins: ['https://your-host.example'],
+});
+```
+
+themselves and skip the auto-install (e.g., set a build flag, or fork
+`src/app/index.ts`). Origin validation gates BOTH `theme` push messages AND
+`theme-request` pings — non-allowed origins cannot ask the iframe to
+re-announce `theme-ready`, preventing leak vectors.
+
 ## Downloads
 
 Get the latest release from the [Releases page](https://github.com/bilbospocketses/ws-scrcpy-web/releases/latest):
