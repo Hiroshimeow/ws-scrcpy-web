@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.23] - 2026-04-29
+
+### Fixed
+
+- **node-pty resolver actually loads (item 5 fix).** beta.19's Local-Dependencies-Only restructure shipped with a webpack-mangled require call: `import { createRequire } from 'module'` got tree-shaken to `void 0` and the bundled output had `(void 0)('node-pty')`. Resolver always failed with `(void 0) is not a function`, the shell button stayed disabled across a clean install + upgrade. Switched to `process.getBuiltinModule('module').createRequire(marker)('node-pty')` — webpack does not analyze `process.*` expressions, so the chain survives bundling untouched. `process.getBuiltinModule` is Node 22+, available in our shipped Node 24. Bare `require(absolutePath)` was also tried but webpack rewrote it into `__webpack_require__(<id>)` for a context-bundle and returned the wrong module; the process.getBuiltinModule path is the only escape that stays clean.
+
 ## [0.1.23-beta.22] - 2026-04-29
 
 No code changes. In-app update target for beta.21 so the round-3 Settings modal layout (label-control rows everywhere, no centered footers) can be exercised via the in-app updater.
