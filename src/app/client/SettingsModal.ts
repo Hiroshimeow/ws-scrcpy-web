@@ -167,7 +167,7 @@ export class SettingsModal extends Modal {
             void this.onSavePort();
         });
         const { row: saveRow, labelEl: saveLabelEl } = this.buildDynamicLabelRow(
-            'saving will restart the server and redirect to the new port',
+            'save restarts & redirects to new port',
             this.serverSaveBtn,
         );
         body.appendChild(saveRow);
@@ -192,7 +192,7 @@ export class SettingsModal extends Modal {
             // Default note: explain the redirect-on-save behavior so the
             // user knows clicking save isn't a static config change but a
             // server restart with auto-redirect to the new URL.
-            this.setServerStatus('saving will restart the server and redirect to the new port');
+            this.setServerStatus('save restarts & redirects to new port');
         } catch {
             this.setServerStatus("couldn't reach server", true);
         }
@@ -440,13 +440,10 @@ export class SettingsModal extends Modal {
         if (!this.updatesStatusEl) return;
         let text = '';
         let isError = false;
+        let isReady = false;
         switch (s.status) {
             case 'idle':
-                if (s.lastCheckedAt) {
-                    text = `last checked ${this.formatRelative(s.lastCheckedAt)} — up to date (v${s.currentVersion})`;
-                } else {
-                    text = `current version: v${s.currentVersion}`;
-                }
+                text = `up to date: v${s.currentVersion}`;
                 break;
             case 'checking':
                 text = 'checking for updates…';
@@ -457,7 +454,8 @@ export class SettingsModal extends Modal {
                 break;
             }
             case 'ready':
-                text = `v${s.availableVersion ?? '?'} ready to apply`;
+                text = `update: v${s.availableVersion ?? '?'}`;
+                isReady = true;
                 break;
             case 'error':
                 text = `check failed: ${s.errorMessage ?? 'unknown error'}`;
@@ -468,20 +466,11 @@ export class SettingsModal extends Modal {
         }
         this.updatesStatusEl.textContent = text;
         this.updatesStatusEl.classList.toggle('settings-status-error', isError);
-    }
-
-    private formatRelative(iso: string): string {
-        const t = Date.parse(iso);
-        if (!Number.isFinite(t)) return 'just now';
-        const diffSec = Math.max(0, Math.round((Date.now() - t) / 1000));
-        if (diffSec < 30) return 'just now';
-        if (diffSec < 60) return `${diffSec}s ago`;
-        const diffMin = Math.round(diffSec / 60);
-        if (diffMin < 60) return `${diffMin}m ago`;
-        const diffHr = Math.round(diffMin / 60);
-        if (diffHr < 24) return `${diffHr}h ago`;
-        const diffDay = Math.round(diffHr / 24);
-        return `${diffDay}d ago`;
+        // Pair the description text color with the action button: green
+        // when an update is ready (mirrors .settings-btn-ready), default
+        // muted otherwise. Idle/up-to-date stays muted alongside the blue
+        // "check for updates now" button.
+        this.updatesStatusEl.classList.toggle('settings-status-ready', isReady);
     }
 
     /**
@@ -803,7 +792,7 @@ export class SettingsModal extends Modal {
             });
         }
         this.serviceSection.appendChild(
-            this.buildRow('installs/uninstalls the server as an always-on service', btn),
+            this.buildRow('installs/uninstalls server service', btn),
         );
     }
 

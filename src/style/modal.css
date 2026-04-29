@@ -653,6 +653,16 @@ dialog.settings-modal .settings-status-error {
     color: var(--error-color, #ff6b6b);
 }
 
+/*
+ * Status text turns green when an update is ready to apply, mirroring
+ * the .settings-btn-ready button color (#4caf50) so the description
+ * and action visually pair — "update: vX.Y.Z" + green "apply update"
+ * button reinforce one another.
+ */
+dialog.settings-modal .settings-status-ready {
+    color: #4caf50;
+}
+
 dialog.settings-modal .settings-stub-note {
     margin: 0;
     color: var(--text-color-light, #888);
