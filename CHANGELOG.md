@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.24] - 2026-04-29
+
+No code changes. In-app update target for beta.23 — verifies node-pty actually loads from the dataRoot package across the upgrade boundary, not just at fresh install. Shell button on connected devices should be functional in both beta.23 and beta.24 (was disabled in beta.19–beta.22 due to the `(void 0)` resolver bug).
+
 ## [0.1.23-beta.23] - 2026-04-29
 
 ### Fixed
