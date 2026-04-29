@@ -54,12 +54,13 @@ git push origin main
 git push origin vX.Y.Z-beta.1
 ```
 
-The release workflow detects `*-beta*` in the tag name, sets `channel=beta`, and:
+The release workflow detects `*-beta*` in the tag name, sets `channel=beta`, and uses a separate Velopack feed file (`releases.beta.json`) so beta and stable channels are independent.
 
-- The Velopack feed file is named `releases.beta.json` (so beta and stable channels are independent).
-- `softprops/action-gh-release` is invoked with `prerelease: true`, hiding the release from the default Releases-page banner.
+**Note (post-v0.1.23):** `softprops/action-gh-release` is NOT invoked with `prerelease: true`. GitHub's `/releases/latest` API endpoint excludes prereleases, and Velopack's GithubSource queries that endpoint to find the latest release in the configured channel — flagging beta tags as prereleases broke in-app updater discovery for beta-channel users. Channel separation is handled by the per-channel feed file alone. See `feedback_velopack_permachine_lessons.md` Gotcha 5 for the full diagnosis.
 
 Beta users opt in by setting `channel=beta` in Settings (writes to `config.json`).
+
+**Note on no-op companion releases:** earlier in the v0.1.23-beta.{1..18} chain, every fix beta was paired with a no-op target beta (e.g., beta.13 fix + beta.14 no-op) so we could test the in-app updater itself. Once the updater stabilized at beta.23, that practice was retired — fix betas now ship solo and are tested by upgrading from any earlier installed beta. See `todo_ws_scrcpy_web.md` "Release-cycle convention" for context.
 
 ## Rollback procedure
 
@@ -125,6 +126,17 @@ pwsh scripts/test-update-flow.ps1
 The script is interactive -- it builds v0.1.0 + v0.1.1 in a sandbox, walks you through installing v0.1.0, sets `VELOPACK_FEED_URL` to a local feed, and asserts `<install-root>\sq.version` reads `0.1.1` after you click "Check now" + "Apply" in the browser.
 
 This is intentionally NOT a CI gate -- it requires a real install, a real browser, and a real user. It's a release-time smoke test, not a regression test.
+
+## Migration notes for users on broken-updater builds
+
+When cutting a stable release after a chain of yanked or partially-broken beta releases, mirror the migration narrative in:
+
+- **README.md** `## Downloads` — short paragraph identifying which versions need a fresh-MSI install vs which can in-app update.
+- **docs/PROGRAMDATA-MIGRATION.md** — full step-by-step migration including any per-bug fix-version table.
+
+Existing precedent: the v0.1.23 stable cut migration covers v0.1.21 / v0.1.22 / v0.1.23-beta.{1..6} → v0.1.23, since the in-app updater on those builds was broken at varying severity (Velopack PerMachine + ACL + Job Object + auto-apply paths). The full diagnosis chain is captured in CHANGELOG entries v0.1.23-beta.1 through beta.13 and in `feedback_velopack_permachine_lessons.md` (Gotchas 1–11).
+
+For future stable cuts after broken-beta chains: keep the same shape — README has a short pointer, MIGRATION doc has the full story.
 
 ## See also
 

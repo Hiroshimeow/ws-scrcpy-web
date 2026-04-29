@@ -53,6 +53,8 @@ Get the latest release from the [Releases page](https://github.com/bilbospockets
 
 **Upgrading from v0.1.20 or earlier on Windows:** the install layout changed. See [docs/PROGRAMDATA-MIGRATION.md](docs/PROGRAMDATA-MIGRATION.md) for the uninstall-then-reinstall steps.
 
+**Upgrading from v0.1.21, v0.1.22, or v0.1.23-beta.{1..6}:** the in-app updater on those builds is broken at varying severity (multiple compounding bugs across Velopack PerMachine + ACL + Job Object + auto-apply paths — see CHANGELOG entries v0.1.23-beta.1 through beta.13 for the full diagnosis chain). Clicking "apply update" from those versions either hangs, loops, or silently no-ops. **You must uninstall via Settings → Apps and fresh-install the v0.1.23+ MSI to escape the broken-updater chain.** Once on v0.1.23-beta.7 or newer, the in-app updater is fully functional and subsequent updates apply with a single first-launch UAC prompt.
+
 Release artifacts are code-signed via [SignPath Foundation](https://signpath.org), which provides free code signing for OSS projects. Each release also ships a `SHA256SUMS` file you can verify against.
 
 For data-handling details, see our [Privacy Policy](PRIVACY.md).
