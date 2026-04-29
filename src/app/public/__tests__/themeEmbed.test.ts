@@ -26,4 +26,9 @@ describe('getTheme / setTheme', () => {
         expect(getTheme()).toBe('dark');
         expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
+
+    it('coerces unexpected localStorage values to "dark"', () => {
+        localStorage.setItem('ws-scrcpy-web-theme', 'garbage');
+        expect(getTheme()).toBe('dark');
+    });
 });
