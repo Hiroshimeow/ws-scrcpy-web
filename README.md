@@ -94,8 +94,7 @@ your host attaches its `message` listener AFTER iframe load (e.g., inside
 `iframe.onload`), the one-shot post arrives before you're listening. Three
 ways to avoid losing it:
 
-1. **Recommended:** attach the host's `message` listener BEFORE the iframe
-   element is added to the DOM, OR before its `src` attribute is set.
+1. **Recommended:** attach the host's `message` listener as early as possible — for JS-created iframes, before adding the element to the DOM or setting `src`; for static HTML iframes, in an inline `<script>` in `<head>` (so it runs before the iframe begins loading).
 2. **Or:** post `{type: 'ws-scrcpy-web:theme-request'}` to the iframe once
    you're ready — ws-scrcpy-web replies with a fresh `theme-ready`.
 3. **Don't** rely on `iframe.onload` as your listener-attach point; the
@@ -124,8 +123,10 @@ WsScrcpy.installThemeEmbedListener({
 });
 ```
 
-themselves and skip the auto-install (e.g., set a build flag, or fork
-`src/app/index.ts`). Origin validation gates BOTH `theme` push messages AND
+themselves and skip the auto-install. Currently the only way to override the auto-install is to fork
+`src/app/index.ts` (or shadow it via your bundler) and replace the
+`installThemeEmbedListener()` call with your locked-down options. A
+dedicated build flag may land in a future minor. Origin validation gates BOTH `theme` push messages AND
 `theme-request` pings — non-allowed origins cannot ask the iframe to
 re-announce `theme-ready`, preventing leak vectors.
 
