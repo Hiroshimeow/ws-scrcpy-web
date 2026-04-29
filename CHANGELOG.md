@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.21] - 2026-04-29
+
+### Changed
+
+- **Settings modal — every section unified as label-control rows.** Per UX feedback round 3: dropped the centered-footer pattern (buttons drifted to a different x-axis than the inputs above them). Every setting is now one row: description on the left (wraps as needed), control on the right (left-aligned in the right column). Updates section's status text rides along as the action row's label; Server section's redirect-explainer is the save-row label; Service section restored the informational blurb "installs/uninstalls the server as an always-on service" as label with the state-aware action button as control. Service install button now uses the green `.settings-btn-ready` styling to mirror the apply-update affordance; uninstall stays red.
+
 ## [0.1.23-beta.20] - 2026-04-29
 
 No code changes. In-app update target for beta.19 — verifies the new node-pty Local-Dependencies-Only flow holds across an in-app upgrade: beta.19's runtime should already be loading from `<dataRoot>/dependencies/node-pty/`; applying beta.20 should leave that dataRoot package untouched (Velopack swaps `current/` only) and node-pty should continue to load cleanly post-upgrade.
