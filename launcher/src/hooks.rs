@@ -79,7 +79,7 @@ pub fn handle_velopack_hook(args: &[String]) -> Option<i32> {
     let data_root = common::config::data_root_from_env().unwrap_or_else(|| install_root.clone());
 
     let code = match kind {
-        HookKind::Install => on_install(&data_root),
+        HookKind::Install => on_install(&install_root, &data_root),
         HookKind::Updated => on_updated(&install_root, &data_root),
         HookKind::Uninstall => on_uninstall(&install_root, &data_root),
         HookKind::Unknown(flag) => on_unknown(&flag),
@@ -130,19 +130,39 @@ fn on_unknown(flag: &str) -> i32 {
     0
 }
 
-fn on_install(data_root: &Path) -> i32 {
+fn on_install(install_root: &Path, data_root: &Path) -> i32 {
     // Phase 4 of Program Files migration: at MSI install time we run
     // elevated (PerMachine MSI), so this hook is the right place to:
     //   1. Create <dataRoot> if missing
     //   2. Grant Authenticated Users:Modify (OI)(CI) on <dataRoot>
-    //   3. Write skeleton config.json so the backend's first read
+    //   3. Grant Authenticated Users:Modify (OI)(CI) on <installRoot>  ← v0.1.23-beta.5
+    //   4. Write skeleton config.json so the backend's first read
     //      finds a well-formed file
     //
     // Without step 2, the ProgramData root inherits Authenticated
     // Users:ReadAndExecute only — second-user logins can't write
-    // config or downloaded deps. The grant uses the
-    // Authenticated-Users SID (S-1-5-11) instead of the localized
-    // group name so the command works regardless of system locale.
+    // config or downloaded deps.
+    //
+    // Without step 3, Velopack's writability self-test on the install
+    // root fails (the user-mode running app can't write to Program
+    // Files), Velopack falls back to LocalAppData for state, and the
+    // in-app updater's elevated Update.exe re-launch silently fails
+    // during the swap step (observed in v0.1.23-beta.3 → beta.4 VM
+    // testing — "Re-launching as administrator" log line followed by
+    // zero further log entries from the elevated process). Granting
+    // user-Modify on the install root makes Velopack's self-test pass,
+    // which short-circuits the entire elevation pathway and makes the
+    // swap a regular file rename the running user can do directly.
+    //
+    // Trade-off: any logged-in user can modify the app binaries at
+    // C:\Program Files\WsScrcpyWeb\. For a personal-tooling app this
+    // is acceptable; multi-tenant deployments would need to revisit
+    // (the Phase 6 ACL-tightening item in section 1d of the project
+    // TODO file is the natural lever).
+    //
+    // The grant uses the Authenticated-Users SID (S-1-5-11) instead
+    // of the localized group name so the command works regardless of
+    // system locale.
     if !data_root.exists() {
         if let Err(e) = std::fs::create_dir_all(data_root) {
             log::error(&format!("hook(install): could not create {data_root:?}: {e}"));
@@ -150,6 +170,7 @@ fn on_install(data_root: &Path) -> i32 {
         }
     }
     grant_data_root_acl(data_root);
+    grant_install_root_acl(install_root);
 
     let cfg_path = data_root.join("config.json");
     if cfg_path.exists() {
@@ -222,6 +243,48 @@ fn grant_data_root_acl(data_root: &Path) {
 fn grant_data_root_acl(_data_root: &Path) {
     // Linux/macOS: data_root collapses to install_root; ACL handling
     // is out of scope for this hook on non-Windows hosts.
+}
+
+/// Grant `Authenticated Users` Modify on the INSTALL root via `icacls`.
+/// See the long-form rationale on `on_install`. Best-effort: a failure
+/// here means the in-app updater will fall back to the elevated-Update
+/// flow, which is the v0.1.23-beta.4-and-earlier behavior we're trying
+/// to leave behind. We log loudly but don't fail the install, since the
+/// app itself still works without this grant — only the auto-updater is
+/// degraded.
+#[cfg(windows)]
+fn grant_install_root_acl(install_root: &Path) {
+    let target = install_root.as_os_str();
+    let result = Command::new("icacls")
+        .arg(target)
+        .args(["/grant", "*S-1-5-11:(OI)(CI)M", "/T", "/C", "/Q"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match result {
+        Ok(status) if status.success() => {
+            log::info(&format!(
+                "hook(install): granted Authenticated Users:Modify (OI)(CI) on {install_root:?}"
+            ));
+        }
+        Ok(status) => {
+            log::error(&format!(
+                "hook(install): icacls returned {} for {install_root:?} — in-app updater will degrade to elevated-Update.exe path",
+                status.code().unwrap_or(-1)
+            ));
+        }
+        Err(e) => {
+            log::error(&format!(
+                "hook(install): could not invoke icacls on {install_root:?}: {e} — in-app updater will degrade to elevated-Update.exe path"
+            ));
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn grant_install_root_acl(_install_root: &Path) {
+    // Linux/macOS: AppImage is single-file + writable to its owner;
+    // the per-machine writability concern is Windows-specific.
 }
 
 fn on_updated(install_root: &Path, data_root: &Path) -> i32 {
@@ -398,7 +461,10 @@ mod tests {
     #[test]
     fn install_writes_skeleton_when_absent() {
         let dir = tempdir().unwrap();
-        let code = on_install(dir.path());
+        // install_root and data_root collapse to the same dir in this test —
+        // the icacls grants are best-effort and tolerated to fail under
+        // tempdir paths, which is fine for unit testing the file-write path.
+        let code = on_install(dir.path(), dir.path());
         assert_eq!(code, 0);
         let cfg = dir.path().join("config.json");
         assert!(cfg.exists());
@@ -419,7 +485,7 @@ mod tests {
         let original = r#"{"installMode":"user-service","firstRunComplete":true,"webPort":8042}"#;
         fs::write(&cfg, original).unwrap();
 
-        let code = on_install(dir.path());
+        let code = on_install(dir.path(), dir.path());
         assert_eq!(code, 0);
         let after = fs::read_to_string(&cfg).unwrap();
         assert_eq!(after, original);

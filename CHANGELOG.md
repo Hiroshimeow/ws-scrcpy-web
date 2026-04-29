@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.5] - 2026-04-28
+
+### Fixed
+
+- **In-app updater swap actually completes (Fix 2 of v0.1.22 yank investigation).** The `--veloapp-install` hook now grants `Authenticated Users:Modify (OI)(CI)` on the install root (`C:\Program Files\WsScrcpyWeb\`), in addition to the existing grant on the data root (`C:\ProgramData\WsScrcpyWeb\`). Velopack's writability self-test on the install root now passes for the running user, which short-circuits the elevated-`Update.exe` re-launch pathway that was silently failing in v0.1.23-beta.3 → beta.4 testing ("Re-launching as administrator" log line followed by zero further log entries from the elevated process). The swap becomes a regular file rename the running user can do directly — no UAC prompt during update apply, no LocalAppData fallback. Trade-off: any logged-in user can modify the binaries at `C:\Program Files\WsScrcpyWeb\`. For a personal-tooling app this is acceptable; multi-tenant deployments may want to revisit (the deferred Phase 6 ACL-tightening item is the natural lever).
+
+### Notes
+
+- v0.1.21 / v0.1.22 / v0.1.23-beta.{1..4} → v0.1.23-beta.5 in-app update is still subject to the older Velopack architecture and will likely fail (their existing Update.exe doesn't have the new ACL). To get to beta.5: uninstall via Add/Remove Programs and fresh-install the v0.1.23-beta.5 MSI. From beta.5 forward, the in-app updater should be functional.
+
 ## [0.1.23-beta.4] - 2026-04-28
 
 No code changes. Cut as an in-app update target so v0.1.23-beta.3 fresh installs can exercise the explicit-Apply path now that autoApply is disabled. Tests whether the underlying Update.exe swap actually completes when the user explicitly clicks Apply (vs the loop-on-startup behavior beta.1 → beta.2 surfaced).
