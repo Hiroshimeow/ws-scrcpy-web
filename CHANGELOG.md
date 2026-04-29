@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.8] - 2026-04-29
+
+No code changes. Cut as an in-app update target so v0.1.23-beta.7 fresh installs can exercise the fully-automatic update path: UAC prompt for icacls at first launch (one-time), subsequent updates apply silently with no further UAC.
+
 ## [0.1.23-beta.7] - 2026-04-29
 
 ### Fixed
