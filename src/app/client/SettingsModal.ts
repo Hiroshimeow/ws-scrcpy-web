@@ -67,8 +67,11 @@ export class SettingsModal extends Modal {
     }
 
     private fillBody(container: HTMLElement): void {
-        container.appendChild(this.buildServerSection());
+        // v0.1.23: Updates first (most-touched section in practice),
+        // then Server (host port), Service (install/uninstall),
+        // App (rare-use reset).
         container.appendChild(this.buildUpdatesSection());
+        container.appendChild(this.buildServerSection());
         container.appendChild(this.buildServiceSection());
         container.appendChild(this.buildAppSection());
     }
@@ -123,6 +126,19 @@ export class SettingsModal extends Modal {
         return { footer, statusEl };
     }
 
+    /**
+     * Inline-row footer variant: button + note side-by-side, centered as a
+     * group on the modal's vertical axis. Used by Server's [save] [note]
+     * pairing where the note reads horizontally next to the action button.
+     */
+    private buildSectionFooterRow(): { footer: HTMLElement; statusEl: HTMLParagraphElement } {
+        const footer = document.createElement('div');
+        footer.className = 'settings-section-footer-row';
+        const statusEl = document.createElement('p');
+        statusEl.className = 'settings-status';
+        return { footer, statusEl };
+    }
+
     // ── Server section ─────────────────────────────────────────────────────
     private buildServerSection(): HTMLElement {
         const { section, body } = this.buildSection('Server');
@@ -135,7 +151,11 @@ export class SettingsModal extends Modal {
         this.webPortInput.style.maxWidth = '120px';
         body.appendChild(this.buildRow('web port', this.webPortInput));
 
-        const { footer, statusEl } = this.buildSectionFooter();
+        // Footer-row: [save button] [inline note explaining the redirect].
+        // Note text is dynamic via webPortStatus — starts as a generic
+        // "saving will redirect to the new port" hint, swaps to error /
+        // saving / saved messaging via setServerStatus during onSavePort.
+        const { footer, statusEl } = this.buildSectionFooterRow();
         this.webPortStatus = statusEl;
         this.serverSaveBtn = document.createElement('button');
         this.serverSaveBtn.type = 'button';
@@ -145,6 +165,7 @@ export class SettingsModal extends Modal {
             void this.onSavePort();
         });
         footer.appendChild(this.serverSaveBtn);
+        footer.appendChild(this.webPortStatus);
         body.appendChild(footer);
 
         return section;
@@ -160,7 +181,10 @@ export class SettingsModal extends Modal {
             const env = (await r.json()) as AppConfigEnvelope;
             this.currentWebPort = env.config.webPort;
             this.webPortInput.value = String(env.config.webPort);
-            this.setServerStatus('');
+            // Default note: explain the redirect-on-save behavior so the
+            // user knows clicking save isn't a static config change but a
+            // server restart with auto-redirect to the new URL.
+            this.setServerStatus('saving will restart the server and redirect to the new port');
         } catch {
             this.setServerStatus("couldn't reach server", true);
         }
@@ -455,14 +479,17 @@ export class SettingsModal extends Modal {
     }
 
     /**
-     * Drive the dual-purpose action button's label + disabled state from
+     * Drive the dual-purpose action button's label + visual state from
      * the latest status. The button physically stays mounted across
-     * polls/PATCHes; we just retitle it. Click branches on current status,
-     * so swapping label here is enough to swap behavior.
+     * polls/PATCHes; we just retitle and reskin it. Click branches on
+     * current status, so swapping label here is enough to swap behavior.
      *
-     *   - status='ready' → "apply update v{availableVersion}", enabled
-     *   - status='checking' / 'downloading' → "check for updates now", disabled
-     *   - everything else → "check for updates now", enabled
+     *   - status='ready' → "apply update v{availableVersion}", green
+     *     outline+text (.settings-btn-ready, mirrors home-page chip),
+     *     enabled
+     *   - status='checking' / 'downloading' → "check for updates now",
+     *     blue (.settings-btn-primary), disabled
+     *   - everything else → "check for updates now", blue, enabled
      */
     private applyActionButtonState(s: UpdatesStatusResponse): void {
         if (!this.updatesCheckNowBtn) return;
@@ -473,8 +500,12 @@ export class SettingsModal extends Modal {
             btn.textContent = s.availableVersion
                 ? `apply update v${s.availableVersion}`
                 : 'apply update';
+            btn.classList.remove('settings-btn-primary');
+            btn.classList.add('settings-btn-ready');
         } else {
             btn.textContent = 'check for updates now';
+            btn.classList.remove('settings-btn-ready');
+            btn.classList.add('settings-btn-primary');
         }
     }
 
@@ -712,69 +743,60 @@ export class SettingsModal extends Modal {
 
         const status = resp.status ?? 'not-installed';
 
-        // Status row.
-        const statusValue = document.createElement('span');
-        statusValue.textContent = status;
-        statusValue.style.color = 'var(--text-color, #ddd)';
-        this.serviceSection.appendChild(this.buildRow('service status', statusValue));
+        // Linux scope chooser only when not-installed; spans both columns.
+        this.serviceScopeSystemRadio = null;
+        if (status === 'not-installed' && resp.platform === 'linux') {
+            const fieldset = document.createElement('fieldset');
+            fieldset.className = 'settings-scope-fieldset';
+            const legend = document.createElement('legend');
+            legend.textContent = 'scope';
+            fieldset.appendChild(legend);
 
-        if (status === 'not-installed') {
-            this.serviceScopeSystemRadio = null;
-            if (resp.platform === 'linux') {
-                // Scope chooser: spans both columns as a fieldset.
-                const fieldset = document.createElement('fieldset');
-                fieldset.className = 'settings-scope-fieldset';
-                const legend = document.createElement('legend');
-                legend.textContent = 'scope';
-                fieldset.appendChild(legend);
+            const userLabel = document.createElement('label');
+            userLabel.className = 'settings-radio-label';
+            const userRadio = document.createElement('input');
+            userRadio.type = 'radio';
+            userRadio.name = 'settings-scope';
+            userRadio.value = 'user';
+            userRadio.checked = true;
+            userLabel.appendChild(userRadio);
+            userLabel.appendChild(document.createTextNode('just for me (no sudo)'));
+            fieldset.appendChild(userLabel);
 
-                const userLabel = document.createElement('label');
-                userLabel.className = 'settings-radio-label';
-                const userRadio = document.createElement('input');
-                userRadio.type = 'radio';
-                userRadio.name = 'settings-scope';
-                userRadio.value = 'user';
-                userRadio.checked = true;
-                userLabel.appendChild(userRadio);
-                userLabel.appendChild(document.createTextNode('just for me (no sudo)'));
-                fieldset.appendChild(userLabel);
+            const sysLabel = document.createElement('label');
+            sysLabel.className = 'settings-radio-label';
+            const sysRadio = document.createElement('input');
+            sysRadio.type = 'radio';
+            sysRadio.name = 'settings-scope';
+            sysRadio.value = 'system';
+            sysLabel.appendChild(sysRadio);
+            sysLabel.appendChild(document.createTextNode('all users (requires sudo)'));
+            fieldset.appendChild(sysLabel);
 
-                const sysLabel = document.createElement('label');
-                sysLabel.className = 'settings-radio-label';
-                const sysRadio = document.createElement('input');
-                sysRadio.type = 'radio';
-                sysRadio.name = 'settings-scope';
-                sysRadio.value = 'system';
-                sysLabel.appendChild(sysRadio);
-                sysLabel.appendChild(document.createTextNode('all users (requires sudo)'));
-                fieldset.appendChild(sysLabel);
-
-                this.serviceSection.appendChild(fieldset);
-                this.serviceScopeSystemRadio = sysRadio;
-            }
-
-            const { footer } = this.buildSectionFooter();
-            const installBtn = document.createElement('button');
-            installBtn.type = 'button';
-            installBtn.className = 'settings-btn settings-btn-primary';
-            installBtn.textContent = 'install as service';
-            installBtn.addEventListener('click', () => {
-                void this.onInstallService(installBtn);
-            });
-            footer.appendChild(installBtn);
-            this.serviceSection.appendChild(footer);
-        } else {
-            const { footer } = this.buildSectionFooter();
-            const uninstallBtn = document.createElement('button');
-            uninstallBtn.type = 'button';
-            uninstallBtn.className = 'settings-btn settings-btn-danger';
-            uninstallBtn.textContent = 'uninstall service';
-            uninstallBtn.addEventListener('click', () => {
-                void this.onUninstallService(uninstallBtn);
-            });
-            footer.appendChild(uninstallBtn);
-            this.serviceSection.appendChild(footer);
+            this.serviceSection.appendChild(fieldset);
+            this.serviceScopeSystemRadio = sysRadio;
         }
+
+        // Single centered button whose label combines status + action.
+        // No separate status row — the state IS the button text.
+        const { footer } = this.buildSectionFooter();
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        if (status === 'not-installed') {
+            btn.className = 'settings-btn settings-btn-primary';
+            btn.textContent = 'not installed — install?';
+            btn.addEventListener('click', () => {
+                void this.onInstallService(btn);
+            });
+        } else {
+            btn.className = 'settings-btn settings-btn-danger';
+            btn.textContent = `${status} — uninstall?`;
+            btn.addEventListener('click', () => {
+                void this.onUninstallService(btn);
+            });
+        }
+        footer.appendChild(btn);
+        this.serviceSection.appendChild(footer);
     }
 
     private renderServiceError(msg: string, onRetry: () => void): void {
