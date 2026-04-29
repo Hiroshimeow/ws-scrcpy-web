@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.6] - 2026-04-28
+
+No code changes. Cut as an in-app update target so v0.1.23-beta.5 fresh installs can exercise the explicit-Apply path now that the install root is user-writable. Tests whether Velopack's swap actually completes when no elevation step is required.
+
 ## [0.1.23-beta.5] - 2026-04-28
 
 ### Fixed
