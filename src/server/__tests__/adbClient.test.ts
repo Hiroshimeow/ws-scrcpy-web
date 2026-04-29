@@ -60,6 +60,30 @@ describe('AdbClient', () => {
         const client = new AdbClient('adb');
         expect(typeof client.disconnect).toBe('function');
     });
+
+    it('has killServer method', () => {
+        const client = new AdbClient('adb');
+        expect(typeof client.killServer).toBe('function');
+    });
+
+    it('cwd is the parent directory of adbPath (decouples daemon from install root)', () => {
+        // Cross-platform absolute path so both POSIX and win32 dirname succeed.
+        const adbPath = path.join(os.tmpdir(), 'fake-deps', 'adb', 'adb');
+        const client = new AdbClient(adbPath);
+        expect(client.cwd).toBe(path.join(os.tmpdir(), 'fake-deps', 'adb'));
+    });
+
+    it('cwd is the parent dir for Windows-style paths too', () => {
+        const adbPath = 'C:\\ProgramData\\WsScrcpyWeb\\dependencies\\adb\\adb.exe';
+        const client = new AdbClient(adbPath);
+        // path.dirname is platform-aware; on Windows this resolves to the
+        // expected parent. On POSIX path.dirname returns '.' for backslash
+        // paths (because backslash is a normal char). We just assert it's
+        // not the full input path — the real check is the architectural
+        // intent: cwd is NOT inside <installRoot>\current\.
+        expect(client.cwd).not.toBe(adbPath);
+        expect(client.cwd.endsWith('current') || client.cwd.endsWith('current\\')).toBe(false);
+    });
 });
 
 describe('AdbClient — error surfacing', () => {

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.13] - 2026-04-29
+
+### Fixed
+
+- **In-app updater can now actually swap `current\` (adb daemon CWD-lock fix).** v0.1.23-beta.11 → beta.12 VM testing surfaced the third in-app-updater failure mode: Velopack downloaded the package, ran `--veloapp-obsolete` cleanly, then failed to rename `current\` to a backup folder with "The process cannot access the file because it is being used by another process," retried 10×1s, and gave up with `Apply error: Unable to start the update, because one or more running processes prevented it.` Sysinternals `handle.exe` showed `adb.exe` (the long-lived `adb start-server` daemon) holding `C:\Program Files\WsScrcpyWeb\current` as a file handle across multiple apply attempts. Daemon inherited cwd from Node, which inherited from the launcher running from `current\`. Two fixes:
+  - **Pre-apply hygiene** in `UpdateService.applyUpdate` (now async): runs `adb kill-server` via the bundled adb client, then Windows-only `taskkill /F /IM adb.exe /T` belt-and-braces, then a 250ms settle delay before `waitExitThenApplyUpdate`. All steps failure-tolerant — apply still proceeds if hygiene partially fails. `UpdatesApi.handleApply` now `await`s `applyUpdate` so the deferred `process.exit` timer doesn't fire before Velopack actually has Update.exe spawned.
+  - **Architectural cwd fix** in `AdbClient`: spawned adb processes now use `path.dirname(adbPath)` as their cwd (which lives at `<dataRoot>\dependencies\adb\` per Local-Dependencies-Only) instead of inheriting the launcher's working directory. Even if `kill-server` fails or the daemon respawns, its cwd-lock no longer falls inside the install root and can't block a future swap. Applied to all three adb spawn paths: `exec` wrapper, `shell`, and `shellSpawn`.
+
 ## [0.1.23-beta.12] - 2026-04-29
 
 No code changes. Cut as an in-app update target so v0.1.23-beta.11 fresh installs can exercise the post-apply auto-relaunch path now that the Rust-SDK auto-apply default is disabled. Pairs with the beta.9 Job Object kill-on-close release fix as the second half of the in-app updater story: beta.9 lets `Update.exe` survive launcher exit; beta.11 stops the post-swap launcher from re-firing `Update.exe` in a loop.

@@ -1,7 +1,11 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
+import { execFile } from 'child_process';
+// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import * as fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import * as path from 'path';
+// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
+import { promisify } from 'util';
 import {
     UpdateManager,
     type UpdateInfo,
@@ -11,8 +15,11 @@ import {
 import { getAppVersion } from './appVersion';
 import type { UpdateChannel } from '../common/ConfigEvents';
 import type { UpdateState } from '../common/UpdateEvents';
+import { AdbClient } from './AdbClient';
 import { Config } from './Config';
 import { Logger } from './Logger';
+
+const execFileAsync = promisify(execFile);
 
 const log = Logger.for('UpdateService');
 
@@ -309,14 +316,64 @@ export class UpdateService {
     /**
      * Apply the pending update. Schedules Velopack to swap+restart on exit.
      * Caller (UpdatesApi.handleApply) is responsible for the deferred process.exit.
+     *
+     * v0.1.23-beta.13: now async — runs pre-apply hygiene (adb daemon kill +
+     * Windows taskkill + small settle delay) before Velopack's wait-then-apply
+     * call. Without this, the long-lived `adb start-server` daemon's cwd-lock
+     * on `<installRoot>\current\` (inherited from the launcher's working
+     * directory at spawn time) blocks Velopack's rename-current-to-backup
+     * step. Velopack's 10×1s retry was insufficient and apply gave up with
+     * "Unable to start the update, because one or more running processes
+     * prevented it." Diagnosed via Sysinternals handle.exe on the v0.1.23-beta.11
+     * → beta.12 VM test (2026-04-29) — adb.exe held a persistent file handle
+     * on `current\` across multiple apply attempts.
      */
-    public applyUpdate(): void {
+    public async applyUpdate(): Promise<void> {
         if (!this.mgr || !this.state.pendingUpdate || this.state.status !== 'ready') {
             throw new Error(`apply not allowed in current state: ${this.state.status}`);
         }
         log.info(`applying update v${this.state.availableVersion}`);
+        await this.preApplyHygiene();
         // silent=true (no UI from Velopack updater), restart=true (Velopack relaunches us).
         this.mgr.waitExitThenApplyUpdate(this.state.pendingUpdate, true, true);
+    }
+
+    /**
+     * Best-effort cleanup before Velopack's swap. All steps are
+     * failure-tolerant — apply must proceed even if hygiene partially fails;
+     * worst case we're back to v0.1.23-beta.12 behavior (apply still attempted,
+     * Velopack's own retry loop catches what it can).
+     *
+     *  1. `adb kill-server` via the bundled adb client. Clean shutdown of
+     *     the daemon process; releases its CWD handle on the install dir.
+     *  2. Windows-only `taskkill /F /IM adb.exe /T` belt-and-braces. Catches
+     *     any adb process that didn't go down via kill-server (stuck transport,
+     *     in-flight forward, etc.). Non-zero exit (no matching processes) is
+     *     not an error.
+     *  3. 250 ms settle delay. Empirical buffer for Windows to fully release
+     *     handles after the daemon process exits — kernel ProcessExit can
+     *     lag actual section/handle release by tens of milliseconds.
+     */
+    private async preApplyHygiene(): Promise<void> {
+        try {
+            const adb = new AdbClient(Config.getInstance().adbPath);
+            await adb.killServer();
+            log.info('preApply: adb kill-server ok');
+        } catch (err) {
+            log.warn(`preApply: adb kill-server failed (continuing): ${(err as Error).message}`);
+        }
+
+        if (process.platform === 'win32') {
+            try {
+                await execFileAsync('taskkill', ['/F', '/IM', 'adb.exe', '/T'], { timeout: 5_000 });
+                log.info('preApply: taskkill /F /IM adb.exe ok');
+            } catch {
+                // taskkill exits non-zero when no matching process; treat as success.
+                log.info('preApply: taskkill /F /IM adb.exe (no matching processes — ok)');
+            }
+        }
+
+        await new Promise<void>((resolve) => setTimeout(resolve, 250));
     }
 
     /**

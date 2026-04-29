@@ -1,4 +1,5 @@
 import { type ChildProcess, execFile, spawn } from 'child_process';
+import * as path from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -80,16 +81,37 @@ export function parseSerialFromMdnsName(name: string, service: string): string {
 
 export class AdbClient {
     /**
+     * Working directory for spawned adb processes. Set to the adb binary's
+     * own directory so the long-lived `adb start-server` daemon — which
+     * inherits its parent's CWD and survives our process tree — never
+     * holds a handle on `<installRoot>\current\` (which would block
+     * Velopack's in-app updater rename during apply).
+     *
+     * Diagnosed v0.1.23-beta.11 → beta.12 VM testing 2026-04-29: handle.exe
+     * showed adb.exe holding C:\Program Files\WsScrcpyWeb\current as a
+     * persistent file handle across multiple apply attempts. Daemon
+     * inherited cwd from Node, which inherited from launcher, which ran
+     * from current/. The bundled adb directory is `<dataRoot>\dependencies\adb\`
+     * (per CLAUDE.md Local-Dependencies-Only) — not under install root —
+     * so anchoring the daemon there decouples its CWD lock from the swap
+     * target.
+     */
+    public readonly cwd: string;
+
+    /**
      * `adbPath` is required. Callers MUST pass `Config.getInstance().adbPath`
      * (or an explicit override). The previous default of `'adb'` masked
      * packaging bugs by silently falling through to whatever adb happened
      * to be on the system PATH.
      */
-    constructor(public readonly adbPath: string) {}
+    constructor(public readonly adbPath: string) {
+        this.cwd = path.dirname(adbPath);
+    }
 
     private async exec(args: string[], opts: AdbExecOptions = {}): Promise<string> {
-        const execOpts: { maxBuffer: number; timeout?: number; killSignal?: NodeJS.Signals } = {
+        const execOpts: { maxBuffer: number; timeout?: number; killSignal?: NodeJS.Signals; cwd?: string } = {
             maxBuffer: 10 * 1024 * 1024,
+            cwd: this.cwd,
         };
         if (opts.timeoutMs && opts.timeoutMs > 0) {
             execOpts.timeout = opts.timeoutMs;
@@ -128,6 +150,7 @@ export class AdbClient {
     async shell(serial: string, command: string): Promise<string> {
         const { stdout } = await execFileAsync(this.adbPath, ['-s', serial, 'shell', command], {
             maxBuffer: 10 * 1024 * 1024,
+            cwd: this.cwd,
         });
         return stdout.trim();
     }
@@ -182,6 +205,7 @@ export class AdbClient {
     shellSpawn(serial: string, command: string): ChildProcess {
         return spawn(this.adbPath, ['-s', serial, 'shell', command], {
             stdio: ['ignore', 'pipe', 'pipe'],
+            cwd: this.cwd,
         });
     }
 
@@ -203,5 +227,19 @@ export class AdbClient {
 
     async disconnect(address: string): Promise<string> {
         return this.exec(['disconnect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.disconnect });
+    }
+
+    /**
+     * Terminates the long-lived `adb start-server` daemon. Used as pre-apply
+     * hygiene before Velopack's in-app updater so the daemon's CWD-lock on
+     * the install dir is released and the rename of `current\` can proceed.
+     *
+     * Idempotent — `adb kill-server` is a no-op when the daemon isn't
+     * running, and the underlying `exec` call still succeeds. Bounded by
+     * a 5s timeout so a stuck daemon doesn't hang the apply path; if
+     * timeout fires, the caller's belt-and-braces taskkill will catch it.
+     */
+    async killServer(): Promise<void> {
+        await this.exec(['kill-server'], { timeoutMs: 5_000 });
     }
 }

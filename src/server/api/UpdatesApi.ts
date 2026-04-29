@@ -51,7 +51,7 @@ export class UpdatesApi {
                 return await this.handleCheck(res);
             }
             if (req.method === 'POST' && url === '/api/updates/apply') {
-                return this.handleApply(res);
+                return await this.handleApply(res);
             }
             if (req.method === 'PATCH' && url === '/api/updates/config') {
                 return await this.handleConfig(req, res);
@@ -114,7 +114,7 @@ export class UpdatesApi {
         return true;
     }
 
-    private handleApply(res: ServerResponse): boolean {
+    private async handleApply(res: ServerResponse): Promise<boolean> {
         const s = this.svc.getStatus();
         if (!s.isInstalled) {
             const body: UpdatesErrorResponse = {
@@ -136,7 +136,13 @@ export class UpdatesApi {
         }
 
         try {
-            this.svc.applyUpdate();
+            // v0.1.23-beta.13: applyUpdate is now async because it runs
+            // pre-apply hygiene (adb daemon kill + Windows taskkill +
+            // settle delay) before kicking off Velopack's wait-then-apply.
+            // We block the HTTP response until hygiene completes so the
+            // chained process.exit timer below doesn't fire before
+            // Velopack actually has Update.exe spawned.
+            await this.svc.applyUpdate();
         } catch (err) {
             const body: UpdatesErrorResponse = { ok: false, error: (err as Error).message };
             res.writeHead(500);

@@ -377,7 +377,7 @@ describe('UpdateService', () => {
 
     // ── applyUpdate ─────────────────────────────────────────────────────
 
-    it('applyUpdate: throws when status !== ready', () => {
+    it('applyUpdate: rejects when status !== ready', async () => {
         const svc = new UpdateService({
             installRoot: '/fake',
             existsSync: () => true,
@@ -386,10 +386,10 @@ describe('UpdateService', () => {
             clearIntervalFn: () => undefined,
         });
         svc.init();
-        expect(() => svc.applyUpdate()).toThrow(/apply not allowed in current state/);
+        await expect(svc.applyUpdate()).rejects.toThrow(/apply not allowed in current state/);
     });
 
-    it('applyUpdate: calls waitExitThenApplyUpdate(pending, true, true)', async () => {
+    it('applyUpdate: calls waitExitThenApplyUpdate(pending, true, true) after pre-apply hygiene', async () => {
         Config.getInstance().updateAppConfig({ autoUpdate: false });
         const info = fakeUpdateInfo('0.2.0');
         const applyFn = vi.fn();
@@ -407,7 +407,10 @@ describe('UpdateService', () => {
         svc.init();
         await svc.checkForUpdates();
         expect(svc.getStatus().status).toBe('ready');
-        svc.applyUpdate();
+        // applyUpdate is now async — pre-apply hygiene runs first
+        // (adb kill-server + Windows taskkill + 250ms settle). Hygiene
+        // failures are swallowed so the test still drives waitExitThenApplyUpdate.
+        await svc.applyUpdate();
         expect(applyFn).toHaveBeenCalledTimes(1);
         const args = applyFn.mock.calls[0];
         expect(args[0]).toBe(info);
