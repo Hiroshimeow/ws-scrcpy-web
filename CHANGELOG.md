@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.19] - 2026-04-29
+
+### Changed
+
+- **node-pty now loaded from `<dataRoot>/dependencies/node-pty/` exclusively (item 5 / Approach C).** Architectural compliance with Local-Dependencies-Only: the bundled image no longer ships node-pty in `<installRoot>/current/node_modules/`. At build time, `stage-publish.mjs` relocates node-pty + node-addon-api from `publish/node_modules/` to `publish/seed/node-pty-pkg/node_modules/`. At runtime, `NodePtyResolver.copySeedToDataRoot()` stages the seed to `<dataRoot>/dependencies/node-pty/v<version>-<host>/` on first launch, and all loads go through `createRequire(<dataRoot>/.../_marker)('node-pty')` — bypassing Node's default resolution that would otherwise look at the install image. Cache-miss path (Node ABI changes after auto-update) downloads the matching prebuilt tarball and overlays `pty.node` into the existing dataRoot package without writing to the install root. Pre-Approach-C, beta.7's icacls grant masked the architectural violation (the runtime copy could succeed by writing to install root); now the install root is genuinely read-only at runtime.
+
 ## [0.1.23-beta.18] - 2026-04-29
 
 No code changes. In-app update target for beta.17 so the redesigned Settings → Updates UI can exercise its "apply update" button end-to-end with the green-when-ready state.
