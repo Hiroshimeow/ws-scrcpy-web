@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Iframe theme bridge** — public theme-embed API on `window.WsScrcpy.*`:
+  `getTheme`, `setTheme`, `installThemeEmbedListener`, `notifyThemeReady`,
+  `notifyThemeChanged`. Lets a host page embedding ws-scrcpy-web in an iframe
+  sync dark/light theme via `postMessage`. Auto-installed on page load;
+  standalone usage is a no-op.
+- **4-message protocol** (all namespaced `ws-scrcpy-web:`):
+  `theme-ready` and `theme-changed` from iframe to parent;
+  `theme` and `theme-request` from parent to iframe. Origin validation
+  gates all inbound messages including `theme-request`.
+- **README**: new "Embedding: theme bridge" section documenting the protocol,
+  minimum host integration, race-condition mitigations, programmatic API,
+  and `allowedOrigins` security guidance.
+
 ### Changed
 
+- **`ThemeToggle` now imports `getTheme`/`setTheme` from `public/themeEmbed`**
+  (single source of truth) and posts `theme-changed` to the parent on click.
+  No standalone behavior change.
+- **`getTheme` now strictly returns `'dark' | 'light'`** (was `string`); any
+  unexpected value in localStorage is normalized to `'dark'`.
 - **Logs consolidated under `<dataRoot>/logs/`.** Both `launcher.log` and `server.log` now live in `C:\ProgramData\WsScrcpyWeb\logs\`. Pre-beta.3, `launcher.log` lived directly in dataRoot (`<dataRoot>\ws-scrcpy-web-launcher.log`) and `server.log` was tucked under `<dataRoot>\dependencies\server.log` — annoying for navigation and unintuitive. The launcher now creates `<dataRoot>\logs\` as needed and writes both files there. `spawn::spawn_server` signature gained a `data_root` parameter so it can resolve the new server.log path. Old log files at the legacy paths can be deleted by hand on existing installs; they're not auto-migrated. Velopack's own update logs continue to land where Velopack puts them (install root) — `vpk` doesn't expose a redirect.
 - **Settings modal copy tightened.** Four label rewrites to fit cleanly in the v0.1.24-beta.1 widened label column without redundant words: "installs/uninstalls the server as an always-on service" → "installs/uninstalls server service"; "saving will restart the server and redirect to the new port" → "save restarts & redirects to new port"; "last checked Nm ago — up to date (vX.Y.Z)" → "up to date: vX.Y.Z" (drops the relative-timestamp prefix and parenthesized version); "vX.Y.Z ready to apply" → "update: vX.Y.Z". Removed the now-unused `formatRelative` helper.
 - **Update-status text turns green when an update is ready.** New `.settings-status-ready` CSS class (#4caf50, mirrors the `.settings-btn-ready` button outline color) toggled on the status `<p>` when `s.status === 'ready'`. Pairs the description text color with the action button — green "update: vX.Y.Z" beside green "apply update" button, default muted "up to date: vX.Y.Z" beside blue "check for updates now". Mirrors how `.settings-status-error` already toggles red.
