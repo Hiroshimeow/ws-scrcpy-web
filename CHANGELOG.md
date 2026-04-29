@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Settings modal label column widened.** Grid layout changed from `[labels] 40% [controls] 1fr` to `[labels] 1fr [controls] 260px`. The 260px controls column reserves space for the widest button ("not installed — install?", ~210px) plus ~50px of slack for future button-text growth. Frees up ~90px for the labels column at the modal's max width, reducing description wrapping (e.g. "saving will restart the server and redirect to the new port" now fits in 2 lines instead of 3). All other modals untouched.
 
+## [0.1.24-beta.1] - 2026-04-29
+
 ## [0.1.23] - 2026-04-29
 
 First stable v0.1.23 cut, rolling up everything from the 26-beta investigation. Eight architectural fixes in the in-app updater chain (install-root ACL via UAC, Job Object kill-on-close release, Rust SDK auto-apply disable, adb pre-apply hygiene + cwd anchoring, node-pty Local-Dependencies-Only restructure with `process.getBuiltinModule` runtime require, Logger to dataRoot, UI uninstall-flow modal race code path), Settings modal redesign (label-control grid layout, dual-purpose apply-update button), CI prerelease flag drop, and migration documentation. See per-beta entries below for the diagnosis chain.
