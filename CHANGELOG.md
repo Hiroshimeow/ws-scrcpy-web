@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.20] - 2026-04-29
+
+No code changes. In-app update target for beta.19 — verifies the new node-pty Local-Dependencies-Only flow holds across an in-app upgrade: beta.19's runtime should already be loading from `<dataRoot>/dependencies/node-pty/`; applying beta.20 should leave that dataRoot package untouched (Velopack swaps `current/` only) and node-pty should continue to load cleanly post-upgrade.
+
 ## [0.1.23-beta.19] - 2026-04-29
 
 ### Changed
