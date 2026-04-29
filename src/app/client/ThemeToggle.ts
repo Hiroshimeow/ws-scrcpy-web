@@ -26,7 +26,18 @@ export function createThemeToggle(): HTMLElement {
         // refresh() is called by the MutationObserver below — no need to call inline.
     });
 
-    const observer = new MutationObserver(refresh);
+    const observer = new MutationObserver(() => {
+        // Lazy self-disconnect: if our button is no longer in the DOM
+        // (e.g., the modal that hosted it was closed), stop observing.
+        // Bounded: at worst the observer survives until the next theme
+        // change; theme changes are rare so the leak is small even in
+        // the pathological case.
+        if (!document.body.contains(btn)) {
+            observer.disconnect();
+            return;
+        }
+        refresh();
+    });
     observer.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['data-theme'],
