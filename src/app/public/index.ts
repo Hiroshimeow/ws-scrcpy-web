@@ -17,6 +17,15 @@ StreamClientScrcpy.registerPlayer(WebCodecsPlayer);
 export { startStream } from './startStream';
 export type { StartStreamOptions, StreamInfo, StreamHandle } from './types';
 
+export {
+    getTheme,
+    setTheme,
+    installThemeEmbedListener,
+    notifyThemeReady,
+    notifyThemeChanged,
+} from './themeEmbed';
+export type { Theme, ThemeEmbedOptions } from './themeEmbed';
+
 // Injected at build time via webpack DefinePlugin
 declare const __WSSCRCPY_VERSION__: string;
 export const version: string = __WSSCRCPY_VERSION__;
