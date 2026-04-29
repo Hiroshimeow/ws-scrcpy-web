@@ -3,11 +3,28 @@ import * as crypto from 'crypto';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import * as fs from 'fs';
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
-import { createRequire } from 'module';
-// biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import * as path from 'path';
 import { Logger } from './Logger';
 import { detectLibc, type LibcFlavor } from './libcDetect';
+
+/*
+ * Pre-beta.23: this resolver tried two webpack escape hatches:
+ *
+ *   1. `import { createRequire } from 'module'` — webpack tree-shook the
+ *      named import down to `void 0`, the bundle had `(void 0)('node-pty')`
+ *      and the resolver failed with `(void 0) is not a function`.
+ *   2. Bare runtime `require(absolutePath)` — webpack rewrote this into
+ *      `__webpack_require__(<id>)` for a context-bundle of all possible
+ *      matches, which doesn't resolve absolute filesystem paths.
+ *
+ * Beta.23+ uses `process.getBuiltinModule('module').createRequire(...)`.
+ * Webpack does NOT statically analyze `process.*` calls (`getBuiltinModule`
+ * was added in Node 22; we ship Node 24, so it's guaranteed available).
+ * The createRequire result is the genuine Node CJS require, which
+ * resolves absolute paths to actual files on disk. Same code path works
+ * in vitest tests — `process.getBuiltinModule` is a Node API, not a
+ * webpack runtime concept.
+ */
 
 const log = Logger.for('NodePtyResolver');
 
@@ -292,15 +309,34 @@ export async function downloadAndOverlayPtyNode(
 }
 
 /**
- * Load node-pty from the dataRoot package via createRequire — bypasses
- * Node's default module resolution which would otherwise look in
- * `<installRoot>/current/node_modules/`. The marker path doesn't need to
- * exist; createRequire uses it only to anchor the require's lookup path.
+ * Load node-pty from the dataRoot package via the runtime require,
+ * bypassing both Node's default module resolution (which would look in
+ * `<installRoot>/current/node_modules/`) AND webpack's static-import
+ * rewriting. We pass an ABSOLUTE PATH to require, so Node loads
+ * exactly the file we hand it without any resolution lookup.
+ *
+ * The path points at node-pty's package.json directory; Node's
+ * require() reads that package's "main" field (lib/index.js) and
+ * loads from there. node-pty's own internal `require('./build/Release/pty.node')`
+ * is a relative require (relative to node-pty's index.js), so it
+ * correctly finds the binary inside the dataRoot package — regardless
+ * of how the package itself was loaded.
  */
 function loadFromDataRoot(packageDir: string): typeof import('node-pty') | null {
     try {
+        // process.getBuiltinModule (Node 22+) returns the genuine Node
+        // builtin without going through any module-resolution path.
+        // Webpack does not analyze process.* expressions, so the whole
+        // chain — process.getBuiltinModule → createRequire → require —
+        // survives bundling untouched. createRequire's argument is a
+        // marker path inside packageDir; the require it returns then
+        // resolves 'node-pty' against packageDir's node_modules tree.
+        // biome-ignore lint/suspicious/noExplicitAny: process.getBuiltinModule is loosely typed
+        const builtinModule = (process as any).getBuiltinModule('module') as {
+            createRequire(filename: string): NodeJS.Require;
+        };
         const marker = path.join(packageDir, '_resolver-marker.js');
-        const r = createRequire(marker);
+        const r = builtinModule.createRequire(marker);
         const pty = r('node-pty') as typeof import('node-pty');
         // biome-ignore lint/suspicious/noExplicitAny: runtime shape check on an untyped import
         if (typeof (pty as any).spawn !== 'function') {
