@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.24-beta.4] - 2026-04-29
+## [0.1.24-beta.5] - 2026-04-29
+
+> v0.1.24-beta.4 was a failed re-cut (release CI rejected the tag because
+> `Cargo.toml` wasn't bumped alongside `package.json`). v0.1.24-beta.5 is
+> the actual release of this content.
 
 ### Added
 
