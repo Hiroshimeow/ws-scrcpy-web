@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23-beta.9] - 2026-04-29
+
+### Fixed
+
+- **In-app updater no longer killed mid-extract by our own Job Object.** v0.1.23-beta.7 → beta.8 VM testing showed the auto-relaunch failing — clicking "apply update" shut down the app cleanly but never relaunched the new version; only a manual relaunch completed the swap. Velopack log cut off mid-line at `Extracting 393 app files...`, the classic `TerminateProcess` signature. Root cause: the v0.1.22 Job Object (`KILL_ON_JOB_CLOSE`) added to clean up Node + `node-pty` descendants on launcher exit was inheriting `Update.exe` (a grandchild via Node) into the same job. When the launcher exited gracefully after `applyUpdate()`, our last handle to the job closed and the kernel terminated `Update.exe` mid-extract, leaving the install in a half-state. Fix: `launcher/src/job_object.rs::release()` clears the kill-on-close flag before the launcher's last handle drops, so the job dissolves quietly without killing remaining members. Hard-kill paths (Servy stop, Task Manager, crash) bypass this cleanup, so the v0.1.22 safety net still fires on abnormal termination as intended.
+- **`Update.exe`'s "Failed to wait for process … (Access is denied)"** still appears in `velopack_WsScrcpyWeb.log` because of an integrity-level mismatch on `OpenProcess` from the post-UAC launcher chain. Velopack continues anyway via its `Continuing...` fallback, and with the Job Object fix above the apply now completes successfully. The warning is cosmetic at this point but tracked separately.
+
 ## [0.1.23-beta.8] - 2026-04-29
 
 No code changes. Cut as an in-app update target so v0.1.23-beta.7 fresh installs can exercise the fully-automatic update path: UAC prompt for icacls at first launch (one-time), subsequent updates apply silently with no further UAC.

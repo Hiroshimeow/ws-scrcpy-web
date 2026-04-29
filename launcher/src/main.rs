@@ -147,6 +147,22 @@ fn main() {
         }
     };
 
+    // v0.1.23-beta.9: clear KILL_ON_JOB_CLOSE before our last handle to the
+    // job closes. This is the graceful-exit path; hard kills (Servy stop,
+    // Task Manager) bypass us and KILL_ON_JOB_CLOSE still cleans up via the
+    // kernel. Letting the job dissolve quietly here lets Velopack's
+    // Update.exe grandchild survive past launcher exit during in-app
+    // updater apply, which previously cut off mid-extract because the job
+    // tear-down TerminateProcess'd it. See job_object.rs module docs.
+    #[cfg(windows)]
+    match job_object::release() {
+        Ok(true) => log::info("job_object: kill-on-close released; grandchildren may survive exit"),
+        Ok(false) => log::info("job_object: no job to release (never adopted)"),
+        Err(e) => log::error(&format!(
+            "job_object: release failed (continuing exit anyway): {e:#}"
+        )),
+    }
+
     log::info(&format!("ws-scrcpy-web-launcher exiting with code {exit_code}"));
     std::process::exit(exit_code);
 }
