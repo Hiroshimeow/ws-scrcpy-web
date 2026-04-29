@@ -38,6 +38,14 @@ function isTheme(value: unknown): value is Theme {
     return value === 'dark' || value === 'light';
 }
 
+export function notifyThemeReady(target?: Window, opts: ThemeEmbedOptions = {}): void {
+    const dest = target ?? window.parent;
+    if (!dest || dest === window) return;
+    const baseType = opts.messageType ?? DEFAULT_MESSAGE_TYPE;
+    const readyType = `${baseType}-ready`;
+    dest.postMessage({ type: readyType, theme: getTheme() }, '*');
+}
+
 export function installThemeEmbedListener(opts: ThemeEmbedOptions = {}): () => void {
     const messageType = opts.messageType ?? DEFAULT_MESSAGE_TYPE;
     const allowedOrigins = opts.allowedOrigins ?? '*';

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTheme, setTheme, installThemeEmbedListener } from '../themeEmbed';
 
 describe('getTheme / setTheme', () => {
@@ -91,5 +91,52 @@ describe('installThemeEmbedListener', () => {
         dispose();
         postFromOrigin('https://example.com', { type: 'ws-scrcpy-web:theme', theme: 'light' });
         expect(getTheme()).toBe('dark');
+    });
+});
+
+import { notifyThemeReady } from '../themeEmbed';
+
+describe('notifyThemeReady', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        document.documentElement.removeAttribute('data-theme');
+    });
+
+    it('posts {type, theme} to the given target', () => {
+        const target = { postMessage: vi.fn() } as unknown as Window;
+        setTheme('light');
+        notifyThemeReady(target);
+        expect(target.postMessage).toHaveBeenCalledWith(
+            { type: 'ws-scrcpy-web:theme-ready', theme: 'light' },
+            '*',
+        );
+    });
+
+    it('defaults target to window.parent', () => {
+        const parentMock = { postMessage: vi.fn() };
+        const originalParent = window.parent;
+        Object.defineProperty(window, 'parent', { value: parentMock, configurable: true });
+        try {
+            notifyThemeReady();
+            expect(parentMock.postMessage).toHaveBeenCalled();
+        } finally {
+            Object.defineProperty(window, 'parent', { value: originalParent, configurable: true });
+        }
+    });
+
+    it('is a no-op when target equals window (not embedded)', () => {
+        const spy = vi.spyOn(window, 'postMessage');
+        notifyThemeReady(window);
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it('honors custom messageType (suffixed with -ready)', () => {
+        const target = { postMessage: vi.fn() } as unknown as Window;
+        notifyThemeReady(target, { messageType: 'custom:theme' });
+        expect(target.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'custom:theme-ready' }),
+            '*',
+        );
     });
 });
