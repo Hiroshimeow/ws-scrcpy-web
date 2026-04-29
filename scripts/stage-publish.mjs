@@ -134,6 +134,38 @@ function main() {
         });
     });
 
+    // 6a. v0.1.23-stable (item 5 / Approach C): relocate node-pty +
+    // node-addon-api out of publish/node_modules/ and into
+    // publish/seed/node-pty-pkg/node_modules/. Per the
+    // Local-Dependencies-Only architecture, runtime mutable state
+    // (including any swapped pty.node from a Node ABI auto-update) must
+    // not live under the install root's `current/` image. NodePtyResolver
+    // copies this seed to <dataRoot>/dependencies/node-pty/<v-host>/ on
+    // first launch and loads node-pty from there via createRequire().
+    //
+    // node-pty was installed as an OPTIONAL dep so non-platform npm ci
+    // doesn't fail; on win32/linux the postinstall fetches a prebuilt and
+    // we relocate the resulting tree here. node-addon-api is its
+    // transitive dep and must travel with it.
+    step('Relocate node-pty → seed/node-pty-pkg', () => {
+        const seedNodePtyPkg = join(PUBLISH, 'seed', 'node-pty-pkg', 'node_modules');
+        mkdirSync(seedNodePtyPkg, { recursive: true });
+        const nodePtySrc = join(PUBLISH, 'node_modules', 'node-pty');
+        const nodeAddonApiSrc = join(PUBLISH, 'node_modules', 'node-addon-api');
+        if (!existsSync(nodePtySrc)) {
+            throw new Error(
+                `node-pty not present at ${nodePtySrc} after npm ci — ` +
+                'optional-dep postinstall may have failed (network? missing platform?)',
+            );
+        }
+        cpSync(nodePtySrc, join(seedNodePtyPkg, 'node-pty'), { recursive: true });
+        rmSync(nodePtySrc, { recursive: true, force: true });
+        if (existsSync(nodeAddonApiSrc)) {
+            cpSync(nodeAddonApiSrc, join(seedNodePtyPkg, 'node-addon-api'), { recursive: true });
+            rmSync(nodeAddonApiSrc, { recursive: true, force: true });
+        }
+    });
+
     // 7. Legacy dev launcher (Windows only)
     if (startCmd) {
         step('Copy start.cmd', () => copyFileSync(startCmd, join(PUBLISH, 'start.cmd')));

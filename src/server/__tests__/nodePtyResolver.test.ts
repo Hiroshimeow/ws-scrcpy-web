@@ -7,8 +7,12 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     _resetForTest,
-    composePrebuiltKey, verifyChecksum,
-    cacheDirHasBinary, nodeModulesReleaseDir,
+    composePrebuiltKey,
+    verifyChecksum,
+    dataRootPackageDir,
+    packageHasBinary,
+    ptyNodePath,
+    copySeedToDataRoot,
 } from '../NodePtyResolver';
 
 describe('NodePtyResolver — helpers', () => {
@@ -51,23 +55,52 @@ describe('NodePtyResolver — helpers', () => {
         expect(ok).toBe(false);
     });
 
-    it('cacheDirHasBinary returns false for missing dir', () => {
-        expect(cacheDirHasBinary(path.join(tmpDir, 'nope'))).toBe(false);
+    it('dataRootPackageDir composes path with version + host on win32', () => {
+        const dir = dataRootPackageDir(tmpDir, '1.1.0', {
+            platform: 'win32', arch: 'x64', libc: 'glibc', nodeAbi: '137',
+        });
+        expect(dir).toBe(path.join(tmpDir, 'node-pty', 'v1.1.0-win32-x64'));
     });
 
-    it('cacheDirHasBinary returns false for dir without pty.node', () => {
-        fs.writeFileSync(path.join(tmpDir, 'other.node'), 'x');
-        expect(cacheDirHasBinary(tmpDir)).toBe(false);
+    it('dataRootPackageDir includes libc segment on linux', () => {
+        const dir = dataRootPackageDir(tmpDir, '1.1.0', {
+            platform: 'linux', arch: 'x64', libc: 'musl', nodeAbi: '127',
+        });
+        expect(dir).toBe(path.join(tmpDir, 'node-pty', 'v1.1.0-linux-x64-musl'));
     });
 
-    it('cacheDirHasBinary returns true for dir containing pty.node', () => {
-        fs.writeFileSync(path.join(tmpDir, 'pty.node'), 'x');
-        expect(cacheDirHasBinary(tmpDir)).toBe(true);
+    it('packageHasBinary returns false for non-existent package dir', () => {
+        expect(packageHasBinary(path.join(tmpDir, 'nope'))).toBe(false);
     });
 
-    it('nodeModulesReleaseDir ends with node-pty/build/Release', () => {
-        const dir = nodeModulesReleaseDir();
-        const tail = dir.split(path.sep).slice(-4).join('/');
-        expect(tail).toBe('node_modules/node-pty/build/Release');
+    it('packageHasBinary returns true when pty.node exists at the expected path', () => {
+        const pkgDir = path.join(tmpDir, 'pkg');
+        const releaseDir = path.dirname(ptyNodePath(pkgDir));
+        fs.mkdirSync(releaseDir, { recursive: true });
+        fs.writeFileSync(path.join(releaseDir, 'pty.node'), 'fake');
+        expect(packageHasBinary(pkgDir)).toBe(true);
+    });
+
+    it('copySeedToDataRoot returns true and short-circuits when target already has pty.node', () => {
+        const pkgDir = path.join(tmpDir, 'pkg');
+        const releaseDir = path.dirname(ptyNodePath(pkgDir));
+        fs.mkdirSync(releaseDir, { recursive: true });
+        fs.writeFileSync(path.join(releaseDir, 'pty.node'), 'fake');
+        // Seed is missing — but since target already satisfies, copy returns true.
+        expect(copySeedToDataRoot(pkgDir)).toBe(true);
+    });
+
+    it('copySeedToDataRoot returns false when seed is missing and target is empty', () => {
+        const pkgDir = path.join(tmpDir, 'pkg');
+        // Real seed at <__dirname>/../seed/node-pty-pkg WILL NOT exist in the
+        // test environment (vitest runs from src, no compiled bundle), so the
+        // seed-existence check fails cleanly.
+        expect(copySeedToDataRoot(pkgDir)).toBe(false);
+    });
+
+    it('ptyNodePath ends with node_modules/node-pty/build/Release/pty.node', () => {
+        const p = ptyNodePath(path.join(tmpDir, 'pkg'));
+        const tail = p.split(path.sep).slice(-5).join('/');
+        expect(tail).toBe('node_modules/node-pty/build/Release/pty.node');
     });
 });
