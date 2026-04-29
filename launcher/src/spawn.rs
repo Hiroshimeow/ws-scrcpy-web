@@ -84,8 +84,13 @@ pub fn resolve_server_entry() -> Result<PathBuf> {
 ///
 /// Returns `Ok(None)` if we couldn't open the log file (we still spawn the
 /// child with stdio inherited so the user's terminal sees output if any).
-fn open_server_log(deps_path: &Path) -> Option<std::fs::File> {
-    let log_path = deps_path.join("server.log");
+///
+/// v0.1.24-beta.3: server.log lives under `<dataRoot>/logs/server.log`
+/// alongside launcher.log. Pre-beta.3 it was at `<deps_path>/server.log`
+/// (i.e., `<dataRoot>/dependencies/server.log`); the move colocates
+/// both files under one `logs/` folder.
+fn open_server_log(data_root: &Path) -> Option<std::fs::File> {
+    let log_path = data_root.join("logs").join("server.log");
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -106,7 +111,7 @@ fn open_server_log(deps_path: &Path) -> Option<std::fs::File> {
 ///
 /// Returns the child handle so the caller (supervisor) can wait on it.
 #[cfg(windows)]
-pub fn spawn_server(deps_path: &Path) -> Result<Child> {
+pub fn spawn_server(deps_path: &Path, data_root: &Path) -> Result<Child> {
     use std::os::windows::process::CommandExt;
 
     let node = resolve_node()?;
@@ -123,7 +128,7 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
     // Plumb the child's stdout AND stderr into <deps>/server.log so a
     // crashed startup leaves a forensic trail. Both go to the same file
     // (interleaved); separating them is rarely worth the duplicate I/O.
-    if let Some(log) = open_server_log(deps_path) {
+    if let Some(log) = open_server_log(data_root) {
         let log_clone = log.try_clone().ok();
         cmd.stdout(std::process::Stdio::from(log));
         if let Some(c) = log_clone {
@@ -149,7 +154,7 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
 }
 
 #[cfg(not(windows))]
-pub fn spawn_server(deps_path: &Path) -> Result<Child> {
+pub fn spawn_server(deps_path: &Path, data_root: &Path) -> Result<Child> {
     let node = resolve_node()?;
     let entry = resolve_server_entry()?;
     let exe = std::env::current_exe()?;
@@ -160,7 +165,7 @@ pub fn spawn_server(deps_path: &Path) -> Result<Child> {
         .current_dir(&work_dir)
         .env("DEPS_PATH", deps_path);
 
-    if let Some(log) = open_server_log(deps_path) {
+    if let Some(log) = open_server_log(data_root) {
         let log_clone = log.try_clone().ok();
         cmd.stdout(std::process::Stdio::from(log));
         if let Some(c) = log_clone {

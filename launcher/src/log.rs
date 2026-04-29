@@ -5,12 +5,14 @@
 // write to a launcher log file so failures during install/update/run can
 // be diagnosed.
 //
-// Phase 1 of the Program Files migration: the log lives under `<dataRoot>`
-// (`%PROGRAMDATA%\WsScrcpyWeb\ws-scrcpy-web-launcher.log`) on Windows, so
-// it remains writable after Phase 4 when the install root becomes
-// `C:\Program Files\WsScrcpyWeb\` (read-only for non-admin user-mode
-// launchers). On non-Windows, falls back to `<exe_dir>/launcher.log` —
-// the pre-Phase-1 location.
+// v0.1.24-beta.3: log lives under `<dataRoot>/logs/launcher.log` on
+// Windows. Earlier builds (v0.1.0–v0.1.23) wrote to
+// `<dataRoot>/ws-scrcpy-web-launcher.log` — we moved it under a
+// `logs/` subfolder to colocate with `server.log` (same change) and
+// keep dataRoot navigable. The migration is one-directional; we don't
+// read the legacy path. Old launcher.log files in the dataRoot root
+// are stale and can be deleted by hand. On non-Windows, falls back to
+// `<exe_dir>/launcher.log` (legacy path, dev convenience).
 //
 // Every line is prefixed with a UTC timestamp in
 // `YYYY-MM-DD HH:MM:SS.fff` format. Without this, an after-the-fact log
@@ -25,14 +27,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn log_path() -> Option<PathBuf> {
     if let Some(data_root) = common::config::data_root_from_env() {
+        let logs_dir = data_root.join("logs");
         // Best-effort directory create — if we can't create it (e.g.
-        // ACL not yet set on a fresh Phase-4 install), fall back to
-        // exe_dir below so we still get *some* logging.
-        if !data_root.exists() {
-            let _ = fs::create_dir_all(&data_root);
-        }
-        if data_root.exists() {
-            return Some(data_root.join("ws-scrcpy-web-launcher.log"));
+        // ACL not yet set on a fresh install), fall back to exe_dir
+        // below so we still get *some* logging.
+        let _ = fs::create_dir_all(&logs_dir);
+        if logs_dir.exists() {
+            return Some(logs_dir.join("launcher.log"));
         }
     }
     let exe = std::env::current_exe().ok()?;

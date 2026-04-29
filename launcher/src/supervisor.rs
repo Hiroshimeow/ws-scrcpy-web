@@ -78,7 +78,7 @@ pub fn run() -> Result<i32> {
     loop {
         cleanup_old_node(&paths.old_node);
 
-        let mut child = spawn::spawn_server(&paths.deps_path)?;
+        let mut child = spawn::spawn_server(&paths.deps_path, &paths.data_root)?;
         log::info(&format!("supervisor: server started (pid {})", child.id()));
 
         let status = wait_with_signal(&mut child, &stop)?;
