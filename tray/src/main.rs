@@ -25,6 +25,32 @@ const ICON_BYTES: &[u8] = include_bytes!("../../assets/tray-icon.ico");
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn main() -> Result<()> {
+    // Per-session single-instance gate. If another tray helper is already
+    // running in this logon session, exit silently. This handles the
+    // transitional state where both HKLM\Run (new) and HKCU\Run (stale
+    // from v0.1.24 install) point at the tray exe and both fire at logon.
+    let _instance_guard = match single_instance::acquire(single_instance::MUTEX_NAME) {
+        Ok(Some(guard)) => Some(guard),
+        Ok(None) => return Ok(()), // duplicate; exit silently
+        Err(e) => {
+            eprintln!("tray: single-instance acquire failed: {e:?}; continuing without guard");
+            None
+        }
+    };
+
+    // Best-effort cleanup of the pre-v0.1.25 HKCU\...\Run\WsScrcpyWebTray
+    // value for the current user. v0.1.24 wrote this from elevated install
+    // context, so only the original installing admin had it. For everyone
+    // else this is a no-op (reg.exe exits 1 on value-not-found, treated as
+    // success).
+    if let Err(e) = cleanup_stale_hkcu_run_value() {
+        eprintln!("tray: HKCU\\Run cleanup failed (non-fatal): {e:?}");
+    }
+
+    run_tray()
+}
+
+fn run_tray() -> Result<()> {
     // Phase 1 of the Program Files migration: config.json lives under
     // <dataRoot> (PROGRAMDATA-rooted on Windows). Fall back to the
     // pre-Phase-1 install_root location on non-Windows or if data_root
@@ -129,6 +155,49 @@ fn install_root_from_exe() -> Result<PathBuf> {
     } else {
         Ok(parent)
     }
+}
+
+/// Best-effort delete of the pre-v0.1.25 HKCU\...\Run\WsScrcpyWebTray value
+/// for the current user. v0.1.24 wrote this from elevated install context,
+/// which only landed in the installing admin's hive — so for non-admin users
+/// this is always a no-op. For the original installing admin, this removes
+/// the stale registration that would otherwise spawn a duplicate tray
+/// alongside the new HKLM-Run-spawned one.
+///
+/// Returns Ok on exit code 0 (deleted) AND exit code 1 (not present, or
+/// other recoverable failure — see classify_reg_delete_outcome rationale
+/// in launcher/src/elevated_runner.rs). Other exit codes return Err so the
+/// caller can log; they should not abort startup.
+#[cfg(windows)]
+fn cleanup_stale_hkcu_run_value() -> Result<()> {
+    use std::process::Command;
+
+    let out = Command::new("reg.exe")
+        .args([
+            "delete",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "WsScrcpyWebTray",
+            "/f",
+        ])
+        .output()
+        .context("reg.exe delete HKCU Run-key")?;
+
+    match out.status.code() {
+        Some(0) | Some(1) => Ok(()),
+        _ => {
+            anyhow::bail!(
+                "reg.exe exited with {:?}; stderr: {}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn cleanup_stale_hkcu_run_value() -> Result<()> {
+    Ok(())
 }
 
 /// Fire-and-forget POST to the server's shutdown endpoint.

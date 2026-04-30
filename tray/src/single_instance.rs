@@ -15,7 +15,6 @@
 // the launcher's elevation segregation supports.
 
 #[cfg(windows)]
-#[allow(dead_code)]
 mod imp {
     use anyhow::Result;
     use std::ffi::OsStr;
@@ -78,13 +77,11 @@ mod imp {
     }
 }
 
-#[allow(unused_imports)]
 pub use imp::acquire;
 #[allow(unused_imports)]
 pub use imp::InstanceGuard;
 
 /// Canonical mutex name. `Local\` prefix auto-scopes per logon session.
-#[allow(dead_code)]
 pub const MUTEX_NAME: &str = r"Local\WsScrcpyWebTray-SingleInstance";
 
 #[cfg(all(test, windows))]
