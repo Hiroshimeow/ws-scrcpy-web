@@ -226,7 +226,7 @@ export class SettingsModal extends Modal {
             this.currentWebPort = data.config.webPort;
             if (data.restartRequired) {
                 this.setServerStatus(
-                    'server restarting on new port. redirecting in a moment…',
+                    'restarting → redirecting…',
                     false,
                 );
                 if (data.redirectTo) {
@@ -493,7 +493,7 @@ export class SettingsModal extends Modal {
         btn.disabled = busy || this.updatesApplyInFlight;
         if (s.status === 'ready') {
             btn.textContent = s.availableVersion
-                ? `apply update v${s.availableVersion}`
+                ? `apply v${s.availableVersion}`
                 : 'apply update';
             btn.classList.remove('settings-btn-primary');
             btn.classList.add('settings-btn-ready');
@@ -832,7 +832,7 @@ export class SettingsModal extends Modal {
                 return;
             }
             if (data.redirectTo) {
-                btn.textContent = 'switching to service mode…';
+                btn.textContent = '→ service mode (install)…';
                 setTimeout(() => {
                     window.location.href = data.redirectTo!;
                 }, 500);
@@ -867,7 +867,7 @@ export class SettingsModal extends Modal {
             // token. Honor the redirect so the local instance fires the actual
             // uninstall in its own user-session UAC context.
             if (data.redirectTo) {
-                btn.textContent = 'switching to user mode for uninstall…';
+                btn.textContent = '→ user mode (uninstall)…';
                 setTimeout(() => {
                     window.location.href = data.redirectTo!;
                 }, 500);

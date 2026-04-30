@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings modal layout — fixed-width tracks so dynamic content never reflows the controls column.** Modal width restored to the original 640px cap. Labels track is now a fixed 20rem (down from 1fr greedy) and the controls track is widened to 16rem (up from 200px) so the longest steady-state button text ("not installed — install?") fits without wrapping. Column gap is 1rem with a small whitespace track on the right of the controls — the controls column now sits a touch left of the modal's right edge instead of hugging it. Result: changing button states (install ↔ uninstall, status messages, version strings) no longer shift the column horizontally.
+- **Settings modal — shortened a handful of long strings** that were overflowing the new fixed-width tracks: the post-port-change save status `server restarting on new port. redirecting in a moment…` is now `restarting → redirecting…`; the apply-update button drops the redundant word ("apply update vX.Y.Z" → "apply vX.Y.Z"); the install/uninstall transition states adopt a parens style ("switching to service mode…" → "→ service mode (install)…", same shape for the user-mode-uninstall variant).
+
 ## [0.1.24-beta.7] - 2026-04-29
 
 ### Changed
