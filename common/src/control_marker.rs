@@ -221,4 +221,20 @@ mod tests {
         cleanup_stale(tmp.path(), now.into(), std::time::Duration::from_secs(60));
         assert!(read(tmp.path()).expect("read").is_some());
     }
+
+    #[test]
+    fn cleanup_stale_removes_marker_with_unparseable_timestamp() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bad = Marker {
+            verb: "uninstall-service".to_string(),
+            target_session_id: Some(1),
+            launcher_path: PathBuf::from("a.exe"),
+            launcher_args: vec![],
+            written_at: "not-a-date".to_string(),
+        };
+        write(tmp.path(), &bad).expect("write");
+        let now = chrono::DateTime::parse_from_rfc3339("2026-04-29T23:30:00Z").unwrap();
+        cleanup_stale(tmp.path(), now.into(), std::time::Duration::from_secs(60));
+        assert!(read(tmp.path()).expect("read").is_none(), "unparseable timestamp should be reaped");
+    }
 }
