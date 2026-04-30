@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.25-beta.1] - 2026-04-30
+
 ### Fixed
 
 - **Service-mode tray helper now registers under `HKLM\...\Run` instead of `HKCU\...\Run`**, so every user logging into the machine receives a tray icon at logon — not only the installing admin. Upgrades from v0.1.24 also clean up the stale HKCU value for the installing admin to avoid a one-time double-spawn at next admin logon.

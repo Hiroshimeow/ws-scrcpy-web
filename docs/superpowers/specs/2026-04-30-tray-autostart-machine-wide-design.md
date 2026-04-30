@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-30
 **Project:** ws-scrcpy-web
-**Status:** Spec — not yet implemented
+**Status:** Shipped in v0.1.25-beta.1
 **Motivates:** §1c bug 2 (multi-user port drift) reproduction; closes a coverage gap surfaced during v0.1.25 testing
 
 ## Problem
