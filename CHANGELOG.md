@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-04-30
+
+First stable v0.1.24 cut, rolling up the eight-beta investigation. Headline fix: **Theory D** — the service-uninstall flow no longer fails with `ERROR_ACCESS_DENIED`. After three layered Win32 attempts (privilege flips, session enumeration, primary-token forcing) all failed across betas 1–3, beta.8 dropped the cross-session WTS spawn entirely in favor of file-marker IPC: the LocalSystem service-Node writes a JSON marker under `<dataRoot>/control/`, and a polling thread inside the user-session tray helper detects it and natively spawns the launcher in its own session. Both v0.1.23 known-issues bug 1 (failed handoff) and bug B (Path B no-tray-after-fallback) are closed by this architectural change, end-to-end VM-verified. Also closed: the tray-icon-click went to a stale port after mode swaps — the tray now re-reads `config.json::webPort` on every click via a closure-injected URL provider.
+
+Other v0.1.24 work folded into this stable: Settings modal layout overhaul (fixed-width 20rem labels + 16rem controls tracks, no reflow on dynamic content), four shorter user-facing strings to fit the new tracks, iframe theme bridge (`window.WsScrcpy.*` postMessage API for embedding hosts), MutationObserver-based theme toggle button visual sync, logs consolidation round 2 (`ws-scrcpy-web.log` and `service.log` joined `launcher.log` + `server.log` under `<dataRoot>/logs/`).
+
+**Migration:** v0.1.23 stable users and v0.1.24-beta.{1..8} users can in-app update to v0.1.24 normally — no fresh-install required. The Theory D handoff path activates automatically on the first service uninstall attempt after upgrading. Old `<dataRoot>/dependencies/service.log` and `<dataRoot>/ws-scrcpy-web.log` files (pre-beta.7 paths) may linger; safe to delete by hand.
+
+### Known issues (carried into v0.1.25)
+
+- **Multi-user port drift in service mode (§1c bug 2).** User A flips to service on port 8004, logs out, User B logs in → tray-click opens a dead port because the actual service moved to 8005 and `config.json` wasn't re-persisted. Still deferred — needs a focused multi-user-VM diagnostic session with `handle.exe` / Procmon to answer "why does the service-Node restart on User B login at all?" Static code reading can't reach the root cause.
+- **Theory D fallback retains the v0.1.23 broken-uninstall UX in the no-tray-helper edge case.** If the user has explicitly killed the standalone tray helper (or it never started), the marker write succeeds but no consumer picks it up; ServiceApi falls through to direct uninstall after the 30s discover timeout, browser sees "couldn't reach server." Same UX as v0.1.23, just much rarer to hit. Not tracked separately.
+- **Cosmetic node-pty `AttachConsole failed` errors in server.log when opening shell sessions.** Functionally harmless — actual shell I/O works; these come from node-pty's internal `conpty_console_list_agent.js` helper failing to attach to our hidden-subsystem parent process. Tracked as todo §9a for a future seed-patch or upstream fix.
+
 ## [0.1.24-beta.8] - 2026-04-30
 
 ### Fixed
