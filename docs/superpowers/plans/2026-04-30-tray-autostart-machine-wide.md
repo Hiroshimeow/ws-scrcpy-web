@@ -328,7 +328,7 @@ Expected: PASS. If clippy flags anything in the modified file (e.g., complaining
 npm run build
 ```
 
-(From the repo root. This is the canonical full-build command per `todo_ws_scrcpy_web.md` and runs the webpack frontend build plus the Cargo release build for launcher/tray.)
+(From the repo root. `npm run build` runs the webpack frontend build only — the Cargo release build for launcher/tray is NOT triggered by it. If you need to rebuild the Rust binaries to pick up code changes, run `cargo build --release --workspace` separately. The plan author originally claimed npm run build did both — incorrect; corrected post-implementation when the binary string-match check needed cargo to be rebuilt explicitly.)
 
 Expected: PASS. The launcher binary picks up the constant change automatically; the tray binary is unchanged.
 

@@ -89,7 +89,7 @@ const STALE_HKCU_TRAY_RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentV
 
 ### Unit tests (`launcher/src/elevated_runner.rs`)
 
-- **New:** `register_tray_run_key_uses_hklm` — assert `TRAY_RUN_KEY.starts_with("HKLM\\")`. Cheap regression guard against accidental flips back to HKCU.
+- **New:** `tray_run_key_targets_hklm` — assert `TRAY_RUN_KEY.starts_with("HKLM\\")`. Cheap regression guard against accidental flips back to HKCU.
 - Existing `handle()` / unknown-command / args-parsing tests — unchanged.
 - `register_tray_run_key`, `unregister_tray_run_key`, `cleanup_stale_hkcu_tray_run_key` are not unit-testable without registry side effects (they shell out to `reg.exe`). Live-registry tests are intentionally excluded — too flaky, pollutes CI hosts. Coverage comes from the manual VM verification below.
 
