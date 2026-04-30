@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-30
 **Project:** ws-scrcpy-web
-**Status:** Spec — not yet implemented (ships in v0.1.25-beta.2)
+**Status:** Shipped in v0.1.25-beta.2
 **Supersedes the migration assumptions in:** `docs/superpowers/specs/2026-04-30-tray-autostart-machine-wide-design.md`
 
 ## Problem

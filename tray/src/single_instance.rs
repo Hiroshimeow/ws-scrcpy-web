@@ -49,6 +49,13 @@ mod imp {
         use windows::core::PCWSTR;
 
         let wide = to_wide(name);
+        // bInitialOwner=false: don't acquire the mutex in a signaled-owned
+        // state at creation. We use the mutex only as a "does another
+        // instance hold it" gate (via ERROR_ALREADY_EXISTS), not as a
+        // synchronization primitive that callers Wait on. Setting true
+        // would prevent any future WaitForSingleObject pattern from
+        // working correctly. Mirrors the launcher's single_instance.rs
+        // pattern exactly.
         let handle = unsafe {
             CreateMutexW(None, false, PCWSTR::from_raw(wide.as_ptr()))?
         };

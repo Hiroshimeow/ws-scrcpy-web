@@ -442,14 +442,8 @@ pub fn migrate_tray_run_key_for_service(install_root: &std::path::Path) -> Resul
         .map_err(|e| format!("reg.exe query failed to spawn: {e}"))?;
 
     if query.status.success() {
-        // reg.exe query stdout when present looks like:
-        //   HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run
-        //       WsScrcpyWebTray    REG_SZ    C:\...\ws-scrcpy-web-tray.exe
-        // Confirming the trailing path matches is enough to declare "already
-        // migrated" — if reg.exe outputs the expected exe path verbatim, the
-        // registration is correct.
         let stdout = String::from_utf8_lossy(&query.stdout);
-        if stdout.contains(tray_path_str) {
+        if is_hklm_already_migrated(&stdout, tray_path_str) {
             return Ok(());
         }
         // Value present but path differs — fall through to overwrite.
@@ -457,6 +451,20 @@ pub fn migrate_tray_run_key_for_service(install_root: &std::path::Path) -> Resul
     // Either the value wasn't present (query exit != 0) or the path differs —
     // either way, write it.
     register_tray_run_key(tray_path_str)
+}
+
+/// Pure predicate: does `reg.exe query` stdout indicate the HKLM tray Run-key
+/// value already points at the expected tray exe path?
+///
+/// `reg.exe query` stdout when present looks like:
+///   HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run
+///       WsScrcpyWebTray    REG_SZ    C:\...\ws-scrcpy-web-tray.exe
+///
+/// The tray exe path is the only meaningful payload — the registry-key
+/// header line and the value name are fixed strings the tray path can't
+/// collide with. A `contains()` check is sufficient.
+fn is_hklm_already_migrated(query_stdout: &str, expected_tray_path: &str) -> bool {
+    query_stdout.contains(expected_tray_path)
 }
 
 /// Unregister the tray from the HKLM Run key. Exit code 1 (value not found)
@@ -590,5 +598,26 @@ mod tests {
         let result = classify_reg_delete_outcome(None, stderr_text);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("killed"));
+    }
+
+    #[test]
+    fn is_hklm_already_migrated_returns_true_when_path_matches() {
+        // Realistic reg.exe query output where the value points at the expected exe.
+        let stdout = "\n\
+            HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n    \
+                WsScrcpyWebTray    REG_SZ    C:\\Program Files\\WsScrcpyWeb\\current\\ws-scrcpy-web-tray.exe\n";
+        let expected = r"C:\Program Files\WsScrcpyWeb\current\ws-scrcpy-web-tray.exe";
+        assert!(is_hklm_already_migrated(stdout, expected));
+    }
+
+    #[test]
+    fn is_hklm_already_migrated_returns_false_when_path_differs() {
+        // Value is present but points at a different (e.g., older) exe path —
+        // migration must overwrite it rather than skip.
+        let stdout = "\n\
+            HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n    \
+                WsScrcpyWebTray    REG_SZ    C:\\Old\\Path\\ws-scrcpy-web-tray.exe\n";
+        let expected = r"C:\Program Files\WsScrcpyWeb\current\ws-scrcpy-web-tray.exe";
+        assert!(!is_hklm_already_migrated(stdout, expected));
     }
 }

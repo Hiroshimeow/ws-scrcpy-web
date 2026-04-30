@@ -165,9 +165,12 @@ fn install_root_from_exe() -> Result<PathBuf> {
 /// alongside the new HKLM-Run-spawned one.
 ///
 /// Returns Ok on exit code 0 (deleted) AND exit code 1 (not present, or
-/// other recoverable failure — see classify_reg_delete_outcome rationale
-/// in launcher/src/elevated_runner.rs). Other exit codes return Err so the
-/// caller can log; they should not abort startup.
+/// other recoverable failure). Same exit-code-classification pattern as
+/// `classify_reg_delete_outcome` in `launcher/src/elevated_runner.rs`,
+/// inlined here rather than shared because the tray crate doesn't depend
+/// on launcher (different process boundaries, different ownership). Other
+/// exit codes return Err so the caller can log; they should not abort
+/// startup.
 #[cfg(windows)]
 fn cleanup_stale_hkcu_run_value() -> Result<()> {
     use std::process::Command;
