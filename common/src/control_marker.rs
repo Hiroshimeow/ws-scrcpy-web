@@ -35,6 +35,21 @@ pub fn write(data_root: &Path, marker: &Marker) -> io::Result<()> {
     Ok(())
 }
 
+/// Read the marker file from `<data_root>/control/uninstall-handoff.json`.
+/// Returns:
+///   - `Ok(Some(marker))` if the file exists and parses
+///   - `Ok(None)` if the file is absent OR present-but-corrupt
+///   - `Err(_)` only on unexpected IO errors (permission denied, etc.)
+pub fn read(data_root: &Path) -> io::Result<Option<Marker>> {
+    let path = data_root.join(CONTROL_DIR).join(UNINSTALL_HANDOFF_FILENAME);
+    let body = match fs::read_to_string(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    Ok(serde_json::from_str(&body).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +104,39 @@ mod tests {
         let body = std::fs::read_to_string(&target).expect("readable");
         let parsed: Marker = serde_json::from_str(&body).expect("valid json");
         assert_eq!(parsed.target_session_id, Some(2));
+    }
+
+    #[test]
+    fn read_returns_none_when_marker_absent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = read(tmp.path()).expect("read does not error on missing");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn read_returns_marker_when_present() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let m = Marker {
+            verb: "uninstall-service".to_string(),
+            target_session_id: Some(1),
+            launcher_path: PathBuf::from("a.exe"),
+            launcher_args: vec![],
+            written_at: "2026-04-29T23:30:00Z".to_string(),
+        };
+        write(tmp.path(), &m).expect("write");
+        let got = read(tmp.path()).expect("read").expect("present");
+        assert_eq!(got, m);
+    }
+
+    #[test]
+    fn read_returns_none_on_corrupt_json() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("control");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("uninstall-handoff.json"), b"not json").expect("write");
+        // Corrupt content is reported as None, not an error — log+ignore is the
+        // caller's preference (poller continues on next tick).
+        let result = read(tmp.path()).expect("read does not error on corrupt");
+        assert!(result.is_none());
     }
 }
