@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.25-beta.2] - 2026-04-30
+
+### Fixed
+
+- **HKLM\Run tray migration now works on upgrade from v0.1.24** — v0.1.25-beta.1's HKLM-Run write only fired from the live "install service" UI path; the Velopack `--veloapp-updated` hook just restarted the service without touching tray registration, so v0.1.24 → v0.1.25-beta.1 upgrades left HKLM unwritten and non-admin users got no tray icon at logon. The launcher now self-heals HKLM idempotently on every service start (LocalSystem context, no UAC), so the first service restart after upgrade completes the migration automatically.
+- **No more duplicate tray icons in admin's session post-migration** — added a per-session single-instance mutex (`Local\WsScrcpyWebTray-SingleInstance`) to the standalone tray helper. The mutex winner also best-effort deletes the stale HKCU\Run\WsScrcpyWebTray value left over from v0.1.24, so subsequent logons spawn exactly one tray.
+
+### Changed
+
+- `scripts/bump-version.mjs` now correctly relocates `[Unreleased]` body content into the new `[<version>] - DATE` section (instead of leaving it under `[Unreleased]` with an empty new-version header), and strips leading blank lines to avoid a doubled blank between the heading and the first body line.
+- `launcher` registry-cleanup helpers (`unregister_tray_run_key`, `cleanup_stale_hkcu_tray_run_key`) now use `reg.exe` exit-code parsing (locale-stable) instead of English-only stderr substring matching. Non-English Windows installs no longer silently fail the cleanup path.
+- Home-page top padding (`64px`) so the fixed-position controls cluster (settings/theme/update) doesn't visually crowd the connected-devices section.
+
+### Removed
+
+- Dead `ARGS_STRING` export from `src/common/Constants.ts` (no callers since SP2 scrcpy-server v3 rewrite). `SERVER_PORT` retained — still used as a sentinel by `DeviceTracker` and `StreamClientScrcpy`.
+
 ## [0.1.25-beta.1] - 2026-04-30
 
 ### Fixed
