@@ -453,4 +453,15 @@ mod tests {
         assert!(s.contains("\"stdout\": \"out\""));
         assert!(s.contains("\"stderr\": \"err\""));
     }
+
+    #[test]
+    fn tray_run_key_targets_hklm() {
+        // Auto-start for the service-mode tray must be machine-wide so
+        // every user (not only the installing admin) gets a tray at logon.
+        // See docs/superpowers/specs/2026-04-30-tray-autostart-machine-wide-design.md.
+        assert!(
+            TRAY_RUN_KEY.starts_with(r"HKLM\"),
+            "TRAY_RUN_KEY must target HKLM, got: {TRAY_RUN_KEY}"
+        );
+    }
 }
