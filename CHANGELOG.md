@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24-beta.8] - 2026-04-30
+
 ### Fixed
 
 - **Service uninstall handoff — file-marker IPC replaces the broken cross-session WTS spawn (Theory D).** v0.1.24-beta.{1,2,3} attempted three layered fixes for the WTS handoff (privilege flips, session enumeration, primary-token forcing) and all failed with `ERROR_ACCESS_DENIED` when invoking `CreateProcessAsUserW` from the LocalSystem service-Node. Theory D drops the cross-session spawn entirely. The service-Node now writes a JSON marker at `<dataRoot>/control/uninstall-handoff.json`; a polling thread inside the user-session tray helper detects it and natively spawns the launcher in its own session — no `WTSQueryUserToken`, no `CreateProcessAsUserW`, no privilege hunting. End-to-end VM-verified on 2026-04-30: install → uninstall → install → uninstall completes smoothly with the correct tray icon at every step.
