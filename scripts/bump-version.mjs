@@ -67,8 +67,8 @@ export function bumpChangelog(content, newVersion, today = formatToday()) {
         throw new Error('CHANGELOG.md does not contain "## [Unreleased]" section');
     }
 
-    // Find the next `## ` heading after [Unreleased]; insert the new release
-    // header just before it (or at EOF if none).
+    // Find the next `## ` heading after [Unreleased]; everything between
+    // [Unreleased] and that heading is the body to move to the new version.
     let nextHeadingIdx = lines.length;
     for (let i = unreleasedIdx + 1; i < lines.length; i++) {
         if (lines[i].startsWith('## ')) {
@@ -77,9 +77,34 @@ export function bumpChangelog(content, newVersion, today = formatToday()) {
         }
     }
 
+    // Extract the body content (lines between [Unreleased] heading and next heading).
+    // This includes any blank lines and sub-headings/bullets that were under [Unreleased].
+    const bodyLines = lines.slice(unreleasedIdx + 1, nextHeadingIdx);
+
+    // Build the new lines array:
+    // [... before Unreleased ...]
+    // ## [Unreleased]
+    // <blank line>
+    // ## [<version>] - <date>
+    // <blank line>
+    // <original body>
+    // [... rest of file ...]
+
+    const beforeUnreleased = lines.slice(0, unreleasedIdx);
+    const afterBody = lines.slice(nextHeadingIdx);
+
     const newHeading = `## [${newVersion}] - ${today}`;
-    lines.splice(nextHeadingIdx, 0, newHeading, '');
-    return lines.join('\n');
+    const newLines = [
+        ...beforeUnreleased,
+        '## [Unreleased]',
+        '',
+        newHeading,
+        '',
+        ...bodyLines,
+        ...afterBody,
+    ];
+
+    return newLines.join('\n');
 }
 
 async function main() {

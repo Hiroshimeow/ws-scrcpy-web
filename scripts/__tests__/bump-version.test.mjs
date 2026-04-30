@@ -116,14 +116,21 @@ describe('bumpChangelog', () => {
         expect(idxNew).toBeLessThan(idxOld);
     });
 
-    it('preserves [Unreleased] content above the new heading', () => {
+    it('relocates [Unreleased] content to the new version heading', () => {
         const out = bumpChangelog(sampleChangelog, '0.1.0', '2026-04-26');
-        // The "some new thing" entry should still appear under [Unreleased]
+        // The "some new thing" entry should now appear under [0.1.0], not [Unreleased]
         const unreleasedSection = out.slice(
             out.indexOf('## [Unreleased]'),
             out.indexOf('## [0.1.0]'),
         );
-        expect(unreleasedSection).toContain('some new thing');
+        expect(unreleasedSection).not.toContain('some new thing');
+
+        // Verify it appears under the new version heading
+        const newVersionSection = out.slice(
+            out.indexOf('## [0.1.0]'),
+            out.indexOf('## [0.0.1]'),
+        );
+        expect(newVersionSection).toContain('some new thing');
     });
 
     it('throws if [Unreleased] section is missing', () => {
@@ -140,6 +147,117 @@ describe('bumpChangelog', () => {
         const empty = '# Changelog\n\n## [Unreleased]\n';
         const out = bumpChangelog(empty, '0.1.0', '2026-04-26');
         expect(out).toContain('## [0.1.0] - 2026-04-26');
+    });
+
+    it('relocates body under Unreleased to the new version heading', () => {
+        const input = `# Changelog
+
+## [Unreleased]
+
+- Some change.
+- Another change.
+
+## [0.0.1] - 2026-01-01
+
+- Old thing.
+`;
+        const out = bumpChangelog(input, '0.1.0', '2026-04-26');
+        // Body (bullets) should be under [0.1.0], not under [Unreleased]
+        const unreleasedSection = out.slice(
+            out.indexOf('## [Unreleased]'),
+            out.indexOf('## [0.1.0]'),
+        );
+        expect(unreleasedSection).not.toContain('Some change');
+        expect(unreleasedSection).not.toContain('Another change');
+
+        const newVersionSection = out.slice(
+            out.indexOf('## [0.1.0]'),
+            out.indexOf('## [0.0.1]'),
+        );
+        expect(newVersionSection).toContain('Some change');
+        expect(newVersionSection).toContain('Another change');
+    });
+
+    it('relocates sub-headings under Unreleased', () => {
+        const input = `# Changelog
+
+## [Unreleased]
+
+### Fixed
+- Bug fix 1.
+- Bug fix 2.
+
+## [0.0.1] - 2026-01-01
+
+### Added
+- Initial.
+`;
+        const out = bumpChangelog(input, '0.1.0', '2026-04-26');
+
+        // "### Fixed" should be under [0.1.0], not under [Unreleased]
+        const unreleasedSection = out.slice(
+            out.indexOf('## [Unreleased]'),
+            out.indexOf('## [0.1.0]'),
+        );
+        expect(unreleasedSection).not.toContain('### Fixed');
+        expect(unreleasedSection).not.toContain('Bug fix');
+
+        const newVersionSection = out.slice(
+            out.indexOf('## [0.1.0]'),
+            out.indexOf('## [0.0.1]'),
+        );
+        expect(newVersionSection).toContain('### Fixed');
+        expect(newVersionSection).toContain('Bug fix 1');
+        expect(newVersionSection).toContain('Bug fix 2');
+    });
+
+    it('prepends empty Unreleased above the new version heading', () => {
+        const input = `# Changelog
+
+## [Unreleased]
+
+- Some change.
+
+## [0.0.1] - 2026-01-01
+
+- Old.
+`;
+        const out = bumpChangelog(input, '0.1.0', '2026-04-26');
+
+        // [Unreleased] should appear BEFORE [0.1.0]
+        const idxUnreleased = out.indexOf('## [Unreleased]');
+        const idxNew = out.indexOf('## [0.1.0]');
+        expect(idxUnreleased).toBeLessThan(idxNew);
+
+        // [Unreleased] should be mostly empty (just the heading + blank line)
+        const unreleasedSection = out.slice(idxUnreleased, idxNew);
+        // Should contain the heading and maybe a blank line, but NOT the old content
+        expect(unreleasedSection).toContain('## [Unreleased]');
+        expect(unreleasedSection).not.toContain('Some change');
+    });
+
+    it('handles empty Unreleased correctly', () => {
+        const input = `# Changelog
+
+## [Unreleased]
+
+## [0.0.1] - 2026-01-01
+
+- Old.
+`;
+        const out = bumpChangelog(input, '0.1.0', '2026-04-26');
+
+        // [Unreleased] section should be empty (just heading + blank line)
+        const idxUnreleased = out.indexOf('## [Unreleased]');
+        const idxNew = out.indexOf('## [0.1.0]');
+        const unreleasedSection = out.slice(idxUnreleased, idxNew).trim();
+
+        // New version section should also be empty (just heading + blank line)
+        const idxOld = out.indexOf('## [0.0.1]');
+        const newVersionSection = out.slice(idxNew, idxOld).trim();
+
+        expect(unreleasedSection).toBe('## [Unreleased]');
+        expect(newVersionSection).toBe('## [0.1.0] - 2026-04-26');
     });
 });
 
