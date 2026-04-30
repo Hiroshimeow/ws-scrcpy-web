@@ -1,5 +1,6 @@
 import { Modal } from '../ui/Modal';
 import { resetAllDismissals } from './firstRunGate';
+import { AdminConfirmModal } from './AdminConfirmModal';
 import type { AppConfigEnvelope, AppConfigPatchResponse, UpdateChannel } from '../../common/ConfigEvents';
 import type {
     ServiceStatusResponse,
@@ -809,6 +810,9 @@ export class SettingsModal extends Modal {
     }
 
     private async onInstallService(btn: HTMLButtonElement): Promise<void> {
+        const confirmed = await AdminConfirmModal.confirm({ action: 'install service' });
+        if (!confirmed) return;
+
         btn.disabled = true;
         const prevText = btn.textContent;
         btn.textContent = 'installing…';
@@ -824,10 +828,9 @@ export class SettingsModal extends Modal {
             });
             const data = (await r.json().catch(() => null)) as ServiceInstallResponse | null;
             if (!r.ok || !data || data.ok !== true) {
-                const errMsg =
-                    data && data.ok === false
-                        ? data.error
-                        : `install failed (${r.status})`;
+                const errMsg = data && data.ok === false
+                    ? SettingsModal.reasonToUserMessage(data.reason, data.error)
+                    : `install failed (${r.status})`;
                 this.renderServiceError(errMsg, () => void this.refreshService());
                 return;
             }
@@ -848,24 +851,30 @@ export class SettingsModal extends Modal {
     }
 
     private async onUninstallService(btn: HTMLButtonElement): Promise<void> {
+        const confirmed = await AdminConfirmModal.confirm({ action: 'uninstall service' });
+        if (!confirmed) return;
+
         btn.disabled = true;
         const prevText = btn.textContent;
         btn.textContent = 'uninstalling…';
+
+        // The handoff path can take up to 30s while the backend's discover()
+        // polls for the new user-session launcher. If it goes past 5s, swap
+        // the label so the user knows something is still working.
+        const stillWaitingTimeout = setTimeout(() => {
+            btn.textContent = 'still waiting for user session…';
+        }, 5000);
+
         try {
             const r = await fetch('/api/service/uninstall', { method: 'POST' });
             const data = (await r.json().catch(() => null)) as ServiceUninstallResponse | null;
             if (!r.ok || !data || data.ok !== true) {
-                const errMsg =
-                    data && data.ok === false
-                        ? data.error
-                        : `uninstall failed (${r.status})`;
+                const errMsg = data && data.ok === false
+                    ? SettingsModal.reasonToUserMessage(data.reason, data.error)
+                    : `uninstall failed (${r.status})`;
                 this.renderServiceError(errMsg, () => void this.refreshService());
                 return;
             }
-            // v0.1.9 uninstall-flow Path A handoff: the service-instance API
-            // spawned a fresh user-session local launcher and issued a resume
-            // token. Honor the redirect so the local instance fires the actual
-            // uninstall in its own user-session UAC context.
             if (data.redirectTo) {
                 btn.textContent = '→ user mode (uninstall)…';
                 setTimeout(() => {
@@ -877,8 +886,31 @@ export class SettingsModal extends Modal {
         } catch {
             this.renderServiceError("couldn't reach server", () => void this.refreshService());
         } finally {
+            clearTimeout(stillWaitingTimeout);
             btn.disabled = false;
             btn.textContent = prevText;
+        }
+    }
+
+    private static reasonToUserMessage(reason: string | undefined, fallbackError: string): string {
+        switch (reason) {
+            case 'unsupported':
+                return 'Service mode is not supported on this platform.';
+            case 'uac-declined':
+                return 'Administrative privileges were declined. Try again and approve the prompt.';
+            case 'handoff-timeout':
+                return "Couldn't reach the user session. Make sure ws-scrcpy-web is running for your user, then try again.";
+            case 'handoff-no-target':
+                return "Couldn't identify a user session to relay the action to.";
+            case 'invalid-token':
+                return 'Resume token is invalid or expired. Refresh the page and try again.';
+            case 'servy-failure':
+                return `Service install/uninstall failed: ${fallbackError}`;
+            case 'unknown':
+            case undefined:
+                return `An unexpected error occurred: ${fallbackError}`;
+            default:
+                return fallbackError;
         }
     }
 
