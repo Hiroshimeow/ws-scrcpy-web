@@ -56,10 +56,44 @@ export interface ServiceActionSuccess {
     resumeToken?: string;
 }
 
+/**
+ * Discriminator added in v0.1.25 to drive frontend error UX. Optional for
+ * backward compatibility — older callers ignore unknown fields, and frontend
+ * treats absence as 'unknown'. Add new variants here AND extend the
+ * frontend mapping in `SettingsModal.ts::reasonToUserMessage` in the same
+ * change to keep the discriminated union exhaustive.
+ *
+ * Variant semantics:
+ * - `unsupported`: service mode not supported on this platform.
+ * - `uac-declined`: user clicked No on the Windows UAC prompt
+ *   (PowerShell Start-Process -Verb RunAs exited with ERROR_CANCELLED 1223).
+ * - `handoff-timeout`: the service-context handoff couldn't reach a
+ *   user-session launcher within the discover() timeout, OR (post-v0.1.25)
+ *   the LocalSystem direct-uninstall path was deliberately not attempted
+ *   because UAC can't fire from session 0.
+ * - `handoff-no-target`: active session resolution failed AND no fallback
+ *   path is available. Reserved; not currently emitted but type-stable for
+ *   future granularity.
+ * - `invalid-token`: the X-Resume-Token header was missing or didn't match
+ *   a recently-issued token for the requested action.
+ * - `servy-failure`: servy-cli (or systemd-side equivalent) exited non-zero
+ *   on the actual install/uninstall operation.
+ * - `unknown`: catch-all for legacy / uncategorized failure paths.
+ */
+export type ServiceFailureReason =
+    | 'unsupported'
+    | 'uac-declined'
+    | 'handoff-timeout'
+    | 'handoff-no-target'
+    | 'invalid-token'
+    | 'servy-failure'
+    | 'unknown';
+
 /** Failure response shape for /api/service/install and /api/service/uninstall. */
 export interface ServiceActionFailure {
     ok: false;
     error: string;
+    reason?: ServiceFailureReason;
 }
 
 export type ServiceInstallResponse = ServiceActionSuccess | ServiceActionFailure;
