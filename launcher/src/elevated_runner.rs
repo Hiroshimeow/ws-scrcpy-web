@@ -362,8 +362,15 @@ const TRAY_RUN_VALUE: &str = "WsScrcpyWebTray";
 const STALE_HKCU_TRAY_RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
 /// Classify the outcome of a `reg.exe delete` command based on its exit code.
-/// Exit code 0 = success. Exit code 1 = value not found (locale-stable path);
-/// treated as no-op success. Other codes = real errors; stderr propagated.
+/// Exit code 0 = clean success. Exit code 1 = generic non-fatal failure (value
+/// not found is the dominant case here, but reg.exe also returns 1 for some
+/// other recoverable conditions like access-denied on a key the caller can't
+/// write — the actual reason is in stderr, which is locale-dependent).
+/// We accept exit 1 as no-op success because (a) the previous English-only
+/// stderr substring match was strictly worse on non-English Windows, and
+/// (b) callers wrap this in `let _ =` for best-effort cleanup, so a swallowed
+/// access-denied here would be swallowed under the old logic too. Other
+/// codes = real errors; stderr propagated for the caller to log.
 fn classify_reg_delete_outcome(status_code: Option<i32>, stderr: &[u8]) -> Result<(), String> {
     match status_code {
         Some(0) | Some(1) => Ok(()),
@@ -371,9 +378,10 @@ fn classify_reg_delete_outcome(status_code: Option<i32>, stderr: &[u8]) -> Resul
     }
 }
 
-/// Run `reg.exe delete <key> /v <value> /f` and treat exit code 1
-/// (the locale-stable "value not found" path) as success. Other
-/// non-zero exits are propagated with stderr in the error payload.
+/// Run `reg.exe delete <key> /v <value> /f` for a best-effort cleanup. Treats
+/// exit code 1 as no-op success (see `classify_reg_delete_outcome` for the
+/// caveats around what exit 1 actually means). Other non-zero exits are
+/// propagated with stderr in the error payload.
 fn reg_delete_value_best_effort(key: &str, value: &str) -> Result<(), String> {
     let out = Command::new("reg.exe")
         .args(["delete", key, "/v", value, "/f"])

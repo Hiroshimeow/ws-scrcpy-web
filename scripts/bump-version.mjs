@@ -78,8 +78,13 @@ export function bumpChangelog(content, newVersion, today = formatToday()) {
     }
 
     // Extract the body content (lines between [Unreleased] heading and next heading).
-    // This includes any blank lines and sub-headings/bullets that were under [Unreleased].
-    const bodyLines = lines.slice(unreleasedIdx + 1, nextHeadingIdx);
+    // Drop any leading blank lines: the canonical CHANGELOG format has a blank line
+    // immediately after `## [Unreleased]`, and we already emit our own blank line
+    // separator between the new version heading and the body — keeping the captured
+    // leading blank would produce a doubled-blank.
+    const rawBodyLines = lines.slice(unreleasedIdx + 1, nextHeadingIdx);
+    const firstNonBlank = rawBodyLines.findIndex((l) => l.trim() !== '');
+    const bodyLines = firstNonBlank === -1 ? [] : rawBodyLines.slice(firstNonBlank);
 
     // Build the new lines array:
     // [... before Unreleased ...]
@@ -87,7 +92,7 @@ export function bumpChangelog(content, newVersion, today = formatToday()) {
     // <blank line>
     // ## [<version>] - <date>
     // <blank line>
-    // <original body>
+    // <body, leading blanks stripped>
     // [... rest of file ...]
 
     const beforeUnreleased = lines.slice(0, unreleasedIdx);

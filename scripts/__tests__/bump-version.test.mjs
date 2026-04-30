@@ -259,6 +259,27 @@ describe('bumpChangelog', () => {
         expect(unreleasedSection).toBe('## [Unreleased]');
         expect(newVersionSection).toBe('## [0.1.0] - 2026-04-26');
     });
+
+    it('does not produce a doubled blank line between new version heading and body', () => {
+        // The canonical CHANGELOG format has a blank line after `## [Unreleased]`.
+        // bumpChangelog must strip the captured leading blank so the output is:
+        //   ## [<new>] - DATE\n\n### Fixed
+        // not:
+        //   ## [<new>] - DATE\n\n\n### Fixed
+        const input = `# Changelog
+
+## [Unreleased]
+
+### Fixed
+- A fix.
+
+## [0.0.1] - 2026-01-01
+`;
+        const out = bumpChangelog(input, '0.1.0', '2026-04-26');
+        // Exactly one blank line between the new heading and "### Fixed".
+        expect(out).toContain('## [0.1.0] - 2026-04-26\n\n### Fixed');
+        expect(out).not.toContain('## [0.1.0] - 2026-04-26\n\n\n### Fixed');
+    });
 });
 
 describe('formatToday', () => {
