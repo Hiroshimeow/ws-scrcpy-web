@@ -21,6 +21,8 @@ import {
     resolveLauncherPath as resolveLauncherPathForElevation,
 } from '../service/elevatedRunner';
 import { consumeToken, issueToken } from '../service/resumeToken';
+import { writeUninstallHandoffMarker } from '../util/control-marker';
+import { resolveActiveSessionId } from '../util/active-session';
 import { ServiceInstallError } from '../service/ServyClient';
 import {
     getServiceClient,
@@ -470,21 +472,28 @@ export class ServiceApi {
         res: ServerResponse,
     ): Promise<boolean> {
         const launcherPath = resolveLauncherPathForElevation();
-        // v0.1.23 §1c bug 1.c: pass --local-takeover so the spawned
-        // user-session launcher overrides its is_service_mode decision
-        // and spawns the local tray. config.json still reads
-        // installMode='user-service' at spawn time — only after the
-        // resume-flow uninstall completes does it flip to 'user'.
-        // Without this flag the new launcher boots with no tray and the
-        // user is stranded post-uninstall.
-        const spawnResult = await runElevated('spawn-user-launcher', {
+        // Theory D: write a control marker instead of cross-session WTS spawn.
+        // The user-session tray helper polls this path and spawns the launcher
+        // natively in its own session. Falls back to direct uninstall if
+        // discover() can't find a launcher within the timeout.
+        const sessionResult = await resolveActiveSessionId(launcherPath);
+        const targetSessionId = sessionResult.ok ? sessionResult.sessionId : null;
+        if (!sessionResult.ok) {
+            log.warn(`uninstall handoff: could not resolve active session, marker will accept any tray helper: ${sessionResult.errorMessage}`);
+        }
+        // dataRoot is the parent of the dependenciesPath that was passed in as
+        // installRoot (same derivation as the logsDir path in handleInstall).
+        const dataRoot = path.dirname(installRoot);
+        const writeResult = await writeUninstallHandoffMarker(dataRoot, {
+            targetSessionId,
             launcherPath,
             launcherArgs: ['--local-takeover'],
         });
-        if (!spawnResult.ok) {
-            log.warn(`uninstall handoff: spawn-user-launcher failed: ${spawnResult.errorMessage ?? '(no message)'}`);
+        if (!writeResult.ok) {
+            log.warn(`uninstall handoff: marker write failed: ${writeResult.errorMessage}`);
             return false;
         }
+        log.info(`uninstall handoff: marker written (targetSessionId=${targetSessionId ?? 'any'})`);
 
         // Poll for the new launcher's port. Ports start at 8000; the
         // service is on whichever port we currently bind. The new
