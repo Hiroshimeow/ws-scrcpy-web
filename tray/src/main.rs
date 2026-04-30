@@ -13,6 +13,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod single_instance;
+
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
