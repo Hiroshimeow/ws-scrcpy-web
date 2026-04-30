@@ -457,22 +457,22 @@ export class ServiceApi {
     }
 
     /**
-     * Spawn a user-session local launcher via the WTS cross-session
-     * handler in the Rust launcher, then poll for it to come up,
-     * issue a resume token, and return the handoff response. Returns
-     * `true` if the handoff succeeded and the response was sent;
-     * `false` if any step failed (caller falls back to direct
-     * uninstall).
+     * Theory D handoff: write a control marker that the user-session
+     * tray helper polls; the helper spawns the local launcher in its
+     * own session natively (no cross-session WTS APIs). Then poll for
+     * the new launcher's port, issue a resume token, and return the
+     * redirect response. Returns `true` if the handoff succeeded and
+     * the response was sent; `false` if any step failed (caller falls
+     * back to direct uninstall).
      */
     private async handoffUninstallToUserSession(
         installRoot: string,
         res: ServerResponse,
     ): Promise<boolean> {
         const launcherPath = resolveLauncherPathForElevation();
-        // Theory D: write a control marker instead of cross-session WTS spawn.
-        // The user-session tray helper polls this path and spawns the launcher
-        // natively in its own session. Falls back to direct uninstall if
-        // discover() can't find a launcher within the timeout.
+        // Theory D: write a control marker that the user-session tray helper
+        // polls — replaces the WTS cross-session spawn that was failing with
+        // ERROR_ACCESS_DENIED in v0.1.24-beta.{1,2,3}.
         const sessionResult = await resolveActiveSessionId(launcherPath);
         const targetSessionId = sessionResult.ok ? sessionResult.sessionId : null;
         if (!sessionResult.ok) {
@@ -481,6 +481,12 @@ export class ServiceApi {
         // dataRoot is the parent of the dependenciesPath that was passed in as
         // installRoot (same derivation as the logsDir path in handleInstall).
         const dataRoot = path.dirname(installRoot);
+        // --local-takeover is load-bearing: it forces the spawned launcher to
+        // override its is_service_mode decision and start the local-mode tray.
+        // config.json still reads installMode='user-service' at spawn time;
+        // only after the resume-flow uninstall completes does it flip to 'user'.
+        // Without this flag the new launcher would boot tray-less and the user
+        // would be stranded post-uninstall.
         const writeResult = await writeUninstallHandoffMarker(dataRoot, {
             targetSessionId,
             launcherPath,
