@@ -12,4 +12,5 @@
 //! lenient/fallback paths.
 
 pub mod config;
+pub mod control_marker;
 pub mod tray;
