@@ -16,17 +16,12 @@ mod tray;
 mod user_session_spawn;
 
 fn main() {
-    log::info(&format!(
-        "ws-scrcpy-web-launcher v{} starting",
-        env!("CARGO_PKG_VERSION")
-    ));
-
-    let args: Vec<String> = std::env::args().collect();
-
     // --print-active-session: one-shot Win32 query. Used by the service-Node
     // (running as LocalSystem) to discover the user's interactive session
     // before writing a control marker. Must fire BEFORE any logging or
     // supervisor init — it's a pure stdout query that exits immediately.
+    // (Checked first so service polls don't generate launcher-start log noise.)
+    let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--print-active-session") {
         #[cfg(windows)]
         {
@@ -46,6 +41,11 @@ fn main() {
             std::process::exit(0);
         }
     }
+
+    log::info(&format!(
+        "ws-scrcpy-web-launcher v{} starting",
+        env!("CARGO_PKG_VERSION")
+    ));
 
     // Diagnostic: log the full argv on every launcher start. v0.1.22 ship
     // surfaced an in-app updater spawn-loop where Update.exe respawned the
