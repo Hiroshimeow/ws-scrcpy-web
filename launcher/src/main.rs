@@ -23,6 +23,30 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
 
+    // --print-active-session: one-shot Win32 query. Used by the service-Node
+    // (running as LocalSystem) to discover the user's interactive session
+    // before writing a control marker. Must fire BEFORE any logging or
+    // supervisor init — it's a pure stdout query that exits immediately.
+    if args.iter().any(|a| a == "--print-active-session") {
+        #[cfg(windows)]
+        {
+            use windows::Win32::System::RemoteDesktop::WTSGetActiveConsoleSessionId;
+            // SAFETY: WTSGetActiveConsoleSessionId has no preconditions and is
+            // safe to call from any context. Returns 0xFFFFFFFF when no session
+            // is attached to the physical console.
+            let session = unsafe { WTSGetActiveConsoleSessionId() };
+            println!("{}", session);
+            std::process::exit(0);
+        }
+        #[cfg(not(windows))]
+        {
+            // Non-Windows: service-mode is Windows-only; we shouldn't be
+            // invoked here, but exit cleanly anyway.
+            println!("0");
+            std::process::exit(0);
+        }
+    }
+
     // Diagnostic: log the full argv on every launcher start. v0.1.22 ship
     // surfaced an in-app updater spawn-loop where Update.exe respawned the
     // launcher every ~13 s, each spawn exiting silently before reaching any
