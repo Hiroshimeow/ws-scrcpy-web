@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Logs consolidation, round 2 — `ws-scrcpy-web.log` and `service.log` join the others under `<dataRoot>/logs/`.** v0.1.24-beta.3 moved `launcher.log` and `server.log` to `<dataRoot>/logs/` but missed two more log files: the Node app Logger's output (`ws-scrcpy-web.log`, formerly at `<dataRoot>/`) and Servy's service-mode stdio capture (`service.log`, formerly at `<dataRoot>/dependencies/`). Both now live in `<dataRoot>/logs/` alongside the others. `Logger.ts::resolveLogFilePath` updated to return `<dataRoot>/logs/ws-scrcpy-web.log`; `ServiceApi.ts` builds `<dataRoot>/logs/service.log` and `mkdirSync`s the directory before passing the path to Servy. Single source of truth for "where do logs live": `C:\ProgramData\WsScrcpyWeb\logs\`. Existing installs may have stale files at the old paths — safe to delete by hand.
 - **Settings modal controls column trimmed 260px → 200px.** Visual feedback on v0.1.24-beta.3 showed ~60px of unused space at the right edge of the controls column. The widest button ("running — uninstall?", ~190px) now sits ~10–20px from the right edge with comfortable slack for future text growth, while the labels column gains the freed pixels for less wrapping.
 
+## [0.1.24-beta.7] - 2026-04-29
+
 ## [0.1.24-beta.6] - 2026-04-29
 
 ### Fixed
