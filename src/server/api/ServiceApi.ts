@@ -85,7 +85,7 @@ export class ServiceApi {
             return true;
         } catch (err) {
             log.error(`${req.method} ${req.url} threw: ${(err as Error)?.message ?? String(err)}`);
-            const body: ServiceActionFailure = { ok: false, error: (err as Error).message };
+            const body: ServiceActionFailure = { ok: false, error: (err as Error).message, reason: 'unknown' };
             res.writeHead(500);
             res.end(JSON.stringify(body));
             return true;
@@ -121,6 +121,7 @@ export class ServiceApi {
             const body: ServiceActionFailure = {
                 ok: false,
                 error: result.unsupportedReason ?? 'Service mode unsupported on this platform',
+                reason: 'unsupported',
             };
             res.writeHead(501);
             res.end(JSON.stringify(body));
@@ -149,6 +150,7 @@ export class ServiceApi {
                     error:
                         'system scope requires root. Relaunch the AppImage with sudo, ' +
                         'or pick user scope.',
+                    reason: 'unknown',
                 };
                 res.writeHead(403);
                 res.end(JSON.stringify(failure));
@@ -198,6 +200,7 @@ export class ServiceApi {
                         `service mode requires the packaged launcher binary at ${launcherExe}, ` +
                         `which is not present (likely a dev/from-source run rather than a Velopack install). ` +
                         `Install ws-scrcpy-web via the MSI and retry.`,
+                    reason: 'unknown',
                 };
                 res.writeHead(500);
                 res.end(JSON.stringify(failure));
@@ -249,6 +252,7 @@ export class ServiceApi {
             const body: ServiceActionFailure = {
                 ok: false,
                 error: `could not persist installMode before install: ${(err as Error).message}`,
+                reason: 'unknown',
             };
             res.writeHead(500);
             res.end(JSON.stringify(body));
@@ -286,12 +290,12 @@ export class ServiceApi {
             // the frontend can render a UAC-aware retry prompt; other
             // failures get 500.
             if (err instanceof ServiceInstallError && err.isUacDeclined()) {
-                const body: ServiceActionFailure = { ok: false, error: err.message };
+                const body: ServiceActionFailure = { ok: false, error: err.message, reason: 'uac-declined' };
                 res.writeHead(403);
                 res.end(JSON.stringify(body));
                 return true;
             }
-            const body: ServiceActionFailure = { ok: false, error: (err as Error).message };
+            const body: ServiceActionFailure = { ok: false, error: (err as Error).message, reason: 'servy-failure' };
             res.writeHead(500);
             res.end(JSON.stringify(body));
             return true;
@@ -349,6 +353,7 @@ export class ServiceApi {
             const body: ServiceActionFailure = {
                 ok: false,
                 error: result.unsupportedReason ?? 'Service mode unsupported on this platform',
+                reason: 'unsupported',
             };
             res.writeHead(501);
             res.end(JSON.stringify(body));
@@ -373,6 +378,7 @@ export class ServiceApi {
                 const body: ServiceActionFailure = {
                     ok: false,
                     error: 'invalid or expired resume token',
+                    reason: 'invalid-token',
                 };
                 res.writeHead(401);
                 res.end(JSON.stringify(body));
@@ -401,12 +407,12 @@ export class ServiceApi {
             await result.client.uninstall(WS_SCRCPY_SERVICE_NAME);
         } catch (err) {
             if (err instanceof ServiceInstallError && err.isUacDeclined()) {
-                const body: ServiceActionFailure = { ok: false, error: err.message };
+                const body: ServiceActionFailure = { ok: false, error: err.message, reason: 'uac-declined' };
                 res.writeHead(403);
                 res.end(JSON.stringify(body));
                 return true;
             }
-            const body: ServiceActionFailure = { ok: false, error: (err as Error).message };
+            const body: ServiceActionFailure = { ok: false, error: (err as Error).message, reason: 'servy-failure' };
             res.writeHead(500);
             res.end(JSON.stringify(body));
             return true;
