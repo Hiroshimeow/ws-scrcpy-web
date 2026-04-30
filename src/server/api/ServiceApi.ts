@@ -214,7 +214,20 @@ export class ServiceApi {
             startupDir = path.dirname(process.execPath);
         }
 
-        const logPath = path.join(cfg.dependenciesPath, 'service.log');
+        // v0.1.24-beta.7: service.log moves under <dataRoot>/logs/ to
+        // colocate with launcher.log + server.log + ws-scrcpy-web.log.
+        // Pre-beta.7 it lived at <dataRoot>/dependencies/service.log,
+        // which was unintuitive (Servy's stdio capture isn't a
+        // dependency artifact). dataRoot derives from dependenciesPath
+        // since the launcher always sets DEPS_PATH=<dataRoot>/dependencies/.
+        const logsDir = path.join(path.dirname(cfg.dependenciesPath), 'logs');
+        try {
+            fs.mkdirSync(logsDir, { recursive: true });
+        } catch {
+            // Servy will fail with a clearer error than we can synthesize
+            // if the directory truly can't be created.
+        }
+        const logPath = path.join(logsDir, 'service.log');
         const envVars: Record<string, string> = {
             DEPS_PATH: cfg.dependenciesPath,
         };
