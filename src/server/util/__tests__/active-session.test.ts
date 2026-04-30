@@ -26,4 +26,28 @@ describe('resolveActiveSessionId', () => {
         const result = await resolveActiveSessionId(stub);
         expect(result.ok).toBe(false);
     });
+
+    it('returns ok:false when stub exits non-zero', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'active-session-test-'));
+        const stub = join(dir, 'stub.cmd');
+        writeFileSync(stub, '@echo off\necho 5\nexit /b 7\n');
+        const result = await resolveActiveSessionId(stub);
+        expect(result.ok).toBe(false);
+    });
+
+    it('returns ok:false when stdout has trailing garbage after a number', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'active-session-test-'));
+        const stub = join(dir, 'stub.cmd');
+        writeFileSync(stub, '@echo off\necho 1abc\nexit /b 0\n');
+        const result = await resolveActiveSessionId(stub);
+        expect(result.ok).toBe(false);
+    });
+
+    it('returns ok:false when launcherPath contains shell metacharacters', async () => {
+        const result = await resolveActiveSessionId('C:\\foo\\bar.exe & calc.exe');
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errorMessage).toMatch(/unsafe/i);
+        }
+    });
 });
