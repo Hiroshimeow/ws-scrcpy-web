@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Service-mode tray helper now registers under `HKLM\...\Run` instead of `HKCU\...\Run`**, so every user logging into the machine receives a tray icon at logon — not only the installing admin. Upgrades from v0.1.24 also clean up the stale HKCU value for the installing admin to avoid a one-time double-spawn at next admin logon.
+
 ## [0.1.24] - 2026-04-30
 
 First stable v0.1.24 cut, rolling up the eight-beta investigation. Headline fix: **Theory D** — the service-uninstall flow no longer fails with `ERROR_ACCESS_DENIED`. After three layered Win32 attempts (privilege flips, session enumeration, primary-token forcing) all failed across betas 1–3, beta.8 dropped the cross-session WTS spawn entirely in favor of file-marker IPC: the LocalSystem service-Node writes a JSON marker under `<dataRoot>/control/`, and a polling thread inside the user-session tray helper detects it and natively spawns the launcher in its own session. Both v0.1.23 known-issues bug 1 (failed handoff) and bug B (Path B no-tray-after-fallback) are closed by this architectural change, end-to-end VM-verified. Also closed: the tray-icon-click went to a stale port after mode swaps — the tray now re-reads `config.json::webPort` on every click via a closure-injected URL provider.
