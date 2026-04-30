@@ -35,6 +35,38 @@ fn main() -> Result<()> {
     let cfg = common::config::AppConfig::load(&config_dir);
     let port = cfg.web_port.unwrap_or(8000);
 
+    // Theory D: poll <dataRoot>/control/uninstall-handoff.json on a background
+    // thread so service-Node can hand off uninstall flows without WTS APIs.
+    // Runs for the lifetime of the tray helper; thread is killed on exit.
+    //
+    // Known Phase-4 polish items (deferred, not a regression):
+    //   - stdio inheritance: spawned launcher inherits tray's stdio handles
+    //     (typically NUL for windowless process, so likely benign).
+    //   - cwd inheritance: spawned launcher inherits tray cwd; could create
+    //     a cwd lock per feedback_velopack_permachine_lessons (adb daemon
+    //     cwd-handle incident). Harden in Phase 4 with explicit cwd= on
+    //     the Command if real-world testing surfaces a swap failure.
+    //   - CREATE_NO_WINDOW: not set; launcher is windowed-subsystem so no
+    //     console flicker expected.
+    {
+        let data_root = config_dir.clone();
+        // SAFETY: WTSGetActiveConsoleSessionId has no preconditions on
+        // Windows; on non-Windows we don't compile this branch.
+        #[cfg(windows)]
+        let own_session = unsafe {
+            windows::Win32::System::RemoteDesktop::WTSGetActiveConsoleSessionId()
+        };
+        #[cfg(not(windows))]
+        let own_session: u32 = 0;
+        std::thread::spawn(move || {
+            common::control_marker::poll_for_handoff(
+                &data_root,
+                own_session,
+                std::time::Duration::from_millis(750),
+            );
+        });
+    }
+
     let open_url = format!("http://localhost:{port}");
     let action = common::tray::run(
         ICON_BYTES,
