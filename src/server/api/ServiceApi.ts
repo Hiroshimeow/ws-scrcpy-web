@@ -16,10 +16,7 @@ import { Config } from '../Config';
 import { detectInstallScope } from '../InstallScope';
 import { Logger } from '../Logger';
 import { discoverServicePort } from '../service/discoverServicePort';
-import {
-    runElevated,
-    resolveLauncherPath as resolveLauncherPathForElevation,
-} from '../service/elevatedRunner';
+import { resolveLauncherPath as resolveLauncherPathForElevation } from '../service/elevatedRunner';
 import { consumeToken, issueToken } from '../service/resumeToken';
 import { writeUninstallHandoffMarker } from '../util/control-marker';
 import { resolveActiveSessionId } from '../util/active-session';
