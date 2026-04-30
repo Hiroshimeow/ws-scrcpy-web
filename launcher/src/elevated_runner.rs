@@ -70,7 +70,9 @@ pub struct InstallServiceArgs {
     pub env_vars: String,
     pub log_path: String,
     /// Optional tray-helper path. If present and the file exists, we
-    /// register the HKCU Run-key and spawn the tray detached.
+    /// register the HKLM Run-key (machine-wide, so every user gets a
+    /// tray at logon) and spawn the tray detached for the installing
+    /// admin's session.
     pub tray_helper_path: Option<String>,
 }
 
@@ -345,7 +347,7 @@ fn run_capture(exe: &str, args: &[impl AsRef<std::ffi::OsStr>]) -> Result<Captur
     })
 }
 
-const TRAY_RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const TRAY_RUN_KEY: &str = r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run";
 const TRAY_RUN_VALUE: &str = "WsScrcpyWebTray";
 
 fn register_tray_run_key(tray_path: &str) -> Result<(), String> {
