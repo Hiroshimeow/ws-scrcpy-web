@@ -224,6 +224,10 @@ fn install_service(args: &InstallServiceArgs) -> ElevatedResult {
     if let Some(tray) = &args.tray_helper_path {
         if std::path::Path::new(tray).exists() {
             let _ = register_tray_run_key(tray);
+            // Best-effort cleanup of the pre-v0.1.25 HKCU value for the
+            // installing admin. Fresh installs no-op; upgrades from the
+            // HKCU era avoid a one-time double-spawn at next admin logon.
+            let _ = cleanup_stale_hkcu_tray_run_key();
             // Spawn the tray detached so it survives our exit.
             let _ = Command::new(tray).spawn();
         }
