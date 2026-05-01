@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Repository
+
+- **Git history rewritten on `main`** to remove `Co-Authored-By: ... <noreply@anthropic.com>` trailers from 14 commits across the v0.1.20 → v0.1.21 packaging arc. The trailers were causing GitHub to credit Anthropic's noreply account as a project contributor. All commit SHAs from `be1b4f5` (v0.1.20) forward have changed; tags v0.1.20 through v0.1.25-beta.3 inclusive were re-pointed and force-pushed. Tags v0.1.10–v0.1.19 and `node-pty-prebuilds-*` are unchanged. Existing clones must `git fetch --tags` and `git reset --hard origin/main` (or re-clone) — `git pull` will not work from any clone whose `main` is at a pre-rewrite SHA.
+
 ## [0.1.25-beta.3] - 2026-04-30
 
 ### Added
