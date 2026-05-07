@@ -1,5 +1,7 @@
 # SP3 — Velopack Installer & Auto-Update
 
+> **Retraction note (2026-05-07):** The "Code signing" section below specifies SignPath Foundation as the planned signing path. SignPath has since declined the OSS application due to project-awareness criteria (GitHub stars, Reddit mentions, and similar community-engagement signals). All SignPath-specific text below is **historical** — see `CHANGELOG.md` `[Unreleased]` for the current state. The Microsoft Trusted Signing fallback noted in this spec was the rejected-but-noted alternative; whether it (or another signer) is actually wired in is tracked in the active todo file.
+
 > **Initial release version:** v0.1.0 (NOT v1.0.0 — pre-1.0 versioning until stable & feature-complete)
 
 Cross-platform installer and auto-update framework for ws-scrcpy-web on Windows, with optional Windows Service mode, taskbar tray control, and channel-based updates (stable / beta).

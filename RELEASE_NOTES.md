@@ -8,7 +8,7 @@ To preview the notes for the next release locally:
 node scripts/extract-changelog.mjs v0.1.0
 ```
 
-To preview the unsigned-mode warning block (used until SignPath Foundation approval lands):
+To preview the unsigned-mode warning block (currently always emitted, since release artifacts are unsigned):
 
 ```bash
 node scripts/extract-changelog.mjs v0.1.0 --unsigned

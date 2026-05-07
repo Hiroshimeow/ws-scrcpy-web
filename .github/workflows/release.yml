@@ -27,9 +27,13 @@ jobs:
           fi
       - id: signing
         env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          # Generic signing-mode gate. Set this secret when a code-signing
+          # path is wired in (was SIGNPATH_API_TOKEN until SignPath Foundation
+          # declined the OSS application — see CHANGELOG [Unreleased]).
+          # Renamed so a successor signer can plug in without further renaming.
+          SIGNING_API_TOKEN: ${{ secrets.SIGNING_API_TOKEN }}
         run: |
-          if [ -n "$SIGNPATH_API_TOKEN" ]; then
+          if [ -n "$SIGNING_API_TOKEN" ]; then
             echo "mode=signed" >> "$GITHUB_OUTPUT"
           else
             echo "mode=unsigned" >> "$GITHUB_OUTPUT"
@@ -74,17 +78,13 @@ jobs:
           path: |
             publish/ws-scrcpy-web-launcher.exe
             publish/ws-scrcpy-web-tray.exe
-      - name: Sign inner exes via SignPath
-        if: needs.prepare.outputs.signing_mode == 'signed'
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_WINDOWS_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-exes.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: publish/
+      # FUTURE SIGNER: wire the inner-exes signing step here.
+      #   Input  — artifact `unsigned-windows-exes` (uploaded above when signing_mode == 'signed').
+      #   Output — signed `ws-scrcpy-web-launcher.exe` + `ws-scrcpy-web-tray.exe` placed in `publish/`
+      #            before the `vpk pack` step below picks them up.
+      # Previous implementation used `signpath/github-action-submit-signing-request@v2`; SignPath
+      # Foundation declined the OSS application (see CHANGELOG [Unreleased]). Replace this comment
+      # block with the chosen signer's action when a path is selected.
 
       - name: vpk pack (PerMachine MSI)
         shell: pwsh
@@ -116,22 +116,12 @@ jobs:
         with:
           name: unsigned-windows-msi
           path: Releases/*.msi
-      - name: Sign MSI via SignPath
-        if: needs.prepare.outputs.signing_mode == 'signed'
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          # Use the same Windows policy slug as Setup.exe — SignPath's
-          # Windows code-signing policy generally accepts both PE and
-          # MSI artifacts. If signing fails here in CI, we may need a
-          # dedicated MSI-signing slug; track the failure mode and
-          # iterate.
-          signing-policy-slug: ${{ vars.SIGNPATH_WINDOWS_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-msi.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: Releases/
+      # FUTURE SIGNER: wire the MSI signing step here.
+      #   Input  — artifact `unsigned-windows-msi` (uploaded above when signing_mode == 'signed').
+      #   Output — signed `*.msi` placed back into `Releases/` for the publish job to upload.
+      # Same Authenticode policy that signs the inner exes generally signs the MSI as well; if the
+      # chosen signer requires a separate policy/profile for MSI vs PE, split them when wiring.
+      # Previous implementation used `signpath/github-action-submit-signing-request@v2`.
 
       - uses: actions/upload-artifact@v4
         with:
@@ -188,17 +178,14 @@ jobs:
         with:
           name: unsigned-linux-appimage
           path: Releases/*.AppImage
-      - name: Sign AppImage via SignPath (detached GPG)
-        if: needs.prepare.outputs.signing_mode == 'signed'
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_LINUX_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-appimage.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: Releases/
+      # FUTURE SIGNER: wire the AppImage signing step here (if a Linux signing path is selected).
+      #   Input  — artifact `unsigned-linux-appimage` (uploaded above when signing_mode == 'signed').
+      #   Output — detached signature `*.AppImage.sig` placed in `Releases/` next to the AppImage,
+      #            for the publish job to upload alongside the binary.
+      # Previous implementation used `signpath/github-action-submit-signing-request@v2` configured
+      # for detached GPG; Trusted Signing / Azure Artifact Signing is Authenticode-only and cannot
+      # cover Linux. A self-managed GPG key in CI secrets is one viable replacement; another is to
+      # ship Linux unsigned and rely on `SHA256SUMS` only.
 
       - uses: actions/upload-artifact@v4
         with:

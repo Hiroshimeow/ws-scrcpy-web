@@ -26,7 +26,7 @@ This is the operational runbook for cutting a release. Every step is a concrete 
    ```bash
    node scripts/extract-changelog.mjs vX.Y.Z
    ```
-   Confirm the SignPath credit is at the top and the captured section reads correctly. (If the project is in unsigned mode, also try `--unsigned` to preview the warning block CI will inject.)
+   Confirm the captured section reads correctly. While releases remain unsigned, also try `--unsigned` to preview the warning block CI will inject.
 6. **Commit and tag.**
    ```bash
    git add package.json Cargo.toml Cargo.lock CHANGELOG.md
@@ -35,7 +35,7 @@ This is the operational runbook for cutting a release. Every step is a concrete 
    git push origin main
    git push origin vX.Y.Z
    ```
-7. **Watch CI.** The tag push triggers `.github/workflows/release.yml`. Both Windows and Linux jobs run in parallel; the `publish` job uploads artifacts (MSI, portable ZIP, AppImage, AppImage.sig once SignPath is live, nupkg, releases.stable.json, SHA256SUMS) and creates a GitHub Release with auto-generated notes.
+7. **Watch CI.** The tag push triggers `.github/workflows/release.yml`. Both Windows and Linux jobs run in parallel; the `publish` job uploads artifacts (MSI, portable ZIP, AppImage, nupkg, releases.stable.json, SHA256SUMS) and creates a GitHub Release with auto-generated notes. (When a code-signing path is wired in, signed artifacts and detached signatures will be published alongside.)
    ```bash
    gh run watch
    ```
@@ -75,45 +75,15 @@ Beta users opt in by setting `channel=beta` in Settings (writes to `config.json`
 
 Reasoning: Velopack feed entries are append-only; deleting an entry breaks any client that already saw it.
 
-## SignPath credit -- DO NOT REMOVE
+## Future signer setup (placeholder)
 
-`scripts/extract-changelog.mjs` always prepends:
+Release artifacts are currently unsigned. SignPath Foundation declined the OSS application (see [Unreleased] in CHANGELOG.md for the disclosure). Code-signing is under evaluation; when a signer is selected, this section will document:
 
-```
-_Signed via [SignPath Foundation](https://signpath.org)._
-```
+- The CI secret(s) and repository variable(s) needed to enable the signed-mode branch in `.github/workflows/release.yml`.
+- The first signed release version + cut procedure.
+- Verification steps (Windows: Properties → Digital Signatures; Linux: GPG `--verify` of the detached signature, if applicable).
 
-Even on unsigned releases. SignPath Foundation provides free OSS code signing for this project, and credit is a program requirement. The credit should remain in:
-
-- The CI-generated release notes (`extract-changelog.mjs` handles this automatically).
-- README.md `## Downloads` section.
-- This file.
-
-If you ever fork/relicense the build away from SignPath, remove the credit at that point -- but until then, leave it.
-
-## First-time SignPath setup checklist
-
-When the SignPath OSS application is approved:
-
-1. **Add the API token** as a repository secret:
-   - Repo Settings → Secrets and variables → Actions → New repository secret
-   - Name: `SIGNPATH_API_TOKEN`
-   - Value: the token from your SignPath organization's CI Users page
-
-2. **Add the four non-secret identifiers** as repository variables (NOT secrets -- they're visible in the workflow runs):
-   - Repo Settings → Secrets and variables → Actions → Variables tab → New repository variable
-   - `SIGNPATH_ORGANIZATION_ID` -- from the SignPath organization page
-   - `SIGNPATH_PROJECT_SLUG` -- from the SignPath project page (e.g., `ws-scrcpy-web`)
-   - `SIGNPATH_WINDOWS_POLICY_SLUG` -- the slug for the policy that signs Windows EXEs and the MSI (one Authenticode policy covers all)
-   - `SIGNPATH_LINUX_POLICY_SLUG` -- the slug for the policy that produces the detached GPG `.sig` for the Linux AppImage
-
-3. **Cut v0.1.1.** This is the project's first signed release. Follow [Cutting a stable release](#cutting-a-stable-release) using `0.1.1`.
-
-4. **Verify the release.** The `mode=signed` branch in `.github/workflows/release.yml` will fire automatically once `SIGNPATH_API_TOKEN` exists. Confirm:
-   - The MSI, launcher.exe, and tray.exe are signed by SignPath Foundation (Properties → Digital Signatures on Windows).
-   - `<appimage>.sig` is present alongside the AppImage in the release assets.
-   - `gpg --verify ws-scrcpy-web-0.1.1.AppImage.sig ws-scrcpy-web-0.1.1.AppImage` succeeds against the SignPath public key.
-   - Release notes do NOT include the unsigned warning block.
+Until then, the `prepare` job in `release.yml` always resolves `signing_mode=unsigned` (gated on a generic `SIGNING_API_TOKEN` secret that doesn't exist yet) and the dormant signer steps in `build-windows` / `build-linux` are commented out as scaffolding. The `--unsigned` warning block is auto-prepended to release notes by `scripts/extract-changelog.mjs`.
 
 ## Manual update-flow test
 

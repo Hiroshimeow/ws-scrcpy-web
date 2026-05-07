@@ -13,9 +13,7 @@
 //   - Strips a leading `v` from <version> if present (`v0.1.0` -> `0.1.0`).
 //   - Looks for `## [<version>]` in CHANGELOG.md (e.g., `## [0.1.0] - 2026-04-26`).
 //   - Captures content between that header and the next `## [` header (or EOF).
-//   - Always prepends a SignPath Foundation credit (OSS program requirement).
-//   - With --unsigned, additionally prepends a warning block AFTER the
-//     credit but BEFORE the captured content.
+//   - With --unsigned, prepends a warning block BEFORE the captured content.
 //   - Default output is stdout. With --out <path>, writes to file.
 //   - Throws (exit 1 with descriptive message) if the version section isn't found.
 
@@ -27,11 +25,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, '..');
 
-export const SIGNPATH_CREDIT =
-    '_Signed via [SignPath Foundation](https://signpath.org)._\n\n';
-
 export const UNSIGNED_WARNING =
-    '> ⚠️ **This release is unsigned.** [SignPath Foundation](https://signpath.org) is reviewing our application for free OSS code-signing. Once approved, the next release will be signed automatically. Until then, you may see Windows SmartScreen warnings — verify integrity via the `SHA256SUMS` file in this release.\n\n';
+    '> ⚠️ **This release is unsigned.** Code-signing is currently under evaluation. You may see Windows SmartScreen warnings on install — verify integrity via the `SHA256SUMS` file in this release.\n\n';
 
 /**
  * Strip a single leading `v` from a version string. `v0.1.0` -> `0.1.0`,
@@ -92,13 +87,15 @@ export function extractSection(changelogContent, version) {
 
 /**
  * Build the final release-notes markdown for <version>.
- * Always prepends the SignPath credit; if `unsigned`, also prepends the warning block.
+ * In `unsigned` mode prepends the warning block; otherwise emits the captured section as-is.
  */
 export function buildReleaseNotes(changelogContent, version, { unsigned = false } = {}) {
     const section = extractSection(changelogContent, version);
-    const prefix = unsigned ? SIGNPATH_CREDIT + UNSIGNED_WARNING : SIGNPATH_CREDIT;
-    // Section may be empty for an empty `[Unreleased]`; still emit the prefix.
-    return section.length === 0 ? prefix.replace(/\n+$/, '\n') : prefix + section + '\n';
+    const prefix = unsigned ? UNSIGNED_WARNING : '';
+    if (section.length === 0) {
+        return prefix.length === 0 ? '' : prefix.replace(/\n+$/, '\n');
+    }
+    return prefix + section + '\n';
 }
 
 function parseArgs(argv) {

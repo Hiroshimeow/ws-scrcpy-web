@@ -1,5 +1,7 @@
 # SP3 P6 — Packaging + CI: Lead Contracts
 
+> **Retraction note (2026-05-07):** This document was authored when SignPath Foundation OSS code-signing was the planned signing path. SignPath has since declined the application due to project-awareness criteria (GitHub stars, Reddit mentions, and similar community-engagement signals). All SignPath-specific guidance below is **historical** — see `CHANGELOG.md` `[Unreleased]` for the current state. Do not act on the SignPath wiring instructions in this file without checking what the actual signing path is now.
+
 **Branch:** `sp3-p6-packaging-ci` (off `main` at `b55b392`)
 **Authored:** 2026-04-27
 **Reads with:** `docs/specs/2026-04-26-sp3-velopack-installer.md` § Packaging & CI + § Code signing (just updated to SignPath) + § GitHub Actions workflow + § Release runbook, `docs/plans/2026-04-26-sp3-velopack-installer.md` § P6.

@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-    SIGNPATH_CREDIT,
     UNSIGNED_WARNING,
     buildReleaseNotes,
     extractSection,
@@ -119,25 +118,29 @@ describe('extractSection', () => {
 });
 
 describe('buildReleaseNotes', () => {
-    it('always prepends SignPath credit (signed mode)', () => {
+    it('emits captured section as-is in signed mode (no prefix)', () => {
         const out = buildReleaseNotes(SAMPLE, '0.1.1');
-        expect(out.startsWith(SIGNPATH_CREDIT)).toBe(true);
         expect(out).toContain('- a bug');
-    });
-
-    it('does NOT prepend warning block in signed mode', () => {
-        const out = buildReleaseNotes(SAMPLE, '0.1.1');
         expect(out).not.toContain('This release is unsigned');
+        // No SignPath references should leak through.
+        expect(out).not.toContain('SignPath');
+        expect(out).not.toContain('signpath.org');
     });
 
-    it('prepends BOTH credit and warning in --unsigned mode', () => {
+    it('starts with the changelog content in signed mode', () => {
+        const out = buildReleaseNotes(SAMPLE, '0.1.1');
+        expect(out.startsWith('### Fixed')).toBe(true);
+    });
+
+    it('prepends warning block in --unsigned mode', () => {
         const out = buildReleaseNotes(SAMPLE, '0.1.1', { unsigned: true });
-        expect(out.startsWith(SIGNPATH_CREDIT)).toBe(true);
+        expect(out.startsWith(UNSIGNED_WARNING.trim().slice(0, 30))).toBe(true);
         expect(out).toContain(UNSIGNED_WARNING.trim());
-        // SignPath credit comes BEFORE the warning.
-        expect(out.indexOf(SIGNPATH_CREDIT)).toBeLessThan(out.indexOf('This release is unsigned'));
         // Warning comes BEFORE the changelog content.
         expect(out.indexOf('This release is unsigned')).toBeLessThan(out.indexOf('- a bug'));
+        // Warning must not name SignPath.
+        expect(out).not.toContain('SignPath');
+        expect(out).not.toContain('signpath.org');
     });
 
     it('throws on missing version', () => {
@@ -165,7 +168,6 @@ describe('CLI integration via dynamic import', () => {
         writeFileSync(outPath, notes);
         const written = readFileSync(outPath, 'utf8');
         expect(written).toBe(notes);
-        expect(written).toContain(SIGNPATH_CREDIT);
         expect(written).toContain('- a bug');
     });
 });

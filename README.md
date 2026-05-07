@@ -142,7 +142,7 @@ Get the latest release from the [Releases page](https://github.com/bilbospockets
 
 **Upgrading from v0.1.21, v0.1.22, or v0.1.23-beta.{1..6}:** the in-app updater on those builds is broken at varying severity (multiple compounding bugs across Velopack PerMachine + ACL + Job Object + auto-apply paths — see CHANGELOG entries v0.1.23-beta.1 through beta.13 for the full diagnosis chain). Clicking "apply update" from those versions either hangs, loops, or silently no-ops. **You must uninstall via Settings → Apps and fresh-install the v0.1.23+ MSI to escape the broken-updater chain.** Once on v0.1.23-beta.7 or newer, the in-app updater is fully functional and subsequent updates apply with a single first-launch UAC prompt.
 
-Release artifacts are code-signed via [SignPath Foundation](https://signpath.org), which provides free code signing for OSS projects. Each release also ships a `SHA256SUMS` file you can verify against.
+Release artifacts are currently **unsigned** — code-signing is under evaluation. Each release ships a `SHA256SUMS` file you can verify against in the meantime.
 
 For data-handling details, see our [Privacy Policy](PRIVACY.md).
 
@@ -272,15 +272,7 @@ The systemd unit's `ExecStart=` is set to the absolute AppImage path at install 
 
 #### Verifying the AppImage signature
 
-Once SignPath Foundation's OSS approval lands (tracked for v0.1.1), each AppImage release will ship with a detached GPG signature alongside it. Verify with:
-
-```bash
-gpg --verify ws-scrcpy-web-<version>.AppImage.sig ws-scrcpy-web-<version>.AppImage
-```
-
-The public key for SignPath Foundation's Linux signing policy is published at <https://signpath.org/keys>.
-
-Until SignPath approval lands, the v0.1.0 release ships **unsigned** — the `.sig` file will not exist, and you'll need to verify integrity via the `SHA256SUMS` file in the release instead. The release notes for unsigned releases include a prominent notice. v0.1.1 will be the first signed release.
+AppImage signing is currently under evaluation; releases ship **unsigned** for now. Verify integrity via the `SHA256SUMS` file in the release. When a Linux signing path is wired in, this section will document the verification steps for detached signatures.
 
 #### glibc requirement
 

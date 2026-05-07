@@ -1,5 +1,7 @@
 # Route A — Program Files migration with ProgramData data root
 
+> **Retraction note (2026-05-07):** This plan's tech-stack summary and SignPath-related step references were authored when SignPath Foundation was the planned signing path. SignPath has since declined the application — see `CHANGELOG.md` `[Unreleased]` for the disclosure. The migration steps in this plan are otherwise still accurate; only the signing-related references are historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move ws-scrcpy-web's Windows install layout from per-user (`%LocalAppData%\WsScrcpyWeb\`) to per-machine, with binaries under `C:\Program Files\WsScrcpyWeb\` and writable runtime state under `C:\ProgramData\WsScrcpyWeb\`. Fix Velopack auto-locate in service mode (the root cause of the v0.1.20 dev-mode UI in service mode), enable seamless local↔service state sharing, and expand the tray menu beyond exit-only.

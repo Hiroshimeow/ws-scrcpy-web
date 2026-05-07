@@ -45,9 +45,9 @@ The first-run dependency manager and the in-app updater fetch standalone runtime
 
 These are standard HTTPS GETs. The operators see your IP and User-Agent, like any other HTTP fetch. You can pre-populate `dependencies/` from another machine and the manager will skip the downloads.
 
-### 3. Code-signing verification (your OS, not the app)
+### 3. Code-signing verification (currently N/A)
 
-After install, your operating system may contact SignPath's revocation list at `signpath.io` to verify our code-signing certificate hasn't been revoked. This is OS behavior (Windows SmartScreen / Linux GPG), not anything the app initiates. SignPath sees the request; we do not.
+Release artifacts are currently unsigned, so there is no code-signing revocation check on install. If we adopt a code-signing path in the future, this section will document the OS-level verification behavior (Windows SmartScreen / Linux GPG) and which third-party operator your OS may contact during signature verification.
 
 ## What we don't do
 
@@ -66,7 +66,6 @@ When traffic does leave your machine, it goes to one of these well-known operato
 | GitHub (Microsoft) | Hosts release artifacts, the Velopack feed, and the source repo | https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement |
 | Google | Hosts ADB platform-tools | https://policies.google.com/privacy |
 | Node.js Foundation | Hosts Node.js binaries | https://nodejs.org/en/about/privacy |
-| SignPath Foundation | Build-time code signing (no runtime data) | https://signpath.org |
 | Velopack | Update SDK (the SDK runs locally; no data goes to Velopack itself) | https://velopack.io |
 | Genymobile (scrcpy) | Source of scrcpy-server binary, hosted on GitHub | See GitHub policy above |
 
