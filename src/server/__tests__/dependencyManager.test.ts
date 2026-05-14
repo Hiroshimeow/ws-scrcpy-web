@@ -54,11 +54,23 @@ describe('DependencyManager.requestRestart', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('writes marker at depsPath/.restart (not dirname(depsPath)/.restart)', () => {
+    it('writes marker at the configured restartMarkerPath (decoupled from depsPath)', () => {
+        // Constructor opts let callers route the marker anywhere — production
+        // (index.ts) routes to <dataRoot>/.restart so the launcher's read at
+        // paths.rs:70 finds it. Pre-fix, the marker was implicitly at
+        // depsPath/.restart and the launcher never found it.
+        const altMarkerPath = path.join(path.dirname(tmpDir), 'parent-side-marker');
+        const mgr = new DependencyManager(tmpDir, { restartMarkerPath: altMarkerPath });
+        expect(() => mgr.requestRestart()).toThrow(/exit:/);
+        expect(fs.existsSync(altMarkerPath)).toBe(true);
+        expect(fs.existsSync(path.join(tmpDir, '.restart'))).toBe(false);
+    });
+
+    it('default restartMarkerPath falls back to depsPath/.restart when no opts provided', () => {
+        // Preserves pre-Phase-1 behavior for tests / callers that don't care.
         const mgr = new DependencyManager(tmpDir);
         expect(() => mgr.requestRestart()).toThrow(/exit:/);
         expect(fs.existsSync(path.join(tmpDir, '.restart'))).toBe(true);
-        expect(fs.existsSync(path.join(path.dirname(tmpDir), '.restart'))).toBe(false);
     });
 
     it('exits with code 75', () => {

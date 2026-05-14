@@ -25,8 +25,17 @@ const execFileAsync = promisify(execFile);
 export class DependencyManager {
     private readonly definitions: DependencyDefinition[];
     private readonly state: Map<string, DependencyInfo>;
+    private readonly restartMarkerPath: string;
 
-    constructor(private readonly depsPath: string) {
+    constructor(
+        private readonly depsPath: string,
+        opts: { restartMarkerPath?: string } = {},
+    ) {
+        // Default to <depsPath>/.restart preserves pre-Phase-1 behavior for
+        // tests that don't care about the marker location. Production code
+        // (index.ts) passes the explicit Config.restartMarkerPath so the
+        // marker lands at <dataRoot>/.restart, matching launcher/src/paths.rs:70.
+        this.restartMarkerPath = opts.restartMarkerPath ?? path.join(depsPath, '.restart');
         this.definitions = getDependencyDefinitions(depsPath);
         this.state = new Map();
 
@@ -237,9 +246,8 @@ export class DependencyManager {
     }
 
     public requestRestart(): void {
-        const markerPath = path.join(this.depsPath, '.restart');
-        fs.writeFileSync(markerPath, `restart-requested-${Date.now()}`);
-        log.info(`Restart requested; writing marker at ${markerPath} and exiting with code 75`);
+        fs.writeFileSync(this.restartMarkerPath, `restart-requested-${Date.now()}`);
+        log.info(`Restart requested; writing marker at ${this.restartMarkerPath} and exiting with code 75`);
         process.exit(75);
     }
 

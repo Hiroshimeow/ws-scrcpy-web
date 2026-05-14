@@ -81,7 +81,9 @@ async function reconcileWebPort(): Promise<void> {
     }
 }
 
-const depManager = new DependencyManager(config.dependenciesPath);
+const depManager = new DependencyManager(config.dependenciesPath, {
+    restartMarkerPath: config.restartMarkerPath,
+});
 const depApi = new DependencyApi(depManager);
 HttpServer.addApiHandler(depApi);
 

@@ -72,7 +72,7 @@ export class ConfigApi {
                     // be listening.
                     if (result.restartRequired) {
                         response.redirectTo = `http://localhost:${result.config.webPort}`;
-                        const markerPath = path.join(cfg.dependenciesPath, '.restart');
+                        const markerPath = cfg.restartMarkerPath;
                         try {
                             fs.writeFileSync(markerPath, `restart-requested-${Date.now()}`);
                         } catch (err) {

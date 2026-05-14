@@ -434,6 +434,7 @@ export class Config {
                 scanProgressInterval,
                 appConfig,
                 configFilePath,
+                dataRoot,
             );
         }
         return this.instance;
@@ -454,6 +455,7 @@ export class Config {
         private readonly _scanProgressInterval: number,
         appConfig: AppConfig,
         configFilePath: string,
+        private readonly _dataRoot: string | null = null,
     ) {
         this._appConfig = appConfig;
         this._configFilePath = configFilePath;
@@ -474,6 +476,40 @@ export class Config {
 
     public get dependenciesPath(): string {
         return this._dependenciesPath;
+    }
+
+    /**
+     * Writable-state root computed by `resolveDataRoot`. On Windows this is
+     * `<PROGRAMDATA>\WsScrcpyWeb` (Phase 1 migration target). On non-Windows
+     * this is `null` until the Linux Phase-1-equivalent design lands
+     * (`todo_ws_scrcpy_web.md` §19).
+     */
+    public get dataRoot(): string | null {
+        return this._dataRoot;
+    }
+
+    /**
+     * Canonical path for the `.restart` marker file the supervisor (launcher
+     * in install, scripts/dev-supervisor.mjs in dev) reads to decide whether
+     * to restart Node after exit. Matches `launcher/src/paths.rs:70` —
+     * `<dataRoot>/.restart` on Windows. On non-Windows (and any host with a
+     * null dataRoot) we fall back to `<parent-of-depsPath>/.restart`, which
+     * matches the launcher's `paths.rs:62` "collapse data_root onto
+     * install_root" rule (deps live at install_root/dependencies, so the
+     * marker sits next to that directory).
+     *
+     * Pre-Phase-1 the server wrote to `<depsPath>/.restart` while the
+     * launcher read from `<install_root>/.restart` — the marker mechanism
+     * was silently dead code because the two paths never matched. The
+     * getter is the single source of truth for that path now; both
+     * `DependencyManager.requestRestart` and `ConfigApi`'s port-change
+     * handler consume it via `Config.getInstance().restartMarkerPath`.
+     */
+    public get restartMarkerPath(): string {
+        if (this._dataRoot !== null) {
+            return path.join(this._dataRoot, '.restart');
+        }
+        return path.join(path.dirname(this._dependenciesPath), '.restart');
     }
 
     public get scanConcurrency(): number { return this._scanConcurrency; }
