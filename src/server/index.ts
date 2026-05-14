@@ -210,6 +210,26 @@ reconcileWebPort()
             .checkAll()
             .then(() => depManager.autoInstallMissing())
             .catch((err: Error) => Logger.for('DependencyManager').error('Initial check/install failed:', err.message));
+
+        // Pre-warm the adb daemon in the background so by the time the user
+        // hits Quick Scan, the daemon is already up and the worker pool
+        // doesn't race to spawn it. Runs independently of the depManager
+        // chain so it survives autoInstall failures: startServer's
+        // wait-for-binary loop polls until adb.exe appears (whether
+        // autoInstall, a retry, or manual placement put it there). 5-minute
+        // budget covers a cold first-install download on a slow connection;
+        // gives up cleanly if adb is still missing, in which case the
+        // scan-time pre-warm (5s default) is the second line of defense.
+        (async () => {
+            const log = Logger.for('AdbClient');
+            try {
+                await scanAdb.startServer({ waitForBinaryMs: 5 * 60 * 1000 });
+                log.info('daemon pre-warmed at startup');
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                log.warn(`startup pre-warm failed: ${msg}; scan-time defense will retry`);
+            }
+        })();
     })
     .catch((error) => {
         Logger.for('Server').error(error.message);
