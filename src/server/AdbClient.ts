@@ -1,4 +1,5 @@
 import { type ChildProcess, execFile, spawn } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 
@@ -227,6 +228,43 @@ export class AdbClient {
 
     async disconnect(address: string): Promise<string> {
         return this.exec(['disconnect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.disconnect });
+    }
+
+    /**
+     * Starts the long-lived adb daemon explicitly so subsequent adb invocations
+     * find it warm. Without this pre-warm, the first batch of parallel adb
+     * calls (e.g. NetworkScanner's worker pool fired off by a Quick Scan on a
+     * wiped ProgramData) all race to spawn the daemon — losers report
+     * "protocol fault: connection reset" or time out, the winning client's
+     * daemon child may get orphaned, and no daemon survives.
+     *
+     * `waitForBinaryMs` covers the first-launch case where adb.exe isn't yet
+     * on disk because autoInstallMissing is still downloading it. Caller
+     * picks: short (~5s default) for scan-time defense; long (~5min) for the
+     * server-startup background warmup. After the binary appears, the actual
+     * start invocation gets a 30s budget — generous for cold-start.
+     *
+     * Idempotent: a no-op when the daemon is already running, so repeat calls
+     * are cheap. `this.adbPath` resolves to the configured local-deps path
+     * (Config.adbPath → resolveAdbPath → <dependenciesPath>/adb/adb.exe), per
+     * the Local-Dependencies-Only architecture.
+     */
+    async startServer(opts: { waitForBinaryMs?: number } = {}): Promise<void> {
+        const waitMs = opts.waitForBinaryMs ?? 5_000;
+        const pollIntervalMs = 250;
+        const deadline = Date.now() + waitMs;
+        while (!fs.existsSync(this.adbPath)) {
+            if (Date.now() >= deadline) {
+                throw new AdbExecError(
+                    'spawn',
+                    this.adbPath,
+                    ['start-server'],
+                    new Error(`adb binary not present after ${waitMs}ms wait`),
+                );
+            }
+            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        }
+        await this.exec(['start-server'], { timeoutMs: 30_000 });
     }
 
     /**

@@ -66,6 +66,41 @@ describe('AdbClient', () => {
         expect(typeof client.killServer).toBe('function');
     });
 
+    it('has startServer method', () => {
+        const client = new AdbClient('adb');
+        expect(typeof client.startServer).toBe('function');
+    });
+
+    it('startServer throws AdbExecError(spawn) when adb binary never appears within waitForBinaryMs', async () => {
+        const client = new AdbClient('/definitely/not/a/real/binary/adb');
+        // Use a very short wait so the test stays fast.
+        await expect(client.startServer({ waitForBinaryMs: 50 })).rejects.toBeInstanceOf(AdbExecError);
+        try {
+            await client.startServer({ waitForBinaryMs: 50 });
+            expect.fail('expected throw');
+        } catch (err) {
+            expect(err).toBeInstanceOf(AdbExecError);
+            expect((err as AdbExecError).kind).toBe('spawn');
+            expect((err as AdbExecError).args).toEqual(['start-server']);
+        }
+    });
+
+    it('startServer reaches the exec path once the binary exists (verified via exit-code error)', async () => {
+        // Using node as the "adb" binary: when startServer's exec phase fires,
+        // node will try to load 'start-server' as a script and exit non-zero —
+        // surfacing as AdbExecError('exit'). Proves the wait-for-binary loop
+        // exited cleanly and the exec branch ran.
+        const client = new AdbClient(process.execPath);
+        try {
+            await client.startServer({ waitForBinaryMs: 100 });
+            expect.fail('expected throw');
+        } catch (err) {
+            expect(err).toBeInstanceOf(AdbExecError);
+            expect((err as AdbExecError).kind).toBe('exit');
+            expect((err as AdbExecError).adbPath).toBe(process.execPath);
+        }
+    });
+
     it('cwd is the parent directory of adbPath (decouples daemon from install root)', () => {
         // Cross-platform absolute path so both POSIX and win32 dirname succeed.
         const adbPath = path.join(os.tmpdir(), 'fake-deps', 'adb', 'adb');
