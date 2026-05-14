@@ -20,6 +20,8 @@ dependencies/adb/
 dependencies/node-pty/
 dependencies/servy/
 dependencies/node-bootstrap/
+dependencies/scrcpy-server/
+dependencies/*.log
 .restart
 
 # Bootstrap Node binary staged into installer payload by scripts/fetch-node.mjs.
