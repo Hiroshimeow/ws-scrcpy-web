@@ -104,6 +104,37 @@ describe('NetworkScanner — failure surfacing', () => {
         expect(messages[0].type).toBe('scan.started');
         expect(messages.at(-1)?.type).toBe('scan.error');
     });
+
+    it('calls adbStartServer pre-warm before any worker fires adb', async () => {
+        const callOrder: string[] = [];
+        const scanner = new NetworkScanner(baseDeps({
+            adbStartServer: async () => { callOrder.push('startServer'); },
+            adbDevices: async () => { callOrder.push('devices'); return []; },
+            adbMdnsServices: async () => { callOrder.push('mdnsServices'); return []; },
+        }));
+        const { ws } = makeWs();
+        await scanner.start([makeSubnet(['10.0.0.1'])], ws);
+        // startServer must precede any adb-worker invocation.
+        expect(callOrder[0]).toBe('startServer');
+    });
+
+    it('emits scan.error and short-circuits when pre-warm fails (adb binary not on disk)', async () => {
+        const scanner = new NetworkScanner(baseDeps({
+            adbStartServer: async () => { throw new Error('adb binary not present after 5000ms wait'); },
+            // Sentinel: if scan continues past pre-warm failure, this throws and pollutes the test.
+            adbDevices: async () => { throw new Error('UNREACHABLE — pre-warm should have short-circuited'); },
+        }));
+        const { ws, messages } = makeWs();
+        await scanner.start([makeSubnet(['10.0.0.1'])], ws);
+        const errors = messages.filter((m) => m.type === 'scan.error');
+        expect(errors).toHaveLength(1);
+        expect((errors[0] as { reason: string }).reason).toMatch(/adb daemon not ready/);
+        expect((errors[0] as { reason: string }).reason).toMatch(/first launch/);
+        // No scan.started — pre-warm fails before the started event is emitted.
+        expect(messages.some((m) => m.type === 'scan.started')).toBe(false);
+        // State must be reset so a retry after autoInstall completes can run.
+        expect(scanner.isScanning()).toBe(false);
+    });
 });
 
 describe('NetworkScanner — mdnsOnly mode', () => {

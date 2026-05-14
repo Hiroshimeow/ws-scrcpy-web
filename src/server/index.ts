@@ -114,6 +114,12 @@ const scanner = new NetworkScanner({
     adbDevices: () => scanAdb.devices(),
     adbMdnsServices: () => scanAdb.mdnsServices(),
     adbHandshakeProbe: probeAdb,
+    // Scan-time pre-warm: default 5s wait-for-binary covers transient cases
+    // (autoInstall in flight, daemon mid-spawn). The server-startup background
+    // warmup below covers the cold first-install case with a longer budget;
+    // this scan-time call short-circuits cleanly with scan.error if adb truly
+    // isn't ready yet, instead of letting N parallel workers race the daemon.
+    adbStartServer: () => scanAdb.startServer(),
     resolveMac,
     labelFor: (key: string) => DeviceLabelStore.getInstance().get(key),
     concurrency: config.scanConcurrency,

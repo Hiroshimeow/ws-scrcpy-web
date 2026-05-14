@@ -13,6 +13,12 @@ export interface NetworkScannerDeps {
      *  Using one socket instead of separate tcpProbe + handshake avoids a race
      *  with embedded adbd stacks that reject back-to-back connections. */
     adbHandshakeProbe: (host: string, port: number, connectTimeoutMs: number, replyTimeoutMs: number) => Promise<AdbHandshakeResult>;
+    /** Optional pre-warm hook: ensure the adb daemon is running before workers
+     *  fire off parallel probes. Without it, the first batch of concurrent
+     *  probes against a cold daemon race to spawn it and most fail. Provided
+     *  by index.ts wiring as `() => adbClient.startServer()`. If not supplied
+     *  (e.g. unit tests), pre-warm is skipped. */
+    adbStartServer?: () => Promise<void>;
     /** Resolve an IPv4 to its MAC via ARP cache. Returns null when ARP has no entry. */
     resolveMac?: (ip: string) => Promise<string | null>;
     /** Look up a saved label by device identifier (serial OR MAC). */
@@ -88,6 +94,27 @@ export class NetworkScanner {
         }
 
         try {
+            // Pre-warm the adb daemon before workers fire. Without this, the
+            // first batch of parallel adb probes against a cold daemon race
+            // to spawn it (each loses, no daemon survives). Idempotent on a
+            // warm daemon — adb start-server is a no-op when the daemon is
+            // already running. If the binary isn't yet on disk
+            // (autoInstallMissing in flight), this throws AdbExecError(spawn)
+            // and we surface a clear scan.error instead of N parallel
+            // spawn-failures from the worker pool.
+            if (this.deps.adbStartServer) {
+                try {
+                    await this.deps.adbStartServer();
+                } catch (err) {
+                    const detail = err instanceof Error ? err.message : String(err);
+                    this.emit({
+                        type: 'scan.error',
+                        reason: `Scan blocked: adb daemon not ready (${detail}). If this is a first launch, wait for the first-run setup to finish, then retry.`,
+                    });
+                    return;
+                }
+            }
+
             const totalHosts = mdnsOnly ? 0 : subnets.reduce((sum, s) => sum + s.hostCount, 0);
             this.emit({
                 type: 'scan.started',
