@@ -203,17 +203,19 @@ ws-scrcpy-web/
 
 (The MSI and AppImage paths use Velopack's own install layout — `current/` plus a stable launcher stub — and you don't need to think about it.)
 
+**Windows note:** the launcher writes runtime state (config, logs, downloaded deps) to `%PROGRAMDATA%\WsScrcpyWeb\` regardless of where the app itself lives. On Windows, the `dependencies/` folder under the install or repo directory is effectively unused at runtime — the real `dependencies/` is `%PROGRAMDATA%\WsScrcpyWeb\dependencies\`. On Linux, runtime deps still live under the install/repo `dependencies/` for now.
+
 ### Initial setup
 
 1. Run `start.cmd` (Windows) or `./start.sh` (Linux). The launcher script handles the rest.
-2. On first run, the in-app **dependency manager** automatically downloads Node.js, ADB platform-tools, and `scrcpy-server` into `dependencies/`. You'll see a progress banner; it takes a minute or two depending on your connection.
+2. On first run, the in-app **dependency manager** automatically downloads Node.js, ADB platform-tools, and `scrcpy-server` into `dependencies/` (Windows: `%PROGRAMDATA%\WsScrcpyWeb\dependencies\`; Linux: alongside the install). You'll see a progress banner; it takes a minute or two depending on your connection.
 3. Once dependencies are populated, the server starts. Open `http://localhost:8000` in your browser.
 4. From the home page's **Dependencies** panel you can re-check or update Node.js, ADB, and `scrcpy-server` later with one click — they're independently swappable without rebuilding the app.
 
-If you prefer to avoid the network fetch on first run (air-gapped setups, slow connections), you can pre-populate `dependencies/` manually:
+If you prefer to avoid the network fetch on first run (air-gapped setups, slow connections), you can pre-populate the dependencies folder manually. **On Windows the target is `%PROGRAMDATA%\WsScrcpyWeb\dependencies\`**; on Linux it's the `dependencies/` folder next to `dist/`.
 
-- **Node.js** — extract a Node.js LTS Windows / Linux build into `dependencies/node/` (the binary should be at `dependencies/node/node.exe` or `dependencies/node/node`).
-- **ADB** — extract Android `platform-tools` into `dependencies/adb/`.
+- **Node.js** — extract a Node.js LTS Windows / Linux build into `<deps>/node/` (the binary should be at `<deps>/node/node.exe` or `<deps>/node/node`).
+- **ADB** — extract Android `platform-tools` into `<deps>/adb/`.
 - **scrcpy-server** — drop the appropriate `scrcpy-server-vX.Y.Z` binary into `dist/assets/`.
 
 The dependency manager skips downloads when it finds an existing valid copy.
