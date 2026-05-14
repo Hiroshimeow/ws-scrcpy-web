@@ -1,5 +1,6 @@
 import type GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import { AdbClient } from '../../AdbClient';
+import { whenAdbReady } from '../../adbReady';
 import { Config } from '../../Config';
 import { Logger } from '../../Logger';
 import type { Service } from '../../services/Service';
@@ -108,6 +109,14 @@ export class ControlCenter extends BaseControlCenter<GoogDeviceDescriptor> imple
         if (this.initialized) {
             return;
         }
+        // Wait for the startup adb daemon pre-warm to complete before our
+        // first adb call. Without this, ControlCenter's initial `adb devices`
+        // races the background pre-warm in index.ts — both invoke adb
+        // start-server against a cold daemon, contend for port 5037, and
+        // produce "failed to start daemon / connection reset" on the very
+        // first page load. The promise resolves (whether the pre-warm
+        // succeeded or gave up) so this never blocks indefinitely.
+        await whenAdbReady();
         // Initial device enumeration
         try {
             const list = await this.adbClient.devices();

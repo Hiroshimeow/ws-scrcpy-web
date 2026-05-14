@@ -2,6 +2,7 @@ import * as readline from 'readline';
 import { VelopackApp } from 'velopack';
 import { SCAN_WS_PATH } from '../common/ScanMessage';
 import { AdbClient } from './AdbClient';
+import { setAdbDaemonReady } from './adbReady';
 import { CapabilitiesApi } from './api/CapabilitiesApi';
 import { ConfigApi } from './api/ConfigApi';
 import { DependencyApi } from './api/DependencyApi';
@@ -226,7 +227,7 @@ reconcileWebPort()
         // budget covers a cold first-install download on a slow connection;
         // gives up cleanly if adb is still missing, in which case the
         // scan-time pre-warm (5s default) is the second line of defense.
-        (async () => {
+        const adbReadyPromise = (async () => {
             const log = Logger.for('AdbClient');
             try {
                 await scanAdb.startServer({ waitForBinaryMs: 5 * 60 * 1000 });
@@ -236,6 +237,10 @@ reconcileWebPort()
                 log.warn(`startup pre-warm failed: ${msg}; scan-time defense will retry`);
             }
         })();
+        // Publish to the module-singleton so other early adb callers
+        // (notably ControlCenter.init) can await this before their first
+        // adb invocation, avoiding the cold-daemon spawn race.
+        setAdbDaemonReady(adbReadyPromise);
     })
     .catch((error) => {
         Logger.for('Server').error(error.message);
