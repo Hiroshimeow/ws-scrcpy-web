@@ -162,7 +162,17 @@ export class HttpServer extends TypedEmitter<HttpServerEvents> implements Servic
 
     public release(): void {
         this.servers.forEach((item) => {
+            // Initiate graceful close — stops accepting new connections; the
+            // 'close' event fires when existing sockets finish. Without the
+            // forceful call below, HTTP keepalive sockets held by browser
+            // tabs prolong the close indefinitely the same way WS does.
             item.server.close();
+            // Force-close every idle and active connection. closeAllConnections
+            // is Node 18.2+; the supervisor + fetch-node.mjs pin Node v24.15.0
+            // so this is always available in our runtime.
+            if (typeof item.server.closeAllConnections === 'function') {
+                item.server.closeAllConnections();
+            }
         });
     }
 }

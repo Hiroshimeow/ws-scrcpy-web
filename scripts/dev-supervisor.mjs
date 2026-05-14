@@ -17,7 +17,7 @@
 // supervisor; this script is NEVER shipped — `scripts/stage-publish.mjs`
 // does not copy `scripts/` into `publish/`.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -30,6 +30,14 @@ const EXIT_RESTART = 75;
 const MAX_RESPAWNS_IN_WINDOW = 3;
 const MAX_RESPAWNS_WINDOW_MS = 10_000;
 const RESPAWN_DELAY_MS = 250;
+const SHUTDOWN_GRACE_MS = 10_000;
+
+// Windows-built-in process killer, anchored at its System32 path so PATH
+// shadowing can't redirect us to a different `taskkill` (matches the
+// `WINDOWS_TAR` precedent in scripts/fetch-node.mjs). Not subject to
+// Local-Dependencies-Only since it's part of the Windows OS image — same
+// rationale as tar.exe in the seed-fetch script.
+const WINDOWS_TASKKILL = 'C:\\Windows\\System32\\taskkill.exe';
 
 /**
  * Resolve the `.restart` marker path the same way `Config.restartMarkerPath`
@@ -97,12 +105,52 @@ async function main() {
     const recentRespawns = [];
     let shutdown = false;
     let currentChild = null;
+    let forceKillTimer = null;
+
+    /**
+     * Force-kill the entire process tree rooted at `pid`. On Windows uses
+     * `taskkill /T /F` (kills tree, forces). On Linux signals the process
+     * group via SIGKILL. Required when the child's own shutdown handler
+     * hangs and won't exit on its own — also reaps any grandchildren the
+     * child spawned (node-pty workers, scrcpy-server local helpers, etc.).
+     */
+    const forceKillTree = (pid) => {
+        if (process.platform === 'win32') {
+            try {
+                spawnSync(WINDOWS_TASKKILL, ['/pid', String(pid), '/T', '/F'], { stdio: 'inherit' });
+            } catch (err) {
+                console.error(`[dev-supervisor] taskkill failed: ${err.message}`);
+            }
+        } else {
+            try {
+                // Negative pid signals the process group (set by detached:true on POSIX).
+                process.kill(-pid, 'SIGKILL');
+            } catch {
+                try { process.kill(pid, 'SIGKILL'); } catch {}
+            }
+        }
+    };
 
     const forwardSignal = (sig) => {
+        if (!currentChild || currentChild.killed) return;
         shutdown = true;
-        if (currentChild && !currentChild.killed) {
-            currentChild.kill(sig);
+        // Second signal during the grace window? Skip ahead to the force-kill.
+        if (forceKillTimer) {
+            console.log(`[dev-supervisor] received ${sig} again during grace window — force-killing tree now`);
+            clearTimeout(forceKillTimer);
+            forceKillTimer = null;
+            forceKillTree(currentChild.pid);
+            return;
         }
+        console.log(`[dev-supervisor] forwarding ${sig} to child pid=${currentChild.pid}; force-kill in ${SHUTDOWN_GRACE_MS}ms if still alive`);
+        currentChild.kill(sig);
+        forceKillTimer = setTimeout(() => {
+            forceKillTimer = null;
+            if (currentChild && !currentChild.killed) {
+                console.warn(`[dev-supervisor] grace period elapsed — taskkill /T /F pid=${currentChild.pid}`);
+                forceKillTree(currentChild.pid);
+            }
+        }, SHUTDOWN_GRACE_MS).unref();
     };
     process.on('SIGINT', () => forwardSignal('SIGINT'));
     process.on('SIGTERM', () => forwardSignal('SIGTERM'));
@@ -134,6 +182,12 @@ async function main() {
             currentChild.on('exit', (code) => res(code ?? 1));
         });
         currentChild = null;
+        // Child exited (gracefully or forcibly) — cancel any pending force-kill
+        // timer so it doesn't fire mid-respawn and torch the NEXT child.
+        if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+            forceKillTimer = null;
+        }
 
         if (shutdown) {
             console.log('[dev-supervisor] shutdown signal received, exiting');

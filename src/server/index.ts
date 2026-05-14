@@ -201,11 +201,15 @@ reconcileWebPort()
                     input: process.stdin,
                     output: process.stdout,
                 })
-                .on('SIGINT', exit);
+                .on('SIGINT', () => exit('SIGINT'));
         }
 
-        process.on('SIGINT', exit);
-        process.on('SIGTERM', exit);
+        // Wrap so the handler receives the literal signal name. Node's
+        // process.on('SIGINT', cb) DOES pass the signal name, but readline's
+        // SIGINT event passes nothing — without the wrappers, exit() logged
+        // "Received signal undefined" on Ctrl+C.
+        process.on('SIGINT', () => exit('SIGINT'));
+        process.on('SIGTERM', () => exit('SIGTERM'));
 
         // Kick off initial dependency check + auto-install in background (don't block startup)
         depManager
@@ -249,6 +253,8 @@ process.on('unhandledRejection', (reason) => {
     serverLog.error('Unhandled rejection:', reason instanceof Error ? reason.stack || reason.message : String(reason));
 });
 
+const EXIT_WATCHDOG_MS = 10_000;
+
 let interrupted = false;
 function exit(signal: string) {
     serverLog.info(`Received signal ${signal}`);
@@ -263,4 +269,15 @@ function exit(signal: string) {
         serverLog.info(`Stopping ${serviceName} ...`);
         service.release();
     });
+    // Watchdog: if release() side effects + event-loop drain haven't
+    // brought the process down within EXIT_WATCHDOG_MS, force-exit. Without
+    // this, anything pinning the loop (a stuck WS close, a long-lived setTimeout,
+    // an unhandled promise) keeps Node alive indefinitely after Ctrl+C.
+    // .unref() lets the timer NOT keep the loop alive itself — if release()
+    // succeeds and the loop drains naturally before the timer fires, we exit
+    // cleanly via the normal path.
+    setTimeout(() => {
+        serverLog.warn(`exit watchdog (${EXIT_WATCHDOG_MS}ms) fired — forcing process.exit(0)`);
+        process.exit(0);
+    }, EXIT_WATCHDOG_MS).unref();
 }

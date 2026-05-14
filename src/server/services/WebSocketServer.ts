@@ -91,7 +91,26 @@ export class WebSocketServer implements Service {
 
     public release(): void {
         this.servers.forEach((server) => {
+            // Initiate graceful close — stops accepting new connections and
+            // sends close frames to existing clients. Without the terminate
+            // loop below, this awaits client acknowledgement of the close
+            // handshake forever; a browser tab still open pins the server
+            // alive indefinitely (no built-in timeout in the `ws` library).
             server.close();
+            // Force-terminate every open client. Triggers the per-client
+            // 'close' event (code 1006, abnormal closure), which cascades
+            // into RemoteShell's `term.kill()` and ScrcpyConnection's
+            // `serverProcess.kill()` so their spawned children get cleaned
+            // up too. Without terminate, the 4-minute hang observed in dev
+            // (Ctrl+C → "Stopping..." → wait for browser to disconnect)
+            // becomes the steady-state behavior whenever a client is open.
+            for (const client of server.clients) {
+                try {
+                    client.terminate();
+                } catch {
+                    // best-effort — client may already be in a closing state
+                }
+            }
         });
     }
 }
