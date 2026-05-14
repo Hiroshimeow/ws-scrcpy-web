@@ -51,27 +51,47 @@ export interface FlatConfig {
 
 /**
  * Pure resolver: produces the absolute dependencies-folder path the app should
- * manage. Priority: DEPS_PATH env → config.json → dev fallback → hard-fail.
- * Dev fallback only triggers when a package.json is a sibling of the entry
- * script's parent directory (the unambiguous "we are in a dev checkout" tell).
+ * manage. Priority: DEPS_PATH env → config.json → platform-specific fallback.
+ *
+ * On Windows, fallback is <dataRoot>/dependencies/ (default
+ * %PROGRAMDATA%\WsScrcpyWeb\dependencies\) — matching launcher/src/paths.rs:65-68
+ * so dev mode running `node dist/index.js` from the repo reads the same
+ * dependencies folder an MSI install does. There is no dev-tell gate on
+ * Windows; ProgramData IS the dependencies home regardless of dev vs install.
+ *
+ * On non-Windows, fallback is <entryDir>/../dependencies/ gated on a
+ * package.json sibling "dev tell" — the same behavior as pre-Phase-1.
+ * paths.rs:62 collapses data_root onto install_root for Linux, so there's
+ * no migration target yet; a v0.5.0 follow-up tracks the Linux design.
  */
 export function resolveDependenciesPath(
     env: NodeJS.ProcessEnv,
     fileConfig: FlatConfig,
     entryScript: string,
     exists: (p: string) => boolean = fs.existsSync,
+    platform: NodeJS.Platform = process.platform,
 ): string {
     if (env['DEPS_PATH']) return env['DEPS_PATH'];
     if (fileConfig.dependenciesPath) return fileConfig.dependenciesPath;
+
+    if (platform === 'win32') {
+        const dataRoot = resolveDataRoot(env, platform);
+        if (dataRoot) return path.win32.join(dataRoot, 'dependencies');
+        // resolveDataRoot returns non-null on Windows by contract; this is
+        // a defensive fallthrough for tests that mock resolveDataRoot.
+    }
+
     const entryDir = path.dirname(entryScript);
     const devCandidate = path.resolve(entryDir, '..', 'dependencies');
     const devTell = path.resolve(entryDir, '..', 'package.json');
     if (exists(devTell)) return devCandidate;
+
     throw new Error(
         'DEPS_PATH is not set and no dependencies path is configured. ' +
-        'Set the DEPS_PATH environment variable (the launcher script does this automatically) ' +
-        'or add "dependenciesPath" to config.json. ' +
-        'Expected location example: <installFolder>/dependencies/',
+        'On Windows, dependencies are expected at <dataRoot>/dependencies ' +
+        '(default %PROGRAMDATA%\\WsScrcpyWeb\\dependencies). ' +
+        'On Linux, set DEPS_PATH or place a `dependencies/` folder next to ' +
+        'a `package.json` sibling of the entry script.',
     );
 }
 
