@@ -265,6 +265,23 @@ const EXIT_WATCHDOG_MS = 10_000;
 
 let interrupted = false;
 function exit(signal: string) {
+    // Force stdout/stderr to blocking mode so every subsequent log line
+    // is synchronous-to-the-TTY. After fd4944d removed the readline-pin,
+    // shutdown got fast enough that async Windows-TTY writes (per Node
+    // docs — "TTYs are asynchronous on Windows") were being dropped
+    // before flushing — console showed only "Received signal SIGINT"
+    // then nothing, even though the file log (Logger.writeToFile uses
+    // appendFileSync) had every line. Internal API but a well-established
+    // Node pattern; wrapped in try/catch so a missing _handle on a
+    // future Node version degrades to today's behavior, not a crash.
+    try {
+        const stdoutHandle = (process.stdout as { _handle?: { setBlocking?: (b: boolean) => void } })._handle;
+        const stderrHandle = (process.stderr as { _handle?: { setBlocking?: (b: boolean) => void } })._handle;
+        stdoutHandle?.setBlocking?.(true);
+        stderrHandle?.setBlocking?.(true);
+    } catch {
+        /* best-effort — internal API */
+    }
     serverLog.info(`Received signal ${signal}`);
     if (interrupted) {
         serverLog.info('Force exit');
@@ -289,22 +306,13 @@ function exit(signal: string) {
         serverLog.info(`Stopping ${serviceName} ...`);
         service.release();
     });
-    // Drain stdout/stderr buffers, then exit. On Windows TTYs,
-    // process.stdout writes are async (per Node docs — "TTYs are
-    // asynchronous on Windows"). After fd4944d removed the readline-pin,
-    // natural loop drain finished in <50ms and exited before the queued
-    // "Stopping X" + "[WebSocket Server] stopped" log writes flushed to
-    // the console — they were silently dropped. write('', cb) resolves
-    // when the stream's internal write queue empties; chain stderr then
-    // force exit. Exits as fast as the buffer actually drains (typically
-    // <50ms on a healthy box, longer if backed up — no hard-coded
-    // assumption). The watchdog below catches the edge case where a cb
-    // never fires (stream destroyed mid-write, OS handle issue, etc.).
-    process.stdout.write('', () => {
-        process.stderr.write('', () => {
-            process.exit(0);
-        });
-    });
+    // setBlocking(true) at top of exit() makes the console.log calls in
+    // serverLog / Logger synchronous-to-the-TTY, so by the time control
+    // reaches here every "Stopping X" line is already on the console.
+    // Natural event-loop drain proceeds from this point — no explicit
+    // exit needed (no pins remain after fd4944d removed the readline
+    // listener). Watchdog below stays as backstop for any future pin
+    // that slips in.
     // Watchdog: if release() side effects + event-loop drain haven't
     // brought the process down within EXIT_WATCHDOG_MS, force-exit. Without
     // this, anything pinning the loop (a stuck WS close, a long-lived setTimeout,
