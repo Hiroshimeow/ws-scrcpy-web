@@ -142,8 +142,27 @@ async function main() {
             forceKillTree(currentChild.pid);
             return;
         }
-        console.log(`[dev-supervisor] forwarding ${sig} to child pid=${currentChild.pid}; force-kill in ${SHUTDOWN_GRACE_MS}ms if still alive`);
-        currentChild.kill(sig);
+        // Platform divergence: POSIX signals work properly, so we forward
+        // sig to the child for a graceful shutdown. On Windows, POSIX
+        // signals don't exist — Node's `subprocess.kill('SIGINT')` is
+        // TerminateProcess (per Node docs), which kills the child
+        // abruptly (no graceful handler, no time for pending sync I/O
+        // like the server's exit() teardown logs + fs.appendFileSync to
+        // ws-scrcpy-web.log). It's ALSO redundant on win32 because
+        // PowerShell's Ctrl+C broadcasts CTRL_C_EVENT to the entire
+        // console process group, so the child has already received a
+        // GRACEFUL SIGINT via the console group and is running its
+        // exit() handler cleanly. Skipping the forward lets that handler
+        // complete; the force-kill grace timer below catches the
+        // genuine-hang case. Diagnosed 2026-05-15 via missing
+        // ws-scrcpy-web.log entries after SIGINT: child was being nuked
+        // mid-exit() so even sync log writes never landed.
+        if (process.platform === 'win32') {
+            console.log(`[dev-supervisor] ${sig} received (win32: relying on console-group propagation to child); force-kill tree in ${SHUTDOWN_GRACE_MS}ms if child still alive`);
+        } else {
+            console.log(`[dev-supervisor] forwarding ${sig} to child pid=${currentChild.pid}; force-kill in ${SHUTDOWN_GRACE_MS}ms if still alive`);
+            currentChild.kill(sig);
+        }
         forceKillTimer = setTimeout(() => {
             forceKillTimer = null;
             if (currentChild && !currentChild.killed) {
