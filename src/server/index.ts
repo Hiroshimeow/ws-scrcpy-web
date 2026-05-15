@@ -289,16 +289,22 @@ function exit(signal: string) {
         serverLog.info(`Stopping ${serviceName} ...`);
         service.release();
     });
-    // Give stdout 250ms to flush through the dev-supervisor's pipe to
-    // the PowerShell console before the loop drains. After fd4944d
-    // removed the readline-pin, shutdown got so fast (<50ms) that the
-    // trailing "Stopping X" + "[WebSocket Server] stopped" lines were
-    // dropped — child exited before the supervisor's pipe-read drained.
-    // Ref'd (not .unref()'d) so the loop stays alive for 250ms; after
-    // it fires, the loop drains naturally and the process exits cleanly.
-    // Verified by user 2026-05-15 (three repro runs with empty trailing
-    // output before this delay went in).
-    setTimeout(() => { /* no-op; keeps loop alive briefly for stdout flush */ }, 250);
+    // Drain stdout/stderr buffers, then exit. On Windows TTYs,
+    // process.stdout writes are async (per Node docs — "TTYs are
+    // asynchronous on Windows"). After fd4944d removed the readline-pin,
+    // natural loop drain finished in <50ms and exited before the queued
+    // "Stopping X" + "[WebSocket Server] stopped" log writes flushed to
+    // the console — they were silently dropped. write('', cb) resolves
+    // when the stream's internal write queue empties; chain stderr then
+    // force exit. Exits as fast as the buffer actually drains (typically
+    // <50ms on a healthy box, longer if backed up — no hard-coded
+    // assumption). The watchdog below catches the edge case where a cb
+    // never fires (stream destroyed mid-write, OS handle issue, etc.).
+    process.stdout.write('', () => {
+        process.stderr.write('', () => {
+            process.exit(0);
+        });
+    });
     // Watchdog: if release() side effects + event-loop drain haven't
     // brought the process down within EXIT_WATCHDOG_MS, force-exit. Without
     // this, anything pinning the loop (a stuck WS close, a long-lived setTimeout,
