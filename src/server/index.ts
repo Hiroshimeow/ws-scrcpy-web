@@ -289,6 +289,16 @@ function exit(signal: string) {
         serverLog.info(`Stopping ${serviceName} ...`);
         service.release();
     });
+    // Give stdout 250ms to flush through the dev-supervisor's pipe to
+    // the PowerShell console before the loop drains. After fd4944d
+    // removed the readline-pin, shutdown got so fast (<50ms) that the
+    // trailing "Stopping X" + "[WebSocket Server] stopped" lines were
+    // dropped — child exited before the supervisor's pipe-read drained.
+    // Ref'd (not .unref()'d) so the loop stays alive for 250ms; after
+    // it fires, the loop drains naturally and the process exits cleanly.
+    // Verified by user 2026-05-15 (three repro runs with empty trailing
+    // output before this delay went in).
+    setTimeout(() => { /* no-op; keeps loop alive briefly for stdout flush */ }, 250);
     // Watchdog: if release() side effects + event-loop drain haven't
     // brought the process down within EXIT_WATCHDOG_MS, force-exit. Without
     // this, anything pinning the loop (a stuck WS close, a long-lived setTimeout,
