@@ -299,7 +299,53 @@ function exit(signal: string) {
     // succeeds and the loop drains naturally before the timer fires, we exit
     // cleanly via the normal path.
     setTimeout(() => {
-        serverLog.warn(`exit watchdog (${EXIT_WATCHDOG_MS}ms) fired — forcing process.exit(0)`);
+        // Diagnostic: dump active handles + requests so we can see what
+        // pinned the event loop. Only fires if synchronous teardown +
+        // natural drain didn't finish within EXIT_WATCHDOG_MS — should be
+        // never once all service.release() implementations cleanly close
+        // their resources. Permanent instrumentation: small log noise vs
+        // zero diagnostic info on future regressions.
+        try {
+            const proc = process as unknown as {
+                _getActiveHandles: () => unknown[];
+                _getActiveRequests: () => unknown[];
+            };
+            const handles = proc._getActiveHandles();
+            const requests = proc._getActiveRequests();
+            serverLog.warn(
+                `exit watchdog (${EXIT_WATCHDOG_MS}ms) fired — ${handles.length} active handles, ${requests.length} active requests`,
+            );
+            handles.forEach((h, i) => {
+                const ctor = (h as { constructor?: { name?: string } }).constructor?.name ?? 'unknown';
+                let detail = '';
+                try {
+                    const handle = h as Record<string, unknown>;
+                    if (typeof handle.address === 'function') {
+                        try {
+                            detail += ` addr=${JSON.stringify((handle.address as () => unknown)())}`;
+                        } catch {
+                            /* address() may throw on closed sockets */
+                        }
+                    }
+                    if (handle.fd !== undefined) detail += ` fd=${handle.fd}`;
+                    if (handle.spawnfile) detail += ` spawnfile=${handle.spawnfile as string}`;
+                    if (handle.path) detail += ` path=${handle.path as string}`;
+                    if (typeof handle._idleTimeout === 'number' && handle._idleTimeout > 0) {
+                        detail += ` timeoutMs=${handle._idleTimeout}`;
+                    }
+                } catch {
+                    /* best-effort property extraction */
+                }
+                serverLog.warn(`  handle[${i}] ${ctor}${detail}`);
+            });
+            requests.forEach((r, i) => {
+                const ctor = (r as { constructor?: { name?: string } }).constructor?.name ?? 'unknown';
+                serverLog.warn(`  request[${i}] ${ctor}`);
+            });
+        } catch (err) {
+            serverLog.warn(`exit-watchdog diagnostic dump failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        serverLog.warn('forcing process.exit(0)');
         process.exit(0);
     }, EXIT_WATCHDOG_MS).unref();
 }
