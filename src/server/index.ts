@@ -309,10 +309,18 @@ function exit(signal: string) {
     // setBlocking(true) at top of exit() makes the console.log calls in
     // serverLog / Logger synchronous-to-the-TTY, so by the time control
     // reaches here every "Stopping X" line is already on the console.
-    // Natural event-loop drain proceeds from this point — no explicit
-    // exit needed (no pins remain after fd4944d removed the readline
-    // listener). Watchdog below stays as backstop for any future pin
-    // that slips in.
+    //
+    // Deliberate 500ms pause before letting the event loop drain. With
+    // 2f0b7d2's supervisor fix, native shutdown now finishes in 10s of
+    // ms — fast enough that PowerShell redraws its prompt mid-output
+    // (PS shows the prompt as soon as the npm.cmd batch wrapper
+    // acknowledges Ctrl+C, well before our supervisor + child have
+    // actually exited). The 500ms ref'd timer holds the loop alive
+    // long enough for the prompt-redraw to settle on top of completed
+    // output. No correctness cost — if any service.release() side
+    // effect runs longer than 500ms, the 10s watchdog below still
+    // backstops. Per user direction 2026-05-15.
+    setTimeout(() => { /* no-op; ref'd 500ms hold for prompt-settle */ }, 500);
     // Watchdog: if release() side effects + event-loop drain haven't
     // brought the process down within EXIT_WATCHDOG_MS, force-exit. Without
     // this, anything pinning the loop (a stuck WS close, a long-lived setTimeout,
