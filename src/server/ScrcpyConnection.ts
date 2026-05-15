@@ -382,14 +382,39 @@ export class ScrcpyConnection extends Mw {
     }
 
     private async parseMetadata(): Promise<SessionMetadata> {
-        // Video socket: 64 bytes device name + 4 bytes codec ID + 4 bytes width + 4 bytes height
-        const videoMeta = await this.readExact(this.videoSocket!, 76);
+        // Video socket (scrcpy v4+):
+        //   @0-63:  device name (64 bytes, null-padded UTF-8) — unchanged from v3
+        //   @64-67: video codec ID (4 bytes BE) — unchanged from v3
+        //   @68-79: SESSION PACKET (12 bytes, NEW in v4) — replaces v3's bare
+        //                                                    width+height fields
+        //     @68-71: flags — MSB = session-packet flag (must be set,
+        //                     = 0x80000000); LSB of @71 = "client resized" flag
+        //                     (0 on initial capture)
+        //     @72-75: video width (4 bytes BE)
+        //     @76-79: video height (4 bytes BE)
+        //   @80+:   media packets (each with 12-byte header — see FrameReader)
+        //
+        // Pre-v4 layout was 76 bytes: device(64) + codec(4) + width(4) + height(4)
+        // with no session-packet wrapper. v4 added the session-packet wrapper
+        // AND shifted all media-packet flag bits down by one position to make
+        // room for the new session-packet flag at MSB (see FrameReader for the
+        // matching media-packet header constant updates).
+        // Source: scrcpy v4.0 Streamer.java PACKET_FLAG_SESSION = 1L << 63.
+        const videoMeta = await this.readExact(this.videoSocket!, 80);
         const deviceNameBytes = videoMeta.subarray(0, 64);
         const nullIdx = deviceNameBytes.indexOf(0);
         const deviceName = deviceNameBytes.subarray(0, nullIdx === -1 ? 64 : nullIdx).toString('utf-8');
         const videoCodecId = videoMeta.readUInt32BE(64);
-        const screenWidth = videoMeta.readUInt32BE(68);
-        const screenHeight = videoMeta.readUInt32BE(72);
+        const sessionFlags = videoMeta.readUInt32BE(68);
+        if ((sessionFlags & 0x80000000) === 0) {
+            // Sanity: session-packet flag MSB must be set. If not, scrcpy-server
+            // sent an unexpected layout — either too-old scrcpy (pre-v4) or a
+            // future-protocol-change. Surface clearly rather than silently using
+            // bogus dimensions.
+            throw new Error(`scrcpy stream metadata: expected session-packet flag MSB at offset 68, got 0x${sessionFlags.toString(16).padStart(8, '0')}`);
+        }
+        const screenWidth = videoMeta.readUInt32BE(72);
+        const screenHeight = videoMeta.readUInt32BE(76);
 
         // Audio socket: 4 bytes codec ID or status
         const audioMeta = await this.readExact(this.audioSocket!, 4);
