@@ -12,8 +12,8 @@ jobs:
       signing_mode: ${{ steps.signing.outputs.mode }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.x
       - id: version
@@ -44,8 +44,8 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.x
           cache: npm
@@ -72,7 +72,7 @@ jobs:
       - name: Upload unsigned exes
         if: needs.prepare.outputs.signing_mode == 'signed'
         id: upload-unsigned-exes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-windows-exes
           path: |
@@ -112,7 +112,7 @@ jobs:
       - name: Upload unsigned MSI
         if: needs.prepare.outputs.signing_mode == 'signed'
         id: upload-unsigned-msi
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-windows-msi
           path: Releases/*.msi
@@ -123,7 +123,7 @@ jobs:
       # chosen signer requires a separate policy/profile for MSI vs PE, split them when wiring.
       # Previous implementation used `signpath/github-action-submit-signing-request@v2`.
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-final
           path: |
@@ -136,8 +136,8 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.x
           cache: npm
@@ -174,7 +174,7 @@ jobs:
       - name: Upload unsigned AppImage
         if: needs.prepare.outputs.signing_mode == 'signed'
         id: upload-unsigned-appimage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-linux-appimage
           path: Releases/*.AppImage
@@ -187,7 +187,7 @@ jobs:
       # cover Linux. A self-managed GPG key in CI secrets is one viable replacement; another is to
       # ship Linux unsigned and rely on `SHA256SUMS` only.
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-final
           path: |
@@ -200,11 +200,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.x
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/
 
@@ -224,7 +224,7 @@ jobs:
           node scripts/extract-changelog.mjs ${{ github.ref_name }} $UNSIGNED_FLAG > release-notes.md
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # v0.1.23 (item 8 of §1e): no prerelease flag for beta tags. GitHub's
           # /releases/latest API endpoint EXCLUDES prereleases, and Velopack's

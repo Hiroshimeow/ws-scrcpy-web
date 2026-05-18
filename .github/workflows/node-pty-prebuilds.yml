@@ -27,8 +27,8 @@ jobs:
       prior_node_version_bare: ${{ steps.check.outputs.prior_node_version_bare }}
       prior_node_abi: ${{ steps.check.outputs.prior_node_abi }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
       - id: check
@@ -75,7 +75,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container == 'alpine' && format('node:{0}-alpine', matrix.abi_label == 'current' && needs.precheck.outputs.current_node_version_bare || needs.precheck.outputs.prior_node_version_bare) || null }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install build toolchain (Alpine)
         if: matrix.container == 'alpine'
@@ -83,7 +83,7 @@ jobs:
 
       - name: Setup Node (non-Alpine)
         if: matrix.container == ''
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.abi_label == 'current' && needs.precheck.outputs.current_node_version || needs.precheck.outputs.prior_node_version }}
 
@@ -160,7 +160,7 @@ jobs:
             shasum -a 256 "${KEY}.tar.gz" > "${KEY}.tar.gz.sha256"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: prebuilt-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.libc }}-${{ matrix.abi_label }}
           path: artifacts/*
@@ -170,8 +170,8 @@ jobs:
     if: needs.precheck.outputs.changed == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: downloaded
           pattern: prebuilt-*
@@ -217,7 +217,7 @@ jobs:
       - name: Create versioned release
         # Runs before the state-file commit so release asset uploads are not
         # blocked by a git push race (main can move during the matrix run).
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: node-pty-prebuilds-v${{ needs.precheck.outputs.node_pty_version }}
           name: "node-pty prebuilds v${{ needs.precheck.outputs.node_pty_version }}"
@@ -234,7 +234,7 @@ jobs:
             (linux-arm64-musl excluded — GH Actions JS-action runtime doesn't run in Alpine+arm64 containers; those users fall back to compile-at-install.)
 
       - name: Update "latest" alias
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: node-pty-prebuilds-latest
           name: "node-pty prebuilds (latest)"
@@ -265,7 +265,7 @@ jobs:
     if: failure() && needs.precheck.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
