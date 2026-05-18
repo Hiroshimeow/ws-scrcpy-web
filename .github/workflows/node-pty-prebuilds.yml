@@ -87,6 +87,32 @@ jobs:
         with:
           node-version: ${{ matrix.abi_label == 'current' && needs.precheck.outputs.current_node_version || needs.precheck.outputs.prior_node_version }}
 
+      - name: Upgrade npm for VS 2026 detection (Windows non-Alpine)
+        # node-pty's install script is `node scripts/prebuild.js || node-gyp rebuild`.
+        # prebuild.js does `require('node-gyp')` which resolves via Node module
+        # resolution to npm's BUNDLED node-gyp at <npm-prefix>/node_modules/npm/
+        # node_modules/node-gyp — NOT a globally-installed node-gyp, and NOT the
+        # `npm_config_node_gyp` env var (that only affects npm's own invocation
+        # route, e.g. `npm rebuild`, not third-party scripts).
+        #
+        # Node 22 LTS ships npm 10.9.8 which bundles node-gyp 11.5.0; that version
+        # doesn't recognize VS 2026 (internal version 18) and rejects the runner's
+        # VS install as `unknown version "undefined"`. npm 11.14.1 bundles node-gyp
+        # 12.3.0 (added VS 2026 support in 12.1.0, 2025-11-12). Upgrading npm
+        # itself replaces the bundled node-gyp, so require('node-gyp') in
+        # third-party install scripts picks up the new version.
+        #
+        # windows-latest is being redirected to windows-2025-vs2026 (MS migration,
+        # full cutover 2026-06-15) which ships only VS 2026. Linux legs use gcc/g++
+        # and are unaffected. Gate to all Windows non-Alpine legs to future-proof
+        # the ARM runners against the same image migration.
+        if: matrix.container == '' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -ex
+          npm install -g npm@11.14.1
+          npm --version  # expect 11.14.1 (which bundles node-gyp 12.3.0)
+
       - name: Build node-pty prebuilt
         shell: bash
         run: |
