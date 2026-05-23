@@ -54,7 +54,15 @@ use crate::log;
 const MAX_LIFETIME_SECS: u64 = 30;
 const STOP_MARKER_POLL_MS: u64 = 200;
 const ACCEPT_TIMEOUT_MS: u64 = 200;
-const STOP_MARKER_FILENAME: &str = "upgrade-server-stop";
+const STOP_MARKER_FILENAME: &str = "operation-server-stop";
+
+/// Legacy stop-marker filename. Kept as a read-time fallback for ~2 release
+/// cycles so an operation-server spawned by an OLD post-stop.bat (written by
+/// pre-Phase-1 installs that still call `--upgrade-server` and write the
+/// legacy marker) still exits when the new launcher signals it. Writers
+/// (`write_stop_marker`) always use the canonical name. Removed in a
+/// follow-up PR ~2 release cycles after Phase 1 ships.
+const LEGACY_STOP_MARKER_FILENAME: &str = "upgrade-server-stop";
 
 // §32 Part 5b — the upgrade-server is now spawned BEFORE Node exits (from
 // UpdateService.applyUpdate in service mode). Node still holds the port at
@@ -82,35 +90,58 @@ const PROBE_INTERVAL_MS: u64 = 100;
 const PROBE_CONNECT_TIMEOUT_MS: u64 = 500;
 const PROBE_REQUEST_TIMEOUT_MS: u64 = 2000;
 
-const UPGRADING_PAGE: &str = include_str!("../assets/upgrade-server-page.html");
+const OPERATION_PAGE: &str = include_str!("../assets/operation-server-page.html");
 
-/// Public entry: if argv contains `--upgrade-server`, handle it and return
-/// `Some(exit_code)`. Otherwise return None (caller proceeds to normal launch).
+/// Public entry: if argv contains `--operation-server` (or the legacy alias
+/// `--upgrade-server`), handle it and return `Some(exit_code)`. Otherwise
+/// return None (caller proceeds to normal launch).
 pub fn handle(args: &[String]) -> Option<i32> {
-    if !args.iter().any(|a| a == "--upgrade-server") {
+    if !is_operation_server_flag(args) {
         return None;
     }
     Some(run())
 }
 
+/// Returns true if argv contains either the canonical `--operation-server`
+/// flag OR the legacy `--upgrade-server` alias (kept for ~2 release cycles
+/// so existing installs' post-stop.bat files keep working until they're
+/// rewritten by a fresh install). Pure function — testable without binding
+/// any port.
+fn is_operation_server_flag(args: &[String]) -> bool {
+    args.iter()
+        .any(|a| a == "--operation-server" || a == "--upgrade-server")
+}
+
+/// Returns true if either the canonical or legacy stop marker is present
+/// under `<data_root>/control/`. Pure function — no I/O side effects beyond
+/// the existence checks. Extracted from `run()`'s polling loop for unit-
+/// testability + dual-name support per Phase 1 of the operation-server
+/// rearchitecture.
+pub fn should_exit_for_stop_marker(data_root: &Path) -> bool {
+    let dir = data_root.join("control");
+    dir.join(STOP_MARKER_FILENAME).exists() || dir.join(LEGACY_STOP_MARKER_FILENAME).exists()
+}
+
 fn run() -> i32 {
-    log::info("upgrade-server: starting");
+    log::info("operation-server: starting");
 
     let data_root = match common::config::data_root_from_env() {
         Some(p) => p,
         None => {
-            log::error("upgrade-server: cannot resolve data_root");
+            log::error("operation-server: cannot resolve data_root");
             return 5;
         }
     };
 
     let cfg = common::config::AppConfig::load(&data_root);
     let port = cfg.web_port.unwrap_or(8000);
-    log::info(&format!("upgrade-server: data_root={data_root:?} port={port}"));
+    log::info(&format!("operation-server: data_root={data_root:?} port={port}"));
 
-    let stop_marker = data_root.join("control").join(STOP_MARKER_FILENAME);
-    // Clean any stale marker from a prior upgrade so we don't insta-exit.
-    let _ = std::fs::remove_file(&stop_marker);
+    let control_dir = data_root.join("control");
+    // Clean any stale markers (both canonical + legacy filenames) from a
+    // prior operation so we don't insta-exit.
+    let _ = std::fs::remove_file(control_dir.join(STOP_MARKER_FILENAME));
+    let _ = std::fs::remove_file(control_dir.join(LEGACY_STOP_MARKER_FILENAME));
 
     let listener = {
         let bind_start = Instant::now();
@@ -124,13 +155,13 @@ fn run() -> i32 {
                     // Subsequent failures are silent to avoid log spam.
                     if !first_busy_logged {
                         log::info(&format!(
-                            "upgrade-server: bind 0.0.0.0:{port} busy ({e}), retrying every {BIND_RETRY_INTERVAL_MS}ms until port is free (timeout {BIND_RETRY_TIMEOUT_SECS}s)"
+                            "operation-server: bind 0.0.0.0:{port} busy ({e}), retrying every {BIND_RETRY_INTERVAL_MS}ms until port is free (timeout {BIND_RETRY_TIMEOUT_SECS}s)"
                         ));
                         first_busy_logged = true;
                     }
                     if bind_start.elapsed() >= Duration::from_secs(BIND_RETRY_TIMEOUT_SECS) {
                         log::error(&format!(
-                            "upgrade-server: bind 0.0.0.0:{port} failed after {BIND_RETRY_TIMEOUT_SECS}s of retries: {e} — giving up"
+                            "operation-server: bind 0.0.0.0:{port} failed after {BIND_RETRY_TIMEOUT_SECS}s of retries: {e} — giving up"
                         ));
                         return 3;
                     }
@@ -144,12 +175,12 @@ fn run() -> i32 {
     // marker + lifetime cap without blocking forever.
     if let Err(e) = listener.set_nonblocking(true) {
         log::error(&format!(
-            "upgrade-server: set_nonblocking failed (non-fatal): {e}"
+            "operation-server: set_nonblocking failed (non-fatal): {e}"
         ));
     }
 
     log::info(&format!(
-        "upgrade-server: bound 0.0.0.0:{port}, serving updating page (max lifetime {MAX_LIFETIME_SECS}s)"
+        "operation-server: bound 0.0.0.0:{port}, serving updating page (max lifetime {MAX_LIFETIME_SECS}s)"
     ));
 
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -165,19 +196,25 @@ fn run() -> i32 {
     // the listener open while probing for the new Node's port.
     loop {
         if stop_flag.load(Ordering::SeqCst) {
-            log::info("upgrade-server: stop_flag observed, exiting");
+            log::info("operation-server: stop_flag observed, exiting");
             return 0;
         }
-        if stop_marker.exists() {
+        if should_exit_for_stop_marker(&data_root) {
             log::info(&format!(
-                "upgrade-server: stop marker present at {stop_marker:?}, entering wind-down"
+                "operation-server: stop marker present under {:?}/control/, entering wind-down",
+                data_root
             ));
-            let _ = std::fs::remove_file(&stop_marker);
+            // Clean up BOTH possible marker filenames so a residual legacy
+            // marker doesn't immediately re-trigger wind-down on the next
+            // operation-server instance.
+            let cleanup_dir = data_root.join("control");
+            let _ = std::fs::remove_file(cleanup_dir.join(STOP_MARKER_FILENAME));
+            let _ = std::fs::remove_file(cleanup_dir.join(LEGACY_STOP_MARKER_FILENAME));
             return wind_down(listener, redirect_state, port);
         }
         if started_at.elapsed() >= Duration::from_secs(MAX_LIFETIME_SECS) {
             log::info(&format!(
-                "upgrade-server: max lifetime {MAX_LIFETIME_SECS}s elapsed, exiting"
+                "operation-server: max lifetime {MAX_LIFETIME_SECS}s elapsed, exiting"
             ));
             return 0;
         }
@@ -201,7 +238,7 @@ fn wind_down(listener: TcpListener, redirect_state: Arc<Mutex<Option<String>>>, 
     loop {
         if wind_down_start.elapsed() >= Duration::from_secs(WIND_DOWN_TOTAL_SECS) {
             log::info(&format!(
-                "upgrade-server: wind-down window ({WIND_DOWN_TOTAL_SECS}s) elapsed, exiting"
+                "operation-server: wind-down window ({WIND_DOWN_TOTAL_SECS}s) elapsed, exiting"
             ));
             return 0;
         }
@@ -215,7 +252,7 @@ fn wind_down(listener: TcpListener, redirect_state: Arc<Mutex<Option<String>>>, 
 fn accept_one(listener: &TcpListener, redirect_state: &Arc<Mutex<Option<String>>>) {
     match listener.accept() {
         Ok((stream, peer)) => {
-            log::info(&format!("upgrade-server: connection from {peer}"));
+            log::info(&format!("operation-server: connection from {peer}"));
             let state_clone = redirect_state.clone();
             // Spawn a thread per connection. Short-lived; we don't track
             // JoinHandles. Connection count during an upgrade window is
@@ -230,7 +267,7 @@ fn accept_one(listener: &TcpListener, redirect_state: &Arc<Mutex<Option<String>>
             thread::sleep(Duration::from_millis(ACCEPT_TIMEOUT_MS.max(STOP_MARKER_POLL_MS)));
         }
         Err(e) => {
-            log::error(&format!("upgrade-server: accept error: {e}"));
+            log::error(&format!("operation-server: accept error: {e}"));
             thread::sleep(Duration::from_millis(500));
         }
     }
@@ -244,13 +281,13 @@ fn accept_one(listener: &TcpListener, redirect_state: &Arc<Mutex<Option<String>>
 /// spawned by wind_down().
 fn probe_for_real_node_and_publish(config_port: u16, redirect_state: Arc<Mutex<Option<String>>>) {
     log::info(&format!(
-        "upgrade-server: probe starting (sweeping ports {config_port}..={}, every {PROBE_INTERVAL_MS}ms)",
+        "operation-server: probe starting (sweeping ports {config_port}..={}, every {PROBE_INTERVAL_MS}ms)",
         config_port.saturating_add(PROBE_MAX_OFFSET)
     ));
     let probe_start = Instant::now();
     loop {
         if probe_start.elapsed() >= Duration::from_secs(WIND_DOWN_TOTAL_SECS) {
-            log::info("upgrade-server: probe gave up — no real Node found in any neighboring port within wind-down window");
+            log::info("operation-server: probe gave up — no real Node found in any neighboring port within wind-down window");
             return;
         }
         for offset in 0..=PROBE_MAX_OFFSET {
@@ -263,7 +300,7 @@ fn probe_for_real_node_and_publish(config_port: u16, redirect_state: Arc<Mutex<O
             if is_real_node_at_port(probe_port) {
                 let url = format!("http://localhost:{probe_port}/");
                 log::info(&format!(
-                    "upgrade-server: probe found real Node on port {probe_port} (offset +{offset}) — publishing redirect {url}"
+                    "operation-server: probe found real Node on port {probe_port} (offset +{offset}) — publishing redirect {url}"
                 ));
                 if let Ok(mut guard) = redirect_state.lock() {
                     *guard = Some(url);
@@ -395,7 +432,7 @@ fn build_response(path: &str, redirect: Option<&str>) -> String {
     }
 
     // Default: serve the upgrading page on root and any other path.
-    let body = UPGRADING_PAGE;
+    let body = OPERATION_PAGE;
     format!(
         "HTTP/1.1 200 OK\r\n\
          Content-Type: text/html; charset=utf-8\r\n\
@@ -440,18 +477,46 @@ pub fn write_stop_marker(data_root: &Path) -> std::io::Result<PathBuf> {
 /// currently-installed launcher version. Best-effort — caller logs +
 /// continues on failure. Returns the helper path on success.
 pub fn refresh_helper_binary(data_root: &Path) -> std::io::Result<PathBuf> {
-    let helper_dir = data_root.join("upgrade-server");
-    std::fs::create_dir_all(&helper_dir)?;
-    let helper_path = helper_dir.join("ws-scrcpy-web-launcher.exe");
     let current = std::env::current_exe()?;
-    std::fs::copy(&current, &helper_path)?;
-    Ok(helper_path)
+
+    // Canonical (new) location.
+    let new_dir = data_root.join("operation-server");
+    std::fs::create_dir_all(&new_dir)?;
+    let new_path = new_dir.join("ws-scrcpy-web-launcher.exe");
+    std::fs::copy(&current, &new_path)?;
+
+    // Legacy location — dual-write so existing post-stop.bat files
+    // (referencing <dataRoot>/upgrade-server/launcher.exe) keep working
+    // through the transitional period. Best-effort; legacy write
+    // failure does not propagate.
+    let legacy_dir = data_root.join("upgrade-server");
+    let _ = std::fs::create_dir_all(&legacy_dir);
+    let legacy_path = legacy_dir.join("ws-scrcpy-web-launcher.exe");
+    let _ = std::fs::copy(&current, &legacy_path);
+
+    Ok(new_path)
 }
 
-/// Resolve the helper path without performing the copy. Used by the
-/// post-stop bat writer to interpolate the same path the supervisor
-/// refreshes at startup. Single source of truth for the helper layout.
+/// Resolve the canonical helper path under `<dataRoot>/operation-server/`.
+/// Used by the post-stop bat writer to interpolate the same path the
+/// supervisor refreshes at startup. Single source of truth for the helper
+/// layout.
 pub fn helper_path_for(data_root: &Path) -> PathBuf {
+    data_root.join("operation-server").join("ws-scrcpy-web-launcher.exe")
+}
+
+/// Legacy helper path under `<dataRoot>/upgrade-server/`. Kept for ~2
+/// release cycles so existing installs' post-stop.bat files (which
+/// reference this path) keep finding a launcher binary. New code should
+/// use `helper_path_for`. Removed in a follow-up PR ~2 release cycles
+/// after Phase 1 ships.
+///
+/// No in-process callers in Phase 1 — the function exists purely as a
+/// documented API surface for the dual-write story (the path the legacy
+/// post-stop.bat reads). `#[allow(dead_code)]` keeps clippy `-D warnings`
+/// happy across the transitional window.
+#[allow(dead_code)]
+pub fn legacy_helper_path_for(data_root: &Path) -> PathBuf {
     data_root.join("upgrade-server").join("ws-scrcpy-web-launcher.exe")
 }
 
@@ -475,7 +540,7 @@ pub fn spawn_detached_helper(data_root: &Path) {
     let helper = helper_path_for(data_root);
     if !helper.exists() {
         log::error(&format!(
-            "upgrade-server: helper not present at {helper:?}, skipping spawn"
+            "operation-server: helper not present at {helper:?}, skipping spawn"
         ));
         return;
     }
@@ -499,16 +564,16 @@ pub fn spawn_detached_helper(data_root: &Path) {
             .spawn()
         {
             Ok(child) => log::info(&format!(
-                "upgrade-server: spawned helper (pid {})",
+                "operation-server: spawned helper (pid {})",
                 child.id()
             )),
-            Err(e) => log::error(&format!("upgrade-server: spawn failed: {e}")),
+            Err(e) => log::error(&format!("operation-server: spawn failed: {e}")),
         }
     }
     #[cfg(not(windows))]
     {
         let _ = data_root; // silence unused-variable warning
-        log::info("upgrade-server: spawn_detached_helper skipped (non-Windows)");
+        log::info("operation-server: spawn_detached_helper skipped (non-Windows)");
     }
 }
 
@@ -544,5 +609,102 @@ pub fn wait_for_port_free(port: u16, timeout: Duration) {
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests reference parent-module items via explicit `super::` prefix
+    // (preserved from the plan's verbatim test source — makes the
+    // module-boundary clear at each call site). No `use super::*;` is
+    // needed; adding one would trip clippy's `-D unused-imports`.
+
+    #[test]
+    fn is_operation_server_flag_recognizes_canonical_flag() {
+        let args = vec!["launcher.exe".to_string(), "--operation-server".to_string()];
+        assert!(super::is_operation_server_flag(&args));
+    }
+
+    #[test]
+    fn is_operation_server_flag_recognizes_legacy_upgrade_server_alias() {
+        let args = vec!["launcher.exe".to_string(), "--upgrade-server".to_string()];
+        assert!(super::is_operation_server_flag(&args));
+    }
+
+    #[test]
+    fn is_operation_server_flag_rejects_unrelated_args() {
+        let args = vec!["launcher.exe".to_string(), "--unrelated".to_string()];
+        assert!(!super::is_operation_server_flag(&args));
+    }
+
+    #[test]
+    fn helper_path_for_returns_operation_server_path() {
+        let p = super::helper_path_for(std::path::Path::new(r"C:\ProgramData\WsScrcpyWeb"));
+        // Construct expected with Path::join so the test passes on both
+        // Windows (`\` separator) and Linux CI (`/` separator) — production
+        // callers are Windows-only but cargo test runs on both.
+        let expected = std::path::Path::new(r"C:\ProgramData\WsScrcpyWeb")
+            .join("operation-server")
+            .join("ws-scrcpy-web-launcher.exe");
+        assert_eq!(p, expected);
+    }
+
+    #[test]
+    fn legacy_helper_path_for_returns_upgrade_server_path() {
+        let p = super::legacy_helper_path_for(std::path::Path::new(r"C:\ProgramData\WsScrcpyWeb"));
+        let expected = std::path::Path::new(r"C:\ProgramData\WsScrcpyWeb")
+            .join("upgrade-server")
+            .join("ws-scrcpy-web-launcher.exe");
+        assert_eq!(p, expected);
+    }
+
+    #[test]
+    fn refresh_helper_binary_writes_to_both_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let data_root = tmp.path();
+
+        // refresh_helper_binary copies std::env::current_exe(); in unit-test
+        // context that's the test runner. The Ok branch is the assertion-
+        // bearing branch — we only verify dual-write on success.
+        if super::refresh_helper_binary(data_root).is_ok() {
+            let new_path = data_root.join("operation-server").join("ws-scrcpy-web-launcher.exe");
+            let legacy_path = data_root.join("upgrade-server").join("ws-scrcpy-web-launcher.exe");
+            assert!(new_path.exists(), "operation-server/launcher.exe should be written");
+            assert!(legacy_path.exists(), "upgrade-server/launcher.exe should also be written (dual-write compat)");
+        }
+    }
+
+    #[test]
+    fn should_exit_for_stop_marker_returns_false_when_absent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        assert!(!super::should_exit_for_stop_marker(tmp.path()));
+    }
+
+    #[test]
+    fn should_exit_for_stop_marker_returns_true_when_canonical_present() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("control");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("operation-server-stop"), b"stop").expect("write");
+        assert!(super::should_exit_for_stop_marker(tmp.path()));
+    }
+
+    #[test]
+    fn should_exit_for_stop_marker_returns_true_when_legacy_upgrade_server_stop_present() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("control");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("upgrade-server-stop"), b"stop").expect("write");
+        assert!(super::should_exit_for_stop_marker(tmp.path()));
+    }
+
+    #[test]
+    fn write_stop_marker_uses_canonical_filename() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let marker = super::write_stop_marker(tmp.path()).expect("write");
+        assert!(
+            marker.ends_with("operation-server-stop"),
+            "marker file should be operation-server-stop, got: {marker:?}"
+        );
     }
 }

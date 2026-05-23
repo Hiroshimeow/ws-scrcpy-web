@@ -570,7 +570,7 @@ fn write_post_stop_bat(
     // Single source of truth in upgrade_server::helper_path_for so the
     // supervisor's refresh-on-startup and this install-time bat
     // interpolation can't drift apart.
-    let helper_path = crate::upgrade_server::helper_path_for(data_root);
+    let helper_path = crate::operation_server::helper_path_for(data_root);
     let helper_path_str = helper_path.to_string_lossy();
 
     // 12 seconds: empirical buffer above the observed Update.exe lifetime.
@@ -620,7 +620,7 @@ fn write_post_stop_bat(
          if exist \"{marker}\" (\r\n\
          \x20\x20\x20\x20del \"{marker}\"\r\n\
          \x20\x20\x20\x20if exist \"{helper}\" (\r\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20start \"\" /b \"{helper}\" --upgrade-server\r\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20start \"\" /b \"{helper}\" --operation-server\r\n\
          \x20\x20\x20\x20)\r\n\
          \x20\x20\x20\x20timeout /t {sleep} /nobreak >nul\r\n\
          \x20\x20\x20\x20sc start {service}\r\n\
@@ -764,4 +764,37 @@ mod tests {
     // §32 Part 5: `is_hklm_already_migrated_*` tests removed along with the
     // `is_hklm_already_migrated` function (HKLM\Run registration architecture
     // replaced by launcher-owned tray polling).
+
+    #[test]
+    fn write_post_stop_bat_uses_operation_server_flag() {
+        let tmp = tempdir().unwrap();
+        let bat_path = super::write_post_stop_bat(tmp.path(), "WsScrcpyWeb").expect("write");
+        let content = std::fs::read_to_string(&bat_path).expect("read");
+        assert!(
+            content.contains("--operation-server"),
+            "bat should use --operation-server flag: {content}"
+        );
+        assert!(
+            !content.contains("--upgrade-server"),
+            "bat should NOT use legacy --upgrade-server flag in newly-generated content: {content}"
+        );
+    }
+
+    #[test]
+    fn write_post_stop_bat_uses_operation_server_helper_path() {
+        let tmp = tempdir().unwrap();
+        let bat_path = super::write_post_stop_bat(tmp.path(), "WsScrcpyWeb").expect("write");
+        let content = std::fs::read_to_string(&bat_path).expect("read");
+        // The bat is Windows-only at runtime but the test runs on both
+        // Windows and Linux CI. Use the platform's separator so we match
+        // the actual bat content on each (helper_path_str is derived via
+        // PathBuf::to_string_lossy which yields `\` on Windows, `/` on Linux).
+        let expected_suffix = std::path::Path::new("operation-server")
+            .join("ws-scrcpy-web-launcher.exe");
+        let expected_suffix = expected_suffix.to_string_lossy();
+        assert!(
+            content.contains(expected_suffix.as_ref()),
+            "bat helper path should be under operation-server/ (expected suffix {expected_suffix:?}): {content}"
+        );
+    }
 }
