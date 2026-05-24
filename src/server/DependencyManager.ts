@@ -50,11 +50,19 @@ export class DependencyManager {
                 description: def.description,
                 requiresRestart: def.requiresRestart,
                 pairedWith: def.pairedWith,
+                canUpdate: false,
             });
         }
     }
 
     public getAll(): DependencyInfo[] {
+        const launcherAvail = launcherIsAvailable();
+        // In-place mutation: callers (incl. getByName) hold references to state
+        // entries and mutate them; spread copies would orphan those mutations.
+        for (const info of this.state.values()) {
+            const def = this.definitions.find((d) => d.name === info.name);
+            info.canUpdate = !def?.requiresLauncher || launcherAvail;
+        }
         return Array.from(this.state.values());
     }
 
@@ -124,6 +132,16 @@ export class DependencyManager {
         const info = this.state.get(name);
         if (!def || !info) {
             return { success: false, errorMessage: `Unknown dependency: ${name}`, requiresRestart: false };
+        }
+        if (def.requiresLauncher && !launcherIsAvailable()) {
+            return {
+                success: false,
+                reason: 'launcher-required',
+                errorMessage:
+                    `${def.displayName} updates require an installed build. ` +
+                    `In dev mode, populate dependencies/ via scripts/fetch-node.mjs.`,
+                requiresRestart: false,
+            };
         }
 
         info.status = DependencyStatus.Updating;
@@ -206,8 +224,14 @@ export class DependencyManager {
             log.warn(`seed-promote scrcpy-server failed: ${(err as Error).message}`);
         }
 
+        const launcherAvail = launcherIsAvailable();
         for (const info of this.state.values()) {
             if (info.installedVersion === null && info.latestVersion !== null) {
+                const def = this.definitions.find((d) => d.name === info.name);
+                if (def?.requiresLauncher && !launcherAvail) {
+                    log.info(`Skipping auto-install of ${info.name} in dev mode (no launcher)`);
+                    continue;
+                }
                 log.info(`First-run: auto-installing ${info.name}`);
                 await this.update(info.name);
             }
@@ -328,40 +352,44 @@ export class DependencyManager {
         const destDir = path.join(this.depsPath, 'node');
         fs.mkdirSync(destDir, { recursive: true });
 
+        // 1. Non-destructive: extract to tmpDir (both platforms).
         if (platform === 'win32') {
-            // On Windows, rename running node.exe to node.exe.old before replacing
+            await this.extractZip(downloadPath, tmpDir, platform);
+        } else {
+            await execFileAsync('tar', ['xzf', downloadPath, '-C', tmpDir]);
+        }
+        const archiveDir = fs.readdirSync(tmpDir).find((d) => d.startsWith('node-v'));
+        if (!archiveDir) {
+            throw new Error('Could not find Node.js directory in extracted archive');
+        }
+        const extractedPath = path.join(tmpDir, archiveDir);
+
+        // 2. Destructive (Windows only): rename + copy with rollback.
+        if (platform === 'win32') {
             const runningExe = path.join(destDir, 'node.exe');
             const oldExe = path.join(destDir, 'node.exe.old');
+            let renamed = false;
             if (fs.existsSync(runningExe)) {
                 try {
                     fs.renameSync(runningExe, oldExe);
+                    renamed = true;
                 } catch {
-                    // May fail if not the managed node
+                    // May fail if not the managed node — proceed without rollback safety net.
                 }
             }
-
-            // Extract zip using PowerShell
-            await this.extractZip(downloadPath, tmpDir, platform);
-
-            // Node.js archives contain a top-level dir like node-v24.14.1-win-x64/
-            const archiveDir = fs.readdirSync(tmpDir).find((d) => d.startsWith('node-v'));
-            if (!archiveDir) {
-                throw new Error('Could not find Node.js directory in extracted archive');
+            try {
+                this.copyDirContents(extractedPath, destDir);
+            } catch (err) {
+                if (renamed && !fs.existsSync(runningExe)) {
+                    try {
+                        fs.renameSync(oldExe, runningExe);
+                    } catch {
+                        // Best-effort rollback. Original error bubbles up regardless.
+                    }
+                }
+                throw err;
             }
-            const extractedPath = path.join(tmpDir, archiveDir);
-
-            // Copy contents to destination
-            this.copyDirContents(extractedPath, destDir);
         } else {
-            // Extract tar.gz
-            await execFileAsync('tar', ['xzf', downloadPath, '-C', tmpDir]);
-
-            const archiveDir = fs.readdirSync(tmpDir).find((d) => d.startsWith('node-v'));
-            if (!archiveDir) {
-                throw new Error('Could not find Node.js directory in extracted archive');
-            }
-            const extractedPath = path.join(tmpDir, archiveDir);
-
             this.copyDirContents(extractedPath, destDir);
         }
     }
