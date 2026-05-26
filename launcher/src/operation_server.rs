@@ -97,6 +97,8 @@ const PROBE_INTERVAL_MS: u64 = 100;
 const PROBE_CONNECT_TIMEOUT_MS: u64 = 500;
 const PROBE_REQUEST_TIMEOUT_MS: u64 = 2000;
 
+const PORT_FILE_NAME: &str = "operation-server-port";
+
 const OPERATION_PAGE: &str = include_str!("../assets/operation-server-page.html");
 
 /// Which operation triggered this operation-server instance? Drives the
@@ -141,6 +143,74 @@ pub fn render_operation_page(variant: OperationVariant) -> String {
     OPERATION_PAGE
         .replace("__OPERATION_TITLE__", title)
         .replace("__OPERATION_BODY__", body)
+}
+
+pub fn write_port_file(data_root: &Path, port: u16) -> std::io::Result<PathBuf> {
+    let dir = data_root.join("control");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(PORT_FILE_NAME);
+    std::fs::write(&path, port.to_string())?;
+    Ok(path)
+}
+
+#[allow(dead_code)]
+pub fn read_port_file(data_root: &Path) -> Option<u16> {
+    let path = data_root.join("control").join(PORT_FILE_NAME);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+}
+
+pub fn delete_port_file(data_root: &Path) {
+    let path = data_root.join("control").join(PORT_FILE_NAME);
+    let _ = std::fs::remove_file(&path);
+}
+
+pub fn bind_with_probe(
+    start_port: u16,
+    max_offset: u16,
+    retry_timeout: Duration,
+) -> Result<(TcpListener, u16), i32> {
+    for offset in 0..=max_offset {
+        let port = match start_port.checked_add(offset) {
+            Some(p) => p,
+            None => break,
+        };
+        let bind_start = Instant::now();
+        loop {
+            match TcpListener::bind(("0.0.0.0", port)) {
+                Ok(listener) => return Ok((listener, port)),
+                Err(e) => {
+                    let is_in_use = e.kind() == std::io::ErrorKind::AddrInUse;
+                    if is_in_use && offset < max_offset {
+                        log::info(&format!(
+                            "operation-server: port {port} in use, trying next"
+                        ));
+                        break; // try next port
+                    }
+                    if bind_start.elapsed() >= retry_timeout {
+                        if is_in_use {
+                            log::error(&format!(
+                                "operation-server: all ports {start_port}..={} in use after {retry_timeout:?}",
+                                start_port.saturating_add(max_offset)
+                            ));
+                            return Err(3);
+                        }
+                        log::error(&format!(
+                            "operation-server: bind 0.0.0.0:{port} failed after {retry_timeout:?}: {e}"
+                        ));
+                        return Err(3);
+                    }
+                    thread::sleep(Duration::from_millis(BIND_RETRY_INTERVAL_MS));
+                }
+            }
+        }
+    }
+    log::error(&format!(
+        "operation-server: no bindable port in range {start_port}..={}",
+        start_port.saturating_add(max_offset)
+    ));
+    Err(3)
 }
 
 /// Public entry: if argv contains `--operation-server` (or the legacy alias
@@ -261,6 +331,120 @@ fn run() -> i32 {
     let _ = std::fs::remove_file(control_dir.join(STOP_MARKER_FILENAME));
     let _ = std::fs::remove_file(control_dir.join(LEGACY_STOP_MARKER_FILENAME));
 
+    // §40 — local-mode update path. Binds config_port + 1 (probing upward)
+    // to avoid port conflict with Node (which still holds config_port).
+    if variant == OperationVariant::ApplyUpdate {
+        if let Ok(install_root) = std::env::var("WS_SCRCPY_INSTALL_ROOT") {
+            let install_root = PathBuf::from(install_root);
+            let op_port_start = port.saturating_add(1);
+
+            let (listener, bound_port) = match bind_with_probe(
+                op_port_start,
+                PROBE_MAX_OFFSET,
+                Duration::from_secs(BIND_RETRY_TIMEOUT_SECS),
+            ) {
+                Ok(pair) => pair,
+                Err(code) => return code,
+            };
+
+            if let Err(e) = listener.set_nonblocking(true) {
+                log::error(&format!(
+                    "operation-server: set_nonblocking failed (non-fatal): {e}"
+                ));
+            }
+
+            log::info(&format!(
+                "operation-server: §40 bound 0.0.0.0:{bound_port} (app port={port})"
+            ));
+
+            if let Err(e) = write_port_file(&data_root, bound_port) {
+                log::error(&format!(
+                    "operation-server: failed to write port file: {e}"
+                ));
+            }
+
+            let bg_stop = Arc::new(AtomicBool::new(false));
+            let bg_stop2 = bg_stop.clone();
+            let bg_listener = listener.try_clone().expect("clone listener");
+            let bg_redirect: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+            let bg_redirect2 = bg_redirect.clone();
+            let _page_thread = thread::spawn(move || {
+                while !bg_stop2.load(Ordering::SeqCst) {
+                    accept_one(&bg_listener, &bg_redirect2, OperationVariant::ApplyUpdate);
+                }
+            });
+
+            log::info("operation-server: §40 killing tray");
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
+                let _ = std::process::Command::new(r"C:\Windows\System32\taskkill.exe")
+                    .args(["/F", "/IM", "ws-scrcpy-web-tray.exe", "/T"])
+                    .creation_flags(CREATE_NO_WINDOW_FLAG)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+            thread::sleep(Duration::from_secs(3));
+
+            let packages_dir = install_root.join("packages");
+            let current_dir = install_root.join("current");
+            match find_and_extract_nupkg(&packages_dir, &current_dir) {
+                Ok(ver) => log::info(&format!("operation-server: extracted {ver} into current/")),
+                Err(e) => {
+                    log::error(&format!("operation-server: nupkg extraction failed: {e}"));
+                    bg_stop.store(true, Ordering::SeqCst);
+                    delete_port_file(&data_root);
+                    return 4;
+                }
+            }
+
+            thread::sleep(Duration::from_secs(1));
+            log::info("operation-server: launching new launcher");
+            #[cfg(windows)]
+            {
+                let launcher_path = current_dir.join("ws-scrcpy-web-launcher.exe");
+                use std::os::windows::process::CommandExt;
+                const DETACHED_PROCESS: u32 = 0x00000008;
+                const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
+                match std::process::Command::new(&launcher_path)
+                    .current_dir(&install_root)
+                    .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW_FLAG)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    Ok(child) => log::info(&format!(
+                        "operation-server: launched new launcher (pid {})", child.id()
+                    )),
+                    Err(e) => log::error(&format!(
+                        "operation-server: failed to launch new launcher: {e}"
+                    )),
+                }
+            }
+
+            // Phase 3: Handoff — probe for the new Node on config_port..+10.
+            let probe_redirect = bg_redirect.clone();
+            thread::spawn(move || {
+                probe_for_real_node_and_publish(port, probe_redirect);
+            });
+
+            let started_at = Instant::now();
+            while started_at.elapsed() < Duration::from_secs(MAX_LIFETIME_SECS) {
+                accept_one(&listener, &bg_redirect, OperationVariant::ApplyUpdate);
+            }
+
+            log::info("operation-server: §40 max lifetime elapsed, cleaning up");
+            bg_stop.store(true, Ordering::SeqCst);
+            delete_port_file(&data_root);
+            return 0;
+        }
+    }
+
+    // --- Service-mode / uninstall path (unchanged from here down) ---
     let listener = {
         let bind_start = Instant::now();
         let mut first_busy_logged = false;
@@ -300,83 +484,6 @@ fn run() -> i32 {
     log::info(&format!(
         "operation-server: bound 0.0.0.0:{port}, serving updating page (max lifetime {MAX_LIFETIME_SECS}s)"
     ));
-
-    // §40 — local-mode update: extract nupkg + relaunch, all from this
-    // process (no Update.exe, no bat). Triggered by WS_SCRCPY_INSTALL_ROOT
-    // env var set by the supervisor for local-mode apply-update only.
-    if variant == OperationVariant::ApplyUpdate {
-        if let Ok(install_root) = std::env::var("WS_SCRCPY_INSTALL_ROOT") {
-            let install_root = PathBuf::from(install_root);
-            // Serve the page on a background thread while we do the apply.
-            let bg_listener = listener.try_clone().expect("clone listener");
-            let bg_redirect: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-            let bg_redirect2 = bg_redirect.clone();
-            let _page_thread = thread::spawn(move || {
-                loop {
-                    accept_one(&bg_listener, &bg_redirect2, OperationVariant::ApplyUpdate);
-                }
-            });
-
-            log::info("operation-server: local-mode apply — killing tray");
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                let _ = std::process::Command::new(r"C:\Windows\System32\taskkill.exe")
-                    .args(["/F", "/IM", "ws-scrcpy-web-tray.exe", "/T"])
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-            }
-            thread::sleep(Duration::from_secs(3));
-
-            let packages_dir = install_root.join("packages");
-            let current_dir = install_root.join("current");
-            match find_and_extract_nupkg(&packages_dir, &current_dir) {
-                Ok(ver) => log::info(&format!("operation-server: extracted {ver} into current/")),
-                Err(e) => {
-                    log::error(&format!("operation-server: nupkg extraction failed: {e}"));
-                    return 4;
-                }
-            }
-
-            thread::sleep(Duration::from_secs(1));
-            log::info("operation-server: launching new launcher");
-            #[cfg(windows)]
-            {
-                let launcher = current_dir.join("ws-scrcpy-web-launcher.exe");
-                use std::os::windows::process::CommandExt;
-                const DETACHED_PROCESS: u32 = 0x00000008;
-                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                match std::process::Command::new(&launcher)
-                    .current_dir(&install_root)
-                    .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                {
-                    Ok(child) => log::info(&format!(
-                        "operation-server: launched new launcher (pid {})", child.id()
-                    )),
-                    Err(e) => log::error(&format!(
-                        "operation-server: failed to launch new launcher: {e}"
-                    )),
-                }
-            }
-            // Exit immediately so the new launcher gets a clean port
-            // bind. The wind-down + probe redirect loop is for the
-            // service-mode bat case; in §40 the operation-server owns
-            // the whole update and its job is done once the new launcher
-            // is spawned. Holding the port through wind-down causes
-            // Node to bind IPv6-only (dual-stack conflict with our
-            // IPv4 listener), leaving 127.0.0.1 unreachable.
-            log::info("operation-server: local-mode apply complete, exiting");
-            return 0;
-        }
-    }
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let redirect_state: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -576,43 +683,6 @@ fn handle_connection(mut stream: TcpStream, redirect_state: Arc<Mutex<Option<Str
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
 
-/// Build the HTTP response for GET /api/discover.
-/// Reads config.json from disk, extracts webPort + file mtime.
-/// Returns JSON with null fields on any failure (frontend keeps polling).
-fn build_discover_response(config_path: &Path) -> String {
-    let (web_port, mtime_ms) = match std::fs::metadata(config_path) {
-        Ok(meta) => {
-            let mtime = meta.modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64);
-            let port = std::fs::read_to_string(config_path)
-                .ok()
-                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-                .and_then(|v| v.get("webPort")?.as_u64())
-                .map(|p| p as u16);
-            (port, mtime)
-        }
-        Err(_) => (None, None),
-    };
-
-    let port_str = match web_port {
-        Some(p) => format!("{p}"),
-        None => "null".to_string(),
-    };
-    let mtime_str = match mtime_ms {
-        Some(m) => format!("{m}"),
-        None => "null".to_string(),
-    };
-    let body = format!(r#"{{"webPort":{port_str},"configMtime":{mtime_str}}}"#);
-
-    format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-        body.len(),
-        body
-    )
-}
-
 fn build_response(path: &str, redirect: Option<&str>, variant: OperationVariant) -> String {
     // Discrimination strategy: the static HTML page (served on root)
     // polls /api/config every 1s. Two response shapes for /api/*:
@@ -627,14 +697,34 @@ fn build_response(path: &str, redirect: Option<&str>, variant: OperationVariant)
     // existing "real app is back, reload" path).
     if path.starts_with("/api/") {
         if path == "/api/discover" {
-            let config_path = std::env::var("WS_SCRCPY_DATA_ROOT")
-                .map(|dr| PathBuf::from(dr).join("config.json"))
-                .unwrap_or_else(|_| {
-                    common::config::data_root_from_env()
-                        .unwrap_or_else(|| PathBuf::from("."))
-                        .join("config.json")
-                });
-            return build_discover_response(&config_path);
+            if let Some(url) = redirect {
+                let body = format!(r#"{{"status":"ready","redirect":"{url}"}}"#);
+                return format!(
+                    "HTTP/1.1 200 OK\r\n\
+                     Content-Type: application/json\r\n\
+                     Content-Length: {}\r\n\
+                     Cache-Control: no-store\r\n\
+                     X-WsScrcpyWeb-Upgrade-Server: 1\r\n\
+                     Connection: close\r\n\
+                     \r\n\
+                     {}",
+                    body.len(),
+                    body
+                );
+            }
+            let body = r#"{"status":"updating"}"#;
+            return format!(
+                "HTTP/1.1 200 OK\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\
+                 Cache-Control: no-store\r\n\
+                 X-WsScrcpyWeb-Upgrade-Server: 1\r\n\
+                 Connection: close\r\n\
+                 \r\n\
+                 {}",
+                body.len(),
+                body
+            );
         }
 
         if let Some(url) = redirect {
@@ -767,66 +857,6 @@ pub fn legacy_helper_path_for(data_root: &Path) -> PathBuf {
 /// to local-mode-only at the call site keeps the two architectures from
 /// racing for the bind.
 ///
-/// Best-effort: logs failure and returns. If the spawn fails (helper
-/// missing, permissions denied, etc.), the apply-update degrades to a
-/// brief "can't reach" gap during the upgrade window — the pre-Part-5f
-/// local-mode behavior. Stdio is explicitly null'd so the child doesn't
-/// inherit the launcher's handles (which become invalid after launcher
-/// exits).
-///
-/// Windows-only — on non-Windows the call is a no-op log line.
-pub fn spawn_detached_helper(data_root: &Path) {
-    let helper = helper_path_for(data_root);
-    if !helper.exists() {
-        log::error(&format!(
-            "operation-server: helper not present at {helper:?}, skipping spawn"
-        ));
-        return;
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        use std::process::Stdio;
-        // DETACHED_PROCESS: child does not inherit calling process's console.
-        // CREATE_NO_WINDOW: child runs without console window (windows-subsystem
-        //   binary already has none, but belt-and-braces for parity with the
-        //   post-stop bat's `start "" /b` behavior).
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        match std::process::Command::new(&helper)
-            .arg("--operation-server")
-            .current_dir(data_root)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
-            .spawn()
-        {
-            Ok(child) => log::info(&format!(
-                "operation-server: spawned helper (pid {})",
-                child.id()
-            )),
-            Err(e) => log::error(&format!("operation-server: spawn failed: {e}")),
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = data_root; // silence unused-variable warning
-        log::info("operation-server: spawn_detached_helper skipped (non-Windows)");
-    }
-}
-
-/// Path of the apply-update-pending marker the launcher's supervisor
-/// reads on clean Node exit to decide whether to spawn the upgrade-
-/// server (local mode) before exiting. Same path the post-stop bat
-/// gates its spawn on (service mode). Written by Node's
-/// `UpdateService.applyUpdate` in both modes via
-/// `Config.applyUpdatePendingMarkerPath`.
-pub fn apply_update_pending_marker(data_root: &Path) -> PathBuf {
-    data_root.join("control").join("apply-update-pending")
-}
-
 /// Wait for the given TCP port to become bindable (i.e., the previous
 /// holder has released it). Polls `set_nonblocking` connects, NOT bind
 /// attempts (bind succeeds even if a previous bind is in TIME_WAIT). A
@@ -993,39 +1023,41 @@ mod tests {
     }
 
     #[test]
-    fn build_discover_response_with_valid_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.json");
-        std::fs::write(&config_path, r#"{"webPort":8003,"installMode":"user"}"#).unwrap();
-
-        let response = super::build_discover_response(&config_path);
-        assert!(response.contains("200 OK"));
-        assert!(response.contains(r#""webPort":8003"#));
-        assert!(response.contains(r#""configMtime":"#));
+    fn write_and_read_port_file_round_trip() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = super::write_port_file(tmp.path(), 8001).expect("write");
+        assert!(path.exists());
+        assert_eq!(super::read_port_file(tmp.path()), Some(8001));
     }
 
     #[test]
-    fn build_discover_response_with_missing_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.json");
-
-        let response = super::build_discover_response(&config_path);
-        assert!(response.contains("200 OK"));
-        assert!(response.contains(r#""webPort":null"#));
-        assert!(response.contains(r#""configMtime":null"#));
+    fn read_port_file_returns_none_when_absent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        assert_eq!(super::read_port_file(tmp.path()), None);
     }
 
     #[test]
-    fn build_discover_response_with_malformed_json() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.json");
-        std::fs::write(&config_path, "not json at all").unwrap();
+    fn delete_port_file_removes_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        super::write_port_file(tmp.path(), 9999).expect("write");
+        super::delete_port_file(tmp.path());
+        assert_eq!(super::read_port_file(tmp.path()), None);
+    }
 
-        let response = super::build_discover_response(&config_path);
-        assert!(response.contains("200 OK"));
-        assert!(response.contains(r#""webPort":null"#));
-        // configMtime should still be present since the file exists
-        assert!(response.contains(r#""configMtime":"#));
-        assert!(!response.contains(r#""configMtime":null"#));
+    #[test]
+    fn bind_with_probe_skips_occupied_port() {
+        // bind_with_probe uses 0.0.0.0, so the blocker must also use 0.0.0.0
+        // to actually occupy the port on the same address.
+        let blocker = std::net::TcpListener::bind(("0.0.0.0", 0)).expect("bind blocker");
+        let blocked_port = blocker.local_addr().expect("addr").port();
+        let result = super::bind_with_probe(
+            blocked_port,
+            5,
+            std::time::Duration::from_secs(1),
+        );
+        match result {
+            Ok((_listener, port)) => assert!(port > blocked_port, "should have skipped to a higher port"),
+            Err(_) => panic!("bind_with_probe should have found a free port"),
+        }
     }
 }

@@ -129,18 +129,12 @@ pub fn run() -> Result<i32> {
             )),
         }
 
-        // §32 Part 5 — coordinate with any in-flight upgrade-server. If
-        // an upgrade-server is currently bound to the port we're about
-        // to ask Node to bind (either spawned by service-mode post-stop
-        // bat OR by local-mode launcher on apply-update path), write
-        // the stop marker + wait for the port to free up. Idempotent —
-        // if no upgrade-server is running, marker write is a no-op and
-        // port check returns immediately.
-        //
-        // §32 Part 5f — runs unconditionally now (not just in service
-        // mode). Local-mode launcher restart-on-apply needs to coordinate
-        // with the upgrade-server its previous incarnation spawned.
-        {
+        // §32 Part 5 — coordinate with any in-flight operation-server.
+        // In service-mode, the operation-server binds the SAME port as
+        // Node (config_port), so we need the stop-marker + port-wait
+        // dance. In §40 local-mode, the operation-server binds a
+        // DIFFERENT port (config_port+1), so no coordination needed.
+        if cfg.is_service_mode() {
             let port = cfg.web_port.unwrap_or(8000);
             if let Err(e) = crate::operation_server::write_stop_marker(&paths.data_root) {
                 log::error(&format!(
@@ -167,13 +161,11 @@ pub fn run() -> Result<i32> {
         log::error(&format!("could not install Ctrl+C handler: {e}"));
     }
 
-    // NOTE: do NOT set DEPS_PATH on the launcher's process env. spawn::resolve_node
-    // reads DEPS_PATH and enforces strict mode (no seed/ fallback) when it's set
-    // — which would defeat the first-run bootstrap (deps/ not yet populated, only
-    // seed/ exists). DEPS_PATH is instead passed to the Node CHILD's env directly
-    // via spawn::spawn_server(deps_path). The launcher's resolve_node only sees
-    // DEPS_PATH when the user explicitly set it (e.g., shared-deps install) —
-    // strict mode kicks in only there, as SP2b intended.
+    // spawn_server now passes deps_path directly to resolve_node_with, which
+    // tries <deps_path>/node/node.exe first and falls back to seed/node/node.exe
+    // when deps node is absent (first-run bootstrap). DEPS_PATH is also set on
+    // the Node CHILD's env so the backend DependencyManager knows where to
+    // install Node / ADB / scrcpy-server.
     log::info(&format!("supervisor: deps_path resolved to {:?} (passed to Node child)", paths.deps_path));
 
     loop {
@@ -197,40 +189,6 @@ pub fn run() -> Result<i32> {
         match reason {
             None => {
                 log::info("supervisor: clean exit; not restarting");
-
-                // §40 — local-mode update relaunch. If apply-update-pending
-                // marker is present AND we're in local mode:
-                //   1. Spawn operation-server (serves "updating" page)
-                //   2. Write + spawn local-post-stop.bat (sleeps 12s, then
-                //      launches the new current/launcher.exe post-swap)
-                //   3. Exit — Velopack Update.exe swaps current/ (restart=false,
-                //      we own the relaunch via the bat)
-                //
-                // In service mode, Servy's post-stop.bat handles both the
-                // operation-server spawn and the sc start relaunch — gating
-                // to local-mode-only here keeps the two architectures from
-                // racing.
-                let cfg_now = common::config::AppConfig::load(&paths.data_root);
-                if !cfg_now.is_service_mode() {
-                    let marker = crate::operation_server::apply_update_pending_marker(
-                        &paths.data_root,
-                    );
-                    if marker.exists() {
-                        log::info(
-                            "supervisor: apply-update-pending marker present (local mode); spawning operation-server before exit",
-                        );
-                        if let Err(e) = std::fs::remove_file(&marker) {
-                            log::error(&format!(
-                                "supervisor: could not delete apply-update-pending marker (non-fatal): {e}"
-                            ));
-                        }
-                        // §40 — pass install_root so the operation-server
-                        // can extract the nupkg into current/ and relaunch.
-                        std::env::set_var("WS_SCRCPY_INSTALL_ROOT", &paths.install_root);
-                        crate::operation_server::spawn_detached_helper(&paths.data_root);
-                    }
-                }
-
                 return Ok(code);
             }
             Some(RestartReason::RestartMarker) => {
