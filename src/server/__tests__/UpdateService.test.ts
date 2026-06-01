@@ -192,12 +192,21 @@ describe('UpdateService', () => {
 
     // ── VelopackLocator strategy (platform-split) ──────────────────────────
     //
-    // Windows hands Velopack an explicit locator (Program Files migration).
-    // Linux passes NO locator and delegates to Velopack's native
-    // auto_locate_app_manifest. `platform` is injected so BOTH branches run on
-    // any host — the original doubled-`usr/usr/bin` Linux locator bug (beta.19 /
-    // PR #230) slipped through because tests only ever ran the host-platform
-    // branch with an injected installRoot, never the real __dirname arithmetic.
+    // BOTH platforms hand Velopack an explicit locator. `platform` is injected
+    // so both branches run on any host.
+    //
+    // Linux history: beta.21 (PR #237) passed NO locator, delegating to
+    // Velopack's native auto_locate_app_manifest. That FAILED on real AppImages:
+    // auto_locate (lib-rust locator.rs) finds the install by searching
+    // `std::env::current_exe()` for "/usr/bin/" — but our server runs under the
+    // Node binary in <dataRoot>/dependencies/node/ (Local-Dependencies-Only),
+    // which has no "/usr/bin/" in its path, so auto_locate returns "Could not
+    // locate '/usr/bin/'" → UpdateManager construction throws → mgr=null → every
+    // check silently no-ops. The fix hand-builds the locator anchored on
+    // installRoot (= resolve(__dirname,'..','..') = <mount>/usr at runtime),
+    // whose `bin` subdir is the Velopack contents dir. (beta.19's hand-built
+    // attempt had the right anchor but did ../.. then re-appended usr/bin →
+    // doubled `usr/usr/bin`; the contents dir is just installRoot/bin.)
 
     it('init (win32): passes an explicit Windows VelopackLocatorConfig', () => {
         const installRoot = path.join('/fake', 'install', 'root');
@@ -226,19 +235,19 @@ describe('UpdateService', () => {
         expect(loc['IsPortable']).toBe(false);
     });
 
-    it('init (linux): passes NO locator — delegates to Velopack auto-locate', () => {
-        // beforeEach sets APPIMAGE so the Linux production-marker check passes
-        // and the factory actually runs.
-        let called = false;
-        let receivedLocator: unknown = 'sentinel';
+    it('init (linux): passes an explicit hand-built locator anchored on the AppImage mount', () => {
+        // beforeEach sets APPIMAGE (= /fake/WsScrcpyWeb.AppImage) so the Linux
+        // production-marker check passes and the factory actually runs.
+        // installRoot stands in for resolve(__dirname,'..','..') = <mount>/usr.
+        const installRoot = path.join('/fake', 'mount', 'usr');
+        let receivedLocator: unknown;
         const factory = vi.fn((_feed: string, _opts: UpdateOptions, locator?: unknown) => {
-            called = true;
             receivedLocator = locator;
             return fakeMgr();
         });
         const svc = new UpdateService({
             platform: 'linux',
-            installRoot: path.join('/fake', 'install', 'root'),
+            installRoot,
             existsSync: () => true,
             updateManagerFactory: factory,
             setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
@@ -246,11 +255,17 @@ describe('UpdateService', () => {
         });
         svc.init();
 
-        expect(called).toBe(true);
-        // undefined → the velopack binding forwards `null` to the native FFI,
-        // triggering auto_locate_app_manifest. Any hand-built locator here
-        // reintroduces the beta.19 doubled-`usr/usr/bin` failure.
-        expect(receivedLocator).toBeUndefined();
+        expect(receivedLocator).toBeDefined();
+        const loc = receivedLocator as Record<string, unknown>;
+        const contentsDir = path.join(installRoot, 'bin'); // <mount>/usr/bin
+        // RootAppDir is the AppImage FILE path ($APPIMAGE), mirroring Velopack's
+        // Linux auto_locate (locator.rs:505) — NOT the mount dir.
+        expect(loc['RootAppDir']).toBe('/fake/WsScrcpyWeb.AppImage');
+        expect(loc['UpdateExePath']).toBe(path.join(contentsDir, 'UpdateNix'));
+        expect(loc['ManifestPath']).toBe(path.join(contentsDir, 'sq.version'));
+        expect(loc['CurrentBinaryDir']).toBe(contentsDir);
+        expect(loc['PackagesDir']).toBe('/var/tmp/velopack/WsScrcpyWeb/packages');
+        expect(loc['IsPortable']).toBe(true);
     });
 
     it('reconfigure: re-passes the platform-appropriate locator on both platforms', async () => {
@@ -280,10 +295,81 @@ describe('UpdateService', () => {
                 expect((initLocator as Record<string, unknown>)['RootAppDir']).toBe(installRoot);
                 expect(reconfigLocator).toEqual(initLocator);
             } else {
-                expect(initLocator).toBeUndefined();
-                expect(reconfigLocator).toBeUndefined();
+                // Linux: hand-built locator anchored on the mount, re-passed unchanged.
+                const contentsDir = path.join(installRoot, 'bin');
+                expect((initLocator as Record<string, unknown>)['UpdateExePath']).toBe(
+                    path.join(contentsDir, 'UpdateNix'),
+                );
+                expect((initLocator as Record<string, unknown>)['CurrentBinaryDir']).toBe(contentsDir);
+                expect(reconfigLocator).toEqual(initLocator);
             }
         }
+    });
+
+    // ── ExplicitChannel (platform-aware) ───────────────────────────────────
+    //
+    // Linux publishes per-platform channels (linux-beta / linux-stable) so its
+    // releases.<channel>.json feed doesn't collide with the Windows beta/stable
+    // feeds on the same GitHub release. The app must therefore query
+    // 'linux-<channel>' on Linux. Windows queries the raw channel. (Without
+    // this, a Linux app reads releases.beta.json — which lists only the Windows
+    // package — and finds no Linux update even after the locator is fixed.)
+
+    it('init (linux): ExplicitChannel is prefixed linux-<channel>', () => {
+        Config.getInstance().updateAppConfig({ channel: 'beta' });
+        let opts: UpdateOptions | undefined;
+        const factory = vi.fn((_feed: string, o: UpdateOptions) => {
+            opts = o;
+            return fakeMgr();
+        });
+        const svc = new UpdateService({
+            platform: 'linux',
+            installRoot: path.join('/fake', 'mount', 'usr'),
+            existsSync: () => true,
+            updateManagerFactory: factory,
+            setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
+            clearIntervalFn: () => undefined,
+        });
+        svc.init();
+        expect(opts?.ExplicitChannel).toBe('linux-beta');
+    });
+
+    it('init (win32): ExplicitChannel is the raw channel (no prefix)', () => {
+        Config.getInstance().updateAppConfig({ channel: 'beta' });
+        let opts: UpdateOptions | undefined;
+        const factory = vi.fn((_feed: string, o: UpdateOptions) => {
+            opts = o;
+            return fakeMgr();
+        });
+        const svc = new UpdateService({
+            platform: 'win32',
+            installRoot: path.join('/fake', 'root'),
+            existsSync: () => true,
+            updateManagerFactory: factory,
+            setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
+            clearIntervalFn: () => undefined,
+        });
+        svc.init();
+        expect(opts?.ExplicitChannel).toBe('beta');
+    });
+
+    it('reconfigure (linux): ExplicitChannel is prefixed linux-<channel>', async () => {
+        let lastOpts: UpdateOptions | undefined;
+        const factory = vi.fn((_feed: string, o: UpdateOptions) => {
+            lastOpts = o;
+            return fakeMgr();
+        });
+        const svc = new UpdateService({
+            platform: 'linux',
+            installRoot: path.join('/fake', 'mount', 'usr'),
+            existsSync: () => true,
+            updateManagerFactory: factory,
+            setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
+            clearIntervalFn: () => undefined,
+        });
+        svc.init();
+        await svc.reconfigure('stable', 'bilbospocketses');
+        expect(lastOpts?.ExplicitChannel).toBe('linux-stable');
     });
 
     // ── checkForUpdates ─────────────────────────────────────────────────
@@ -631,6 +717,9 @@ describe('UpdateService', () => {
             .mockReturnValueOnce(newMgr);
 
         const svc = new UpdateService({
+            // Pin platform so ExplicitChannel stays 'beta' (Linux would prefix
+            // it to 'linux-beta' — covered by the platform-aware tests above).
+            platform: 'win32',
             installRoot: '/fake',
             existsSync: () => true,
             updateManagerFactory: factory,
