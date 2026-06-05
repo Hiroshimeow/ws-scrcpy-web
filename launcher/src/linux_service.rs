@@ -61,16 +61,17 @@ pub fn teardown_commands(scope: Scope, name: &str, bindir: &str) -> Vec<Vec<Stri
         [vec![systemctl.clone()], pre.clone(), vec!["reset-failed".into(), unit.clone()]].concat(),
         vec![rm.clone(), "-f".into(), unit_file.to_string_lossy().into_owned()],
     ];
-    // system scope also removes the /opt staging + the semanage fcontext rule
+    // system scope also removes the /opt staging + /var/opt state + BOTH fcontext rules
     if scope == Scope::System {
         let semanage = format!("{}/semanage", sbindir_from(bindir));
-        cmds.push(vec![rm.clone(), "-rf".into(), "/opt/ws-scrcpy-web".into()]);
-        cmds.push(vec![
-            semanage,
-            "fcontext".into(),
-            "-d".into(),
-            "/opt/ws-scrcpy-web(/.*)?".into(),
-        ]);
+        for dir in ["/opt/ws-scrcpy-web", "/var/opt/ws-scrcpy-web"] {
+            cmds.push(vec![rm.clone(), "-rf".into(), dir.into()]);
+        }
+        // remove BOTH fcontext rules the install added: the /opt bin_t tree rule
+        // AND the /var/opt var_lib_t state rule (else the rule lingers post-uninstall).
+        for pathspec in ["/opt/ws-scrcpy-web(/.*)?", "/var/opt/ws-scrcpy-web(/.*)?"] {
+            cmds.push(vec![semanage.clone(), "fcontext".into(), "-d".into(), pathspec.to_string()]);
+        }
     }
     // reload
     cmds.push([vec![systemctl.clone()], pre.clone(), vec!["daemon-reload".into()]].concat());
@@ -96,6 +97,92 @@ pub fn parse_args(args: &[String]) -> Option<(Scope, String)> {
     Some((scope, unit))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootstrapAction { ExecOpt(PathBuf), RunHomeOfferUpdate, RunHome }
+
+/// Compare versions like "0.1.31" / "0.1.31-beta.4". Core (X.Y.Z) numeric; a
+/// `-beta.N` pre-release sorts BEFORE the same core release, and by N among betas.
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    fn parse(v: &str) -> ([u64; 3], Option<u64>) {
+        let (core, pre) = v.split_once('-').map_or((v, None), |(c, p)| (c, Some(p)));
+        let mut nums = [0u64; 3];
+        for (i, part) in core.split('.').take(3).enumerate() { nums[i] = part.parse().unwrap_or(0); }
+        let beta = pre.and_then(|p| p.rsplit('.').next()).and_then(|n| n.parse::<u64>().ok());
+        (nums, beta)
+    }
+    let (ca, ba) = parse(a);
+    let (cb, bb) = parse(b);
+    ca.cmp(&cb).then_with(|| match (ba, bb) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(x), Some(y)) => x.cmp(&y),
+    })
+}
+
+/// `self_version` = the running (home) AppImage's version; `opt_version` = parsed
+/// /opt/VERSION (None if absent/unreadable). Pure.
+pub fn bootstrap_decision(opt_exists: bool, appimage_env: Option<&str>, self_version: &str, opt_version: Option<&str>) -> BootstrapAction {
+    let opt = PathBuf::from("/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage");
+    let is_self_opt = appimage_env.map(|p| p == opt.to_string_lossy()).unwrap_or(false);
+    if !opt_exists || appimage_env.is_none() || is_self_opt { return BootstrapAction::RunHome; }
+    match opt_version {
+        Some(ov) if version_cmp(self_version, ov) == std::cmp::Ordering::Greater => BootstrapAction::RunHomeOfferUpdate,
+        _ => BootstrapAction::ExecOpt(opt),
+    }
+}
+
+/// Pure bootstrapper decision. `opt_exists` = the shared /opt AppImage is present;
+/// `appimage_env` = $APPIMAGE (the file we were launched from). Returns the /opt
+/// binary to re-exec, or None to continue the in-place launch. No version-compare
+/// (that is a later phase).
+#[allow(dead_code)]
+pub fn bootstrap_target(opt_exists: bool, appimage_env: Option<&str>) -> Option<PathBuf> {
+    let opt = PathBuf::from("/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage");
+    match appimage_env {
+        Some(p) if opt_exists && p != opt.to_string_lossy() => Some(opt),
+        _ => None,
+    }
+}
+
+/// First column of each `loginctl list-sessions --no-legend` line = session id.
+pub fn parse_session_ids(list_output: &str) -> Vec<String> {
+    list_output.lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect()
+}
+
+/// uid of the session from a `loginctl show-session <id> -p Active -p Type -p User -p Display`
+/// block, IFF it is active AND graphical (x11/wayland). We don't need DISPLAY — the
+/// relaunched app is a server the browser reconnects to.
+pub fn active_graphical_uid_from_show(show_output: &str) -> Option<u32> {
+    let (mut active, mut kind, mut uid) = (false, String::new(), None::<u32>);
+    for line in show_output.lines() {
+        if let Some((k, v)) = line.split_once('=') {
+            match k.trim() {
+                "Active" => active = v.trim() == "yes",
+                "Type" => kind = v.trim().to_string(),
+                "User" => uid = v.trim().parse().ok(),
+                _ => {}
+            }
+        }
+    }
+    if active && (kind == "x11" || kind == "wayland") { uid } else { None }
+}
+
+/// `systemd-run --uid=<uid> --setenv=HOME=<home> --setenv=WS_SCRCPY_WEB_PORT=<port>
+/// --collect <appimage>` — relaunch the shared /opt binary AS the user, with HOME
+/// (mandatory — else data_root_for_linux panics) and the service's port (so the
+/// browser reconnects). No DISPLAY (it's a server). Pure.
+pub fn system_relaunch_command(systemd_run: &str, uid: u32, home: &str, web_port: u16, appimage: &str) -> Vec<String> {
+    vec![
+        systemd_run.to_string(),
+        format!("--uid={uid}"),
+        format!("--setenv=HOME={home}"),
+        format!("--setenv=WS_SCRCPY_WEB_PORT={web_port}"),
+        "--collect".to_string(),
+        appimage.to_string(),
+    ]
+}
+
 /// User scope relaunches the home AppImage (from the install-time marker) into
 /// local mode. System scope never auto-relaunches (headless-dominant; the admin
 /// re-launches their own AppImage). Returns the path to relaunch, or None.
@@ -105,6 +192,17 @@ pub fn relaunch_target(scope: Scope, marker: Option<String>) -> Option<PathBuf> 
         // exist on the test host; in production the marker must point at a real file.
         Scope::User => marker.map(PathBuf::from).filter(|p| p.exists() || cfg!(test)),
         Scope::System => None,
+    }
+}
+
+/// The service URL to open (then exit) when an ACTIVE system service owns the
+/// app, so a local launch doesn't spawn a duplicate. `install_mode` + `web_port`
+/// come from the /var/opt system-service config; `port_live` is a TCP-probe
+/// result the caller supplies. Pure.
+pub fn service_defer_url(install_mode: Option<&str>, web_port: Option<u16>, port_live: bool) -> Option<String> {
+    match (install_mode, web_port) {
+        (Some("system-service"), Some(port)) if port_live => Some(format!("http://localhost:{port}")),
+        _ => None,
     }
 }
 
@@ -132,6 +230,29 @@ pub(crate) fn tool_dir(tool: &str) -> String {
         }
     }
     "/usr/bin".to_string()
+}
+
+/// Best-effort: the active graphical session's uid via loginctl (absolute paths,
+/// Local-Deps). Pure parsers (P2-1) do the work; this is the exec seam.
+fn discover_active_graphical_uid() -> Option<u32> {
+    let loginctl = format!("{}/loginctl", tool_dir("loginctl"));
+    let list = std::process::Command::new(&loginctl).args(["list-sessions", "--no-legend"]).output().ok()?;
+    for id in parse_session_ids(&String::from_utf8_lossy(&list.stdout)) {
+        if let Ok(show) = std::process::Command::new(&loginctl)
+            .args(["show-session", &id, "-p", "Active", "-p", "Type", "-p", "User", "-p", "Display"]).output() {
+            if let Some(uid) = active_graphical_uid_from_show(&String::from_utf8_lossy(&show.stdout)) {
+                return Some(uid);
+            }
+        }
+    }
+    None
+}
+
+/// Resolve a uid's home dir from `getent passwd <uid>` (field 6). Absolute path.
+fn home_for_uid(uid: u32) -> Option<String> {
+    let getent = format!("{}/getent", tool_dir("getent"));
+    let out = std::process::Command::new(&getent).args(["passwd", &uid.to_string()]).output().ok()?;
+    String::from_utf8_lossy(&out.stdout).lines().next()?.split(':').nth(5).map(str::to_string)
 }
 
 fn run(scope: Scope, unit: &str) -> i32 {
@@ -184,6 +305,26 @@ fn run(scope: Scope, unit: &str) -> i32 {
             Err(e) => log::error(&format!("teardown: relaunch via systemd-run failed: {e}")),
         }
     }
+
+    if scope == Scope::System {
+        let systemd_run = format!("{}/systemd-run", tool_dir("systemd-run"));
+        let appimage = "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage";
+        let web_port = common::config::AppConfig::load(std::path::Path::new("/var/opt/ws-scrcpy-web")).web_port;
+        match (discover_active_graphical_uid(), web_port) {
+            (Some(uid), Some(port)) => match home_for_uid(uid) {
+                Some(home) => {
+                    let argv = system_relaunch_command(&systemd_run, uid, &home, port, appimage);
+                    let (cmd, rest) = argv.split_first().expect("non-empty argv");
+                    match std::process::Command::new(cmd).args(rest).status() {
+                        Ok(s) => log::info(&format!("system uninstall: relaunched {appimage} as uid {uid} on port {port} (exit {:?})", s.code())),
+                        Err(e) => log::error(&format!("system uninstall: relaunch failed: {e}")),
+                    }
+                }
+                None => log::error(&format!("system uninstall: no home for uid {uid}; skipping relaunch")),
+            },
+            _ => log::info("system uninstall: no active graphical session / no service port — skipping relaunch (manual fallback)"),
+        }
+    }
     0
 }
 
@@ -233,6 +374,19 @@ mod tests {
     }
 
     #[test]
+    fn system_scope_teardown_removes_opt_and_var_opt() {
+        let cmds = teardown_commands(Scope::System, "WsScrcpyWeb", "/usr/bin");
+        let joined: Vec<String> = cmds.iter().map(|c| c.join(" ")).collect();
+        let removes_dir = |d: &str| joined.iter().any(|c| c.contains("rm") && c.contains(d));
+        let removes_fcontext = |spec: &str|
+            joined.iter().any(|c| c.contains("semanage fcontext -d") && c.ends_with(spec));
+        assert!(removes_dir("/opt/ws-scrcpy-web"));
+        assert!(removes_dir("/var/opt/ws-scrcpy-web"));
+        assert!(removes_fcontext("/opt/ws-scrcpy-web(/.*)?"));      // bin_t tree
+        assert!(removes_fcontext("/var/opt/ws-scrcpy-web(/.*)?"));  // var_lib_t state
+    }
+
+    #[test]
     fn relaunch_only_for_user_scope_with_marker() {
         // user scope + marker -> Some(path) (cfg!(test) bypasses the exists() check)
         assert_eq!(
@@ -243,5 +397,67 @@ mod tests {
         assert_eq!(relaunch_target(Scope::System, Some("/home/u/Apps/App.AppImage".into())), None);
         // user scope, missing marker -> None
         assert_eq!(relaunch_target(Scope::User, None), None);
+    }
+
+    #[test]
+    fn bootstrap_target_execs_opt_when_present_and_not_self() {
+        let opt = "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage";
+        assert_eq!(bootstrap_target(true, Some("/home/u/App.AppImage")), Some(PathBuf::from(opt)));
+        assert_eq!(bootstrap_target(true, Some(opt)), None);              // we ARE /opt -> don't re-exec self
+        assert_eq!(bootstrap_target(false, Some("/home/u/App.AppImage")), None); // no /opt -> run in place
+        assert_eq!(bootstrap_target(true, None), None);                  // from-source (no $APPIMAGE) -> None
+    }
+
+    #[test]
+    fn defer_to_service_only_when_system_service_and_port_live() {
+        assert_eq!(service_defer_url(Some("system-service"), Some(8000), true),
+                   Some("http://localhost:8000".to_string()));
+        assert_eq!(service_defer_url(Some("system-service"), Some(8000), false), None); // installed but down
+        assert_eq!(service_defer_url(Some("user"), Some(8000), true), None);            // not service mode
+        assert_eq!(service_defer_url(None, None, true), None);
+    }
+
+    #[test]
+    fn parses_session_ids_from_list() {
+        let list = "   3 1000 jamie seat0 tty2\n  c1 0 root  -    -\n";
+        assert_eq!(parse_session_ids(list), vec!["3".to_string(), "c1".to_string()]);
+    }
+
+    #[test]
+    fn active_graphical_uid_only_when_active_and_graphical() {
+        assert_eq!(active_graphical_uid_from_show("Active=yes\nType=wayland\nUser=1000\nDisplay="), Some(1000));
+        assert_eq!(active_graphical_uid_from_show("Active=yes\nType=x11\nUser=1001\nDisplay=:0"), Some(1001));
+        assert_eq!(active_graphical_uid_from_show("Active=no\nType=x11\nUser=1000\nDisplay=:0"), None);
+        assert_eq!(active_graphical_uid_from_show("Active=yes\nType=tty\nUser=1000\nDisplay="), None);
+    }
+
+    #[test]
+    fn system_relaunch_command_runs_as_user_on_service_port() {
+        assert_eq!(
+            system_relaunch_command("/usr/bin/systemd-run", 1000, "/home/jamie", 8000, "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"),
+            vec!["/usr/bin/systemd-run", "--uid=1000", "--setenv=HOME=/home/jamie",
+                 "--setenv=WS_SCRCPY_WEB_PORT=8000", "--collect", "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"]
+        );
+    }
+
+    #[test]
+    fn version_cmp_orders_core_and_betas() {
+        use std::cmp::Ordering::*;
+        assert_eq!(version_cmp("0.1.31", "0.1.30"), Greater);
+        assert_eq!(version_cmp("0.1.31", "0.1.31"), Equal);
+        assert_eq!(version_cmp("0.1.31", "0.1.31-beta.4"), Greater); // release > its beta
+        assert_eq!(version_cmp("0.1.31-beta.5", "0.1.31-beta.4"), Greater);
+        assert_eq!(version_cmp("0.1.30", "0.1.31-beta.1"), Less);
+    }
+
+    #[test]
+    fn bootstrap_decides_by_version() {
+        let opt = "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage";
+        assert_eq!(bootstrap_decision(true, Some("/home/u/App.AppImage"), "0.1.30", Some("0.1.31")), BootstrapAction::ExecOpt(opt.into()));
+        assert_eq!(bootstrap_decision(true, Some("/home/u/App.AppImage"), "0.1.31", Some("0.1.31")), BootstrapAction::ExecOpt(opt.into()));
+        assert_eq!(bootstrap_decision(true, Some("/home/u/App.AppImage"), "0.1.32", Some("0.1.31")), BootstrapAction::RunHomeOfferUpdate);
+        assert_eq!(bootstrap_decision(true, Some(opt), "0.1.31", Some("0.1.31")), BootstrapAction::RunHome);   // we ARE /opt
+        assert_eq!(bootstrap_decision(false, Some("/home/u/App.AppImage"), "0.1.31", None), BootstrapAction::RunHome);  // no /opt
+        assert_eq!(bootstrap_decision(true, Some("/home/u/App.AppImage"), "0.1.31", None), BootstrapAction::ExecOpt(opt.into())); // unknown /opt version -> run /opt
     }
 }

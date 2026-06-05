@@ -102,6 +102,65 @@ fn main() {
         std::process::exit(code);
     }
 
+    // Service-defer: if an ACTIVE system-scope service owns the app, open the
+    // browser at its URL and exit instead of spawning a duplicate local server.
+    #[cfg(target_os = "linux")]
+    {
+        let cfg = common::config::AppConfig::load(std::path::Path::new("/var/opt/ws-scrcpy-web"));
+        if let (Some(mode), Some(port)) = (cfg.install_mode.as_deref(), cfg.web_port) {
+            let live = std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                std::time::Duration::from_millis(200),
+            ).is_ok();
+            if let Some(url) = linux_service::service_defer_url(Some(mode), Some(port), live) {
+                log::info(&format!("service-defer: active system service; opening {url}"));
+                let xdg = format!("{}/xdg-open", linux_service::tool_dir("xdg-open"));
+                let _ = std::process::Command::new(&xdg).arg(&url).status();
+                std::process::exit(0);
+            }
+        }
+    }
+
+    // Bootstrapper: if the shared machine-wide /opt binary exists and we are a
+    // home AppImage (not /opt itself), re-exec the /opt copy and exit. MUST run
+    // before single_instance::acquire so the /opt child — not this wrapper — owns
+    // the per-user lock.
+    //
+    // Version-aware (Phase 3): reads /opt/ws-scrcpy-web/VERSION; if the home
+    // AppImage is NEWER than /opt, runs in-place and sets
+    // WS_SCRCPY_OPT_UPDATE_AVAILABLE=1 so the frontend can offer an /opt upgrade.
+    #[cfg(target_os = "linux")]
+    {
+        let opt = std::path::Path::new("/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage");
+        let appimage = std::env::var("APPIMAGE").ok();
+        let opt_version = std::fs::read_to_string("/opt/ws-scrcpy-web/VERSION")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let action = linux_service::bootstrap_decision(
+            opt.exists(),
+            appimage.as_deref(),
+            env!("CARGO_PKG_VERSION"),
+            opt_version.as_deref(),
+        );
+        match action {
+            linux_service::BootstrapAction::ExecOpt(target) => {
+                log::info(&format!("bootstrap: exec'ing machine-wide /opt binary {target:?}"));
+                let status = std::process::Command::new(&target).status();
+                let code = status.ok().and_then(|s| s.code()).unwrap_or(0);
+                std::process::exit(code);
+            }
+            linux_service::BootstrapAction::RunHomeOfferUpdate => {
+                log::info("bootstrap: home AppImage is newer than /opt; running in-place, flagging update offer");
+                std::env::set_var("WS_SCRCPY_OPT_UPDATE_AVAILABLE", "1");
+                // fall through to normal launch
+            }
+            linux_service::BootstrapAction::RunHome => {
+                // no /opt, or we ARE /opt, or no $APPIMAGE — launch in place
+            }
+        }
+    }
+
     // Cross-session user-launcher spawn dispatch. Invoked from post-stop.bat
     // after `servy-cli uninstall` completes, to drop a fresh user-session
     // launcher so the user lands on local-mode UI post-uninstall. Wraps

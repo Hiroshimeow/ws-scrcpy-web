@@ -2,6 +2,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { spawn } from 'child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { InstallMode } from '../../common/ConfigEvents';
 import {
@@ -23,10 +24,21 @@ import {
     type ServiceClientFactoryResult,
 } from '../service';
 import { resolveSystemTool } from '../service/systemTools';
-import { STAGED_SYSTEM_DIR, STAGED_SYSTEM_HELPER, buildServiceUnitEnv, buildSystemSeedConfig } from '../service/SystemdClient';
+import { STAGED_SYSTEM_DIR, STAGED_SYSTEM_APPIMAGE, STAGED_SYSTEM_HELPER, SYSTEM_STATE_DIR, buildServiceUnitEnv, buildSystemSeedConfig, buildMachineWideInstallScript, buildSystemMigrationScript, renderUnitFile, runPkexec, DECLINE_MARKER_NAME } from '../service/SystemdClient';
+import { getAppVersion } from '../appVersion';
 import { readJsonBody } from './utils';
 
 const log = Logger.for('ServiceApi');
+
+/**
+ * Returns true when a beta.40-era system-scope install used the legacy
+ * `/opt/ws-scrcpy-web/data` state layout and should be migrated to
+ * `/var/opt`. Either signal is sufficient: an explicit DATA_ROOT env that
+ * points at the old path, OR the old directory still existing on disk.
+ */
+export function systemServiceNeedsMigration(input: { dataRootEnv?: string; oldDataDirExists: boolean }): boolean {
+    return input.dataRootEnv === '/opt/ws-scrcpy-web/data' || input.oldDataDirExists;
+}
 
 /**
  * HTTP API for SP3 P3 service-mode operations.
@@ -59,6 +71,7 @@ export class ServiceApi {
             child.unref();
         },
         private scheduleExit: (fn: () => void, ms: number) => void = (fn, ms) => { setTimeout(fn, ms).unref(); },
+        private readonly runPkexecFn: (shellCmd: string, label: string) => Promise<string> = runPkexec,
     ) {}
 
     public async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -76,6 +89,15 @@ export class ServiceApi {
             }
             if (req.method === 'POST' && url === '/api/service/uninstall') {
                 return await this.handleUninstall(req, res);
+            }
+            if (req.method === 'POST' && url === '/api/service/install-system-wide') {
+                return await this.handleInstallSystemWide(res);
+            }
+            if (req.method === 'POST' && url === '/api/service/decline-system-wide') {
+                return await this.handleDeclineSystemWide(res);
+            }
+            if (req.method === 'POST' && url === '/api/service/migrate-system') {
+                return await this.handleMigrateSystem(res);
             }
 
             res.writeHead(404);
@@ -129,6 +151,26 @@ export class ServiceApi {
         const scope = result.client.getInstalledScope
             ? await result.client.getInstalledScope(WS_SCRCPY_SERVICE_NAME)
             : undefined;
+        // Linux-only machine-wide-install signals the frontend reads off status:
+        //   - machineWideInstalled gates the system-scope service-install button
+        //     (the root service execs the shared /opt binary, which must exist).
+        //   - systemInstallDeclined suppresses the first-run "install for all
+        //     users" modal once the user has declined it (persistent marker).
+        // Both go through the injected existsCheck so the API stays unit-testable.
+        // Spread conditionally (like scope/diskWebPort) so they're Linux-only.
+        let machineWide: { machineWideInstalled: boolean; systemInstallDeclined: boolean; serviceMigrationNeeded: boolean; optUpdateAvailable: boolean } | null = null;
+        if (result.platform === 'linux') {
+            const cfg = Config.getInstance();
+            const dataRoot = cfg.dataRoot ?? path.dirname(cfg.dependenciesPath);
+            machineWide = {
+                machineWideInstalled: this.existsCheck(`${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_APPIMAGE}`),
+                systemInstallDeclined: this.existsCheck(path.join(dataRoot, 'control', DECLINE_MARKER_NAME)),
+                serviceMigrationNeeded: systemServiceNeedsMigration({
+                    oldDataDirExists: this.existsCheck('/opt/ws-scrcpy-web/data'),
+                }),
+                optUpdateAvailable: process.env['WS_SCRCPY_OPT_UPDATE_AVAILABLE'] === '1',
+            };
+        }
         const body: ServiceStatusResponse = {
             supported: true,
             platform: result.platform,
@@ -137,6 +179,7 @@ export class ServiceApi {
             ...(scope !== undefined ? { scope } : {}),
             ...(disk.diskWebPort != null ? { diskWebPort: disk.diskWebPort } : {}),
             ...(disk.configMtime != null ? { configMtime: disk.configMtime } : {}),
+            ...(machineWide ?? {}),
         };
         res.writeHead(200);
         res.end(JSON.stringify(body));
@@ -638,6 +681,140 @@ export class ServiceApi {
         res.writeHead(200);
         res.end(JSON.stringify(body));
         return true;
+    }
+
+    private async handleInstallSystemWide(res: ServerResponse): Promise<boolean> {
+        if (process.platform !== 'linux') {
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: false, error: 'machine-wide install is linux-only', reason: 'unsupported' }));
+            return true;
+        }
+        const appImage = process.env['APPIMAGE'];
+        if (!appImage) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ ok: false, error: 'not running from an AppImage ($APPIMAGE unset)', reason: 'unknown' }));
+            return true;
+        }
+        const version = getAppVersion();
+        const script = buildMachineWideInstallScript({ sourceAppImage: appImage, version });
+        try {
+            await this.runPkexecFn(script, 'install-system-wide');
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, status: 'installed' }));
+        } catch (err) {
+            const msg = (err as Error).message;
+            const declined = /dismissed/i.test(msg);
+            res.writeHead(declined ? 403 : 500);
+            res.end(JSON.stringify({ ok: false, error: msg, reason: declined ? 'uac-declined' : 'unknown' }));
+        }
+        return true;
+    }
+
+    private async handleDeclineSystemWide(res: ServerResponse): Promise<boolean> {
+        const cfg = Config.getInstance();
+        const dataRoot = cfg.dataRoot ?? path.dirname(cfg.dependenciesPath);
+        const marker = path.join(dataRoot, 'control', DECLINE_MARKER_NAME);
+        try {
+            fs.mkdirSync(path.dirname(marker), { recursive: true });
+            fs.writeFileSync(marker, '', 'utf8');
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, status: 'declined' }));
+        } catch (err) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ ok: false, error: (err as Error).message, reason: 'unknown' }));
+        }
+        return true;
+    }
+
+    /**
+     * POST /api/service/migrate-system — one-click migration of a legacy
+     * beta.40 system-scope service (old `/opt/.../data` state layout) to the
+     * new `/var/opt/ws-scrcpy-web` layout.
+     *
+     * The /opt AppImage + deps are ALREADY staged and stay put; this only
+     * relocates the writable state dir, fixes the SELinux fcontext rules, and
+     * reinstalls the unit with `DATA_ROOT=/var/opt` — all under ONE pkexec
+     * prompt (buildSystemMigrationScript). Doing it as a single elevated script
+     * sidesteps the async coordination problem of the out-of-process uninstall
+     * teardown (handleUninstall) — nothing is torn down except the unit + the
+     * old state dir, so there's no uninstall→reinstall to sequence.
+     *
+     * Carries the legacy service's webPort forward into the seeded /var/opt
+     * config; installMode is forced to `system-service` by buildSystemSeedConfig
+     * (the migrated unit IS a system service). Status codes mirror
+     * handleInstallSystemWide (200 ok / 403 dismissed / 500 other).
+     */
+    private async handleMigrateSystem(res: ServerResponse): Promise<boolean> {
+        if (process.platform !== 'linux') {
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: false, error: 'service migration is linux-only', reason: 'unsupported' }));
+            return true;
+        }
+
+        const cfg = Config.getInstance();
+        const webPort = this.readLegacyServiceWebPort();
+        const seedConfig = buildSystemSeedConfig(webPort);
+
+        // Render the NEW unit body. System scope → renderUnitFile points
+        // ExecStart at the in-place /opt AppImage and the env now carries
+        // DATA_ROOT=/var/opt (+ DEPS_PATH=/opt/.../dependencies). binPath +
+        // startupDir are unused for system scope but the type requires them.
+        const unitContent = renderUnitFile(
+            {
+                name: WS_SCRCPY_SERVICE_NAME,
+                displayName: WS_SCRCPY_SERVICE_DISPLAY_NAME,
+                description: WS_SCRCPY_SERVICE_DESCRIPTION,
+                binPath: `${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_APPIMAGE}`,
+                startupDir: STAGED_SYSTEM_DIR,
+                startType: 'Automatic',
+                maxRestartAttempts: 3,
+                envVars: buildServiceUnitEnv('linux', 'system', cfg.dependenciesPath),
+                logPath: `${SYSTEM_STATE_DIR}/logs/service.log`,
+                scope: 'system',
+            },
+            'system',
+        );
+
+        const unitPath = `/etc/systemd/system/${WS_SCRCPY_SERVICE_NAME}.service`;
+        const tmpFile = path.join(os.tmpdir(), `${WS_SCRCPY_SERVICE_NAME}.service.migrate.tmp`);
+        fs.writeFileSync(tmpFile, unitContent, { mode: 0o644 });
+        try {
+            const script = buildSystemMigrationScript({
+                seedConfigJson: JSON.stringify(seedConfig),
+                unitTmpPath: tmpFile,
+                unitPath,
+                name: WS_SCRCPY_SERVICE_NAME,
+            });
+            await this.runPkexecFn(script, 'migrate-system');
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, status: 'migrated' }));
+        } catch (err) {
+            const msg = (err as Error).message;
+            const declined = /dismissed/i.test(msg);
+            res.writeHead(declined ? 403 : 500);
+            res.end(JSON.stringify({ ok: false, error: msg, reason: declined ? 'uac-declined' : 'unknown' }));
+        } finally {
+            try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
+        }
+        return true;
+    }
+
+    /**
+     * Read the legacy system-service webPort so the migration can carry it
+     * forward into the new /var/opt config. Reads the old service's own
+     * `/opt/.../data/config.json` directly; on any read/parse failure (already
+     * migrated, or a non-Linux test host where that path doesn't exist) falls
+     * back to the running instance's in-memory webPort.
+     */
+    private readLegacyServiceWebPort(): number {
+        try {
+            const raw = fs.readFileSync(`${STAGED_SYSTEM_DIR}/data/config.json`, 'utf-8');
+            const parsed = JSON.parse(raw) as { webPort?: unknown };
+            if (typeof parsed.webPort === 'number') return parsed.webPort;
+        } catch {
+            // Legacy config unreadable — fall back to the running instance's config.
+        }
+        return Config.getInstance().getAppConfig().webPort;
     }
 
     /**

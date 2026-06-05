@@ -46,6 +46,14 @@ export interface ServiceStatusResponse {
      * omitted on Windows, where scope is auto-detected from execPath.
      */
     scope?: 'user' | 'system' | null;
+    /** Linux: the shared /opt machine-wide AppImage exists. */
+    machineWideInstalled?: boolean;
+    /** Linux: the user declined the first-run system-wide install (marker present). */
+    systemInstallDeclined?: boolean;
+    /** Linux: a legacy /opt/.../data system install needs migration to /var/opt. */
+    serviceMigrationNeeded?: boolean;
+    /** Linux: launcher detected a newer home AppImage than /opt; offer the system-wide update. */
+    optUpdateAvailable?: boolean;
 }
 
 /** Success response shape for /api/service/install and /api/service/uninstall. */

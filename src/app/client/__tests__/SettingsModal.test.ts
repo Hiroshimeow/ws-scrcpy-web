@@ -9,6 +9,9 @@ import {
     lockScopeRadioControl,
     stopServerButtonState,
     buildServiceInfoRow,
+    systemServiceInstallGate,
+    applySystemInstallGate,
+    migrationNotice,
 } from '../SettingsModal';
 
 describe('uninstallFollowupMessage', () => {
@@ -137,6 +140,47 @@ describe('stopServerButtonState', () => {
     });
 });
 
+describe('systemServiceInstallGate', () => {
+    it('disables system service install with explainer when not machine-wide', () => {
+        expect(systemServiceInstallGate({ machineWideInstalled: false })).toEqual({
+            enabled: false,
+            note: 'system service install requires installing system-wide for all users first.',
+        });
+    });
+    it('enables it (no note) once machine-wide installed', () => {
+        expect(systemServiceInstallGate({ machineWideInstalled: true })).toEqual({ enabled: true, note: null });
+    });
+});
+
+describe('applySystemInstallGate', () => {
+    it('disables the install button + shows the gate note when system selected and not machine-wide', () => {
+        const btn = document.createElement('button');
+        const note = document.createElement('p');
+        note.hidden = true;
+        applySystemInstallGate(btn, note, /* systemSelected */ true, /* machineWideInstalled */ false);
+        expect(btn.disabled).toBe(true);
+        expect(note.hidden).toBe(false);
+        expect(note.textContent).toMatch(/system-wide/i);
+    });
+
+    it('enables the button + hides the note when user scope is selected (gate only applies to system)', () => {
+        const btn = document.createElement('button');
+        const note = document.createElement('p');
+        applySystemInstallGate(btn, note, /* systemSelected */ false, /* machineWideInstalled */ false);
+        expect(btn.disabled).toBe(false);
+        expect(note.hidden).toBe(true);
+        expect(note.textContent).toBe('');
+    });
+
+    it('enables the button (no note) when machine-wide is installed even if system is selected', () => {
+        const btn = document.createElement('button');
+        const note = document.createElement('p');
+        applySystemInstallGate(btn, note, /* systemSelected */ true, /* machineWideInstalled */ true);
+        expect(btn.disabled).toBe(false);
+        expect(note.hidden).toBe(true);
+    });
+});
+
 describe('buildServiceInfoRow', () => {
     it('renders a neutral status line — no error styling, no retry button', () => {
         const row = buildServiceInfoRow('service removed. relaunch the app manually.');
@@ -144,5 +188,19 @@ describe('buildServiceInfoRow', () => {
         expect(row.className).toContain('settings-status');
         expect(row.className).not.toContain('settings-status-error');
         expect(row.querySelector('button')).toBeNull();
+    });
+});
+
+describe('migrationNotice', () => {
+    it('show=true with reinstall text when serviceMigrationNeeded=true', () => {
+        const result = migrationNotice({ serviceMigrationNeeded: true });
+        expect(result.show).toBe(true);
+        expect(result.text).toMatch(/old layout|reinstall|new layout/i);
+    });
+    it('show=false with empty text when serviceMigrationNeeded=false', () => {
+        expect(migrationNotice({ serviceMigrationNeeded: false })).toEqual({ show: false, text: '' });
+    });
+    it('show=false with empty text when serviceMigrationNeeded is undefined', () => {
+        expect(migrationNotice({})).toEqual({ show: false, text: '' });
     });
 });

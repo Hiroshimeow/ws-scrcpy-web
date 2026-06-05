@@ -78,11 +78,16 @@ export const STAGED_SYSTEM_APPIMAGE = 'WsScrcpyWeb.AppImage';
 export const STAGED_SYSTEM_HELPER = 'ws-scrcpy-web-launcher.exe';
 
 /**
- * Root-owned writable state dir for the system-scope service (config.json,
- * logs/). A MORE-SPECIFIC fcontext (`…/data → var_lib_t`) overrides the dir's
- * general bin_t rule so the service may write here under SELinux (#36).
+ * FHS-correct writable state dir for the system-scope service (config.json,
+ * logs/). Lives under `/var/opt` (outside `/opt`) so it is writable by root
+ * and correctly labelled `var_lib_t` by SELinux. The `/opt` restorecon does
+ * NOT reach this tree — it gets its own `restorecon -Rv` step at install (#36).
  */
-export const STAGED_SYSTEM_DATA_DIR = `${STAGED_SYSTEM_DIR}/data`;
+export const SYSTEM_STATE_DIR = '/var/opt/ws-scrcpy-web';
+/** VERSION file written into /opt at machine-wide install (binary-only relocate). */
+export const SYSTEM_OPT_VERSION_FILE = `${STAGED_SYSTEM_DIR}/VERSION`;
+/** System-wide .desktop entry for all users (machine-wide install only). */
+export const SYSTEM_DESKTOP_FILE = '/usr/share/applications/ws-scrcpy-web.desktop';
 /**
  * Root-owned dependencies dir for the system-scope service (node/adb/
  * scrcpy-server). Under the bin_t-labelled /opt tree so init_t may exec them,
@@ -104,7 +109,7 @@ export function buildServiceUnitEnv(
     userDepsPath: string,
 ): Record<string, string> {
     if (platform === 'linux' && scope === 'system') {
-        return { DATA_ROOT: STAGED_SYSTEM_DATA_DIR, DEPS_PATH: STAGED_SYSTEM_DEPS_DIR };
+        return { DATA_ROOT: SYSTEM_STATE_DIR, DEPS_PATH: STAGED_SYSTEM_DEPS_DIR };
     }
     return { DEPS_PATH: userDepsPath };
 }
@@ -121,12 +126,15 @@ export function buildSystemSeedConfig(currentWebPort: number): Record<string, un
     return { installMode: 'system-service', firstRunComplete: true, webPort: currentWebPort };
 }
 
+/** Per-user decline marker filename — no leading slash, relative to <dataRoot>/control/. */
+export const DECLINE_MARKER_NAME = 'system-install-declined';
+
 /**
  * Run a command via pkexec for graphical privilege escalation. The user
  * sees a single password prompt for the entire shell command. Throws on
  * auth-cancel (exit 126), pkexec-not-found, or command failure.
  */
-async function runPkexec(shellCmd: string, label: string): Promise<string> {
+export async function runPkexec(shellCmd: string, label: string): Promise<string> {
     try {
         const { stdout } = await execFileAsync(resolveSystemTool('pkexec'), ['sh', '-c', shellCmd], {
             encoding: 'utf8',
@@ -291,11 +299,13 @@ export function buildSystemInstallScript(
     const semanage = sbinTool('semanage');
     const restorecon = sbinTool('restorecon');
     const steps: string[] = [
-        // 1. stage dirs: the /opt root + the writable data dir (always — the
-        //    system service writes its config + logs there). The deps dir is
-        //    added below only when we have deps to copy.
+        // 1. stage dirs: the /opt root for binaries + deps, plus the FHS-correct
+        //    writable state dir at /var/opt (always — the system service writes
+        //    its config + logs there). The /opt restorecon does NOT reach /var/opt,
+        //    so the state dir gets its own restorecon step below.
+        //    The deps dir is added below only when we have deps to copy.
         `${mkdir} -p ${STAGED_SYSTEM_DIR}`,
-        `${mkdir} -p ${STAGED_SYSTEM_DATA_DIR}`,
+        `${mkdir} -p ${SYSTEM_STATE_DIR}`,
         `${cp} "${args.sourceAppImage}" "${staged}"`,
         `${chmod} 0755 "${staged}"`,
     ];
@@ -317,7 +327,7 @@ export function buildSystemInstallScript(
     //     config on first boot (system-service mode, first-run-complete, the
     //     user's web port). Written before restorecon so it gets var_lib_t.
     if (args.seedConfigTmpPath) {
-        steps.push(`${cp} "${args.seedConfigTmpPath}" "${STAGED_SYSTEM_DATA_DIR}/config.json"`);
+        steps.push(`${cp} "${args.seedConfigTmpPath}" "${SYSTEM_STATE_DIR}/config.json"`);
     }
     steps.push(
         // 2. label bin_t so init_t can exec it. Persistent rule (semanage) when
@@ -329,13 +339,191 @@ export function buildSystemInstallScript(
         //    erroring on a non-SELinux fs) would break the outer `&&` chain and
         //    silently skip the unit cp + enable below.
         //    restorecon covers the whole dir — labels the helper bin_t too when present.
-        `( ( ${semanage} fcontext -a -t bin_t '${STAGED_SYSTEM_DIR}(/.*)?' && ${semanage} fcontext -a -t var_lib_t '${STAGED_SYSTEM_DATA_DIR}(/.*)?' && ${restorecon} -Rv "${STAGED_SYSTEM_DIR}" ) || ${chcon} -t bin_t "${staged}" || true )`,
+        `( ( ${semanage} fcontext -a -t bin_t '${STAGED_SYSTEM_DIR}(/.*)?' && ${semanage} fcontext -a -t var_lib_t '${SYSTEM_STATE_DIR}(/.*)?' && ${restorecon} -Rv "${STAGED_SYSTEM_DIR}" && ${restorecon} -Rv "${SYSTEM_STATE_DIR}" ) || ${chcon} -t bin_t "${staged}" || true )`,
         // 3. install + enable the unit (ExecStart already points at ${staged})
         `${cp} "${args.unitTmpPath}" "${args.unitPath}"`,
         `${systemctl} daemon-reload`,
         `${systemctl} enable --now ${args.name}.service`,
     );
     return steps.join(' && ');
+}
+
+/**
+ * Build the privileged shell script for a machine-wide install. Runs under a
+ * single pkexec prompt. Relocates ONLY the AppImage binary to /opt (no deps,
+ * no systemd unit) — deps stay per-user in ~/.local. Writes VERSION, drops a
+ * system-wide .desktop entry for all users, and refreshes the menu cache.
+ * `binTool`/`sbinTool` are injectable for testing; production resolves absolute
+ * paths via systemTools (Local-Dependencies-Only — no bare-name $PATH lookup).
+ */
+export function buildMachineWideInstallScript(
+    args: { sourceAppImage: string; version: string },
+    binTool: (t: string) => string = (t) => resolveSystemTool(t),
+    sbinTool: (t: string) => string = (t) => resolveSystemTool(t),
+): string {
+    const staged = `${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_APPIMAGE}`;
+    const mkdir = binTool('mkdir');
+    const cp = binTool('cp');
+    const chmod = binTool('chmod');
+    const chcon = binTool('chcon');
+    const printf = binTool('printf');
+    const semanage = sbinTool('semanage');
+    const restorecon = sbinTool('restorecon');
+    const updateDesktopDb = binTool('update-desktop-database');
+    const desktop = [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Name=ws-scrcpy-web',
+        `Exec=${staged}`,
+        'Icon=ws-scrcpy-web',
+        'Categories=Utility;',
+    ].join('\\n');
+    return [
+        `${mkdir} -p ${STAGED_SYSTEM_DIR}`,
+        `${cp} "${args.sourceAppImage}" "${staged}"`,
+        `${chmod} 0755 "${staged}"`,
+        `${printf} '%s' '${args.version}' > ${SYSTEM_OPT_VERSION_FILE}`,
+        `( ( ${semanage} fcontext -a -t bin_t '${STAGED_SYSTEM_DIR}(/.*)?' && ${restorecon} -Rv "${STAGED_SYSTEM_DIR}" ) || ${chcon} -t bin_t "${staged}" || true )`,
+        `( ${printf} '${desktop}\\n' > ${SYSTEM_DESKTOP_FILE} || true )`,
+        `( ${updateDesktopDb} /usr/share/applications || true )`,
+    ].join(' && ');
+}
+
+/**
+ * Build the privileged shell script for an in-app update of a machine-wide-
+ * no-service install (the user runs the root-owned `/opt` AppImage directly,
+ * NOT a service). Runs under a single pkexec prompt.
+ *
+ * The swap is a RENAME, never a `cp`: `cp` overwrites the file in place, which
+ * fails with `ETXTBSY` on the running AppImage. A rename works while the old
+ * AppImage is still mounted — the old inode stays alive for the running process,
+ * and the new file lands at the same path for the next launch:
+ *
+ *   1. `mv -f <opt>/WsScrcpyWeb.AppImage <opt>/WsScrcpyWeb.AppImage.bak` — back up
+ *      the running binary (rollback). The live process keeps its mounted inode.
+ *   2. `mv -f <staged> <opt>/WsScrcpyWeb.AppImage` — move the verified download in.
+ *   3. `chmod 0755` the new file.
+ *   4. re-apply the `bin_t` label best-effort — `restorecon` re-applies the
+ *      persistent fcontext rule set at machine-wide install; `chcon -t bin_t` is
+ *      the transient fallback; the trailing `|| true` keeps a non-SELinux host
+ *      going (mirrors linux_apply.rs::relabel_command, which relabels the single
+ *      swapped file with `restorecon -v` / `chcon -t bin_t`).
+ *   5. `printf` the new VERSION marker into `/opt/ws-scrcpy-web/VERSION`.
+ *
+ * The relaunch is NOT part of this script — it must run as the user (not under
+ * pkexec, which would come back as root). The caller spawns a separate detached
+ * relaunch-only helper that waits for the old process to exit (releasing the
+ * per-user flock) before relaunching the freshly-swapped `/opt` copy.
+ *
+ * `binTool`/`sbinTool` are injectable for testing; production resolves absolute
+ * paths via systemTools (Local-Dependencies-Only — no bare-name $PATH lookup).
+ */
+export function buildMachineWideUpdateScript(
+    args: { stagedAppImage: string; version: string },
+    binTool: (t: string) => string = (t) => resolveSystemTool(t),
+    sbinTool: (t: string) => string = (t) => resolveSystemTool(t),
+): string {
+    const target = `${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_APPIMAGE}`;
+    const backup = `${target}.bak`;
+    const mv = binTool('mv');
+    const chmod = binTool('chmod');
+    const chcon = binTool('chcon');
+    const printf = binTool('printf');
+    const restorecon = sbinTool('restorecon');
+    return [
+        `${mv} -f "${target}" "${backup}"`,
+        `${mv} -f "${args.stagedAppImage}" "${target}"`,
+        `${chmod} 0755 "${target}"`,
+        `( ${restorecon} -v "${target}" || ${chcon} -t bin_t "${target}" || true )`,
+        `${printf} '%s' '${args.version}' > ${SYSTEM_OPT_VERSION_FILE}`,
+    ].join(' && ');
+}
+
+/** Legacy beta.40 system-scope state dir (pre-/var/opt). Migrated away by
+ *  buildSystemMigrationScript — `rm -rf`'d and its fcontext rule deleted. */
+export const LEGACY_SYSTEM_DATA_DIR = `${STAGED_SYSTEM_DIR}/data`;
+
+/**
+ * Build the privileged shell script for a one-shot system-scope MIGRATION from
+ * the legacy beta.40 `/opt/ws-scrcpy-web/data` state layout to the FHS-correct
+ * `/var/opt/ws-scrcpy-web` layout. Runs under a single pkexec prompt.
+ *
+ * The /opt AppImage + deps are ALREADY staged and STAY PUT — this script only
+ * relocates the writable state dir, fixes the SELinux fcontext rules, and
+ * reinstalls the unit with `DATA_ROOT=/var/opt`. It does NOT re-copy the
+ * AppImage or deps (avoids the out-of-process uninstall→reinstall coordination
+ * problem: nothing is torn down except the unit + the old state dir).
+ *
+ * Two phases, `&&`-joined under one prompt:
+ *   1. OLD cleanup — best-effort (`|| true`): a stopped/disabled/not-failed unit
+ *      or a non-SELinux host must NOT abort the migration. stop + disable +
+ *      reset-failed the unit; `rm -rf` the legacy `/opt/.../data` state; delete
+ *      the legacy `var_lib_t` fcontext rule on `/opt/.../data`.
+ *   2. NEW setup — authoritative (a failure aborts so we never `enable` a broken
+ *      unit): mkdir the `/var/opt` state dir (+ logs/ for the unit's append:),
+ *      seed `config.json` there (carries webPort + installMode=system-service),
+ *      add the `var_lib_t` fcontext rule + restorecon (best-effort SELinux
+ *      subshell with a chcon transient fallback, mirroring
+ *      buildSystemInstallScript), install the new unit, daemon-reload, enable.
+ *
+ * `binTool`/`sbinTool` are injectable for testing; production resolves absolute
+ * paths via systemTools (Local-Dependencies-Only — no bare-name $PATH lookup).
+ */
+export function buildSystemMigrationScript(
+    args: {
+        /** Pre-stringified seed config (JSON) written inline to the new config.json. */
+        seedConfigJson: string;
+        /** Tmp path holding the freshly-rendered new (DATA_ROOT=/var/opt) unit body. */
+        unitTmpPath: string;
+        /** Destination unit path, e.g. /etc/systemd/system/WsScrcpyWeb.service. */
+        unitPath: string;
+        /** Canonical service name (e.g. 'WsScrcpyWeb'). */
+        name: string;
+    },
+    binTool: (t: string) => string = (t) => resolveSystemTool(t),
+    sbinTool: (t: string) => string = (t) => resolveSystemTool(t),
+): string {
+    const mkdir = binTool('mkdir');
+    const cp = binTool('cp');
+    const rm = binTool('rm');
+    const printf = binTool('printf');
+    const chcon = binTool('chcon');
+    const systemctl = binTool('systemctl');
+    const semanage = sbinTool('semanage');
+    const restorecon = sbinTool('restorecon');
+    const stateLogs = `${SYSTEM_STATE_DIR}/logs`;
+    return [
+        // ── 1. OLD cleanup (best-effort) ──────────────────────────────────────
+        // stop/disable/reset-failed may each fail benignly (unit not loaded /
+        // already disabled / not failed); `|| true` keeps the `&&` chain alive so
+        // the migration still proceeds to the new-layout setup. POSIX sh gives
+        // `&&`/`||` EQUAL left-assoc precedence, so `A || true && B` => `((A||true)&&B)`.
+        `${systemctl} stop ${args.name}.service || true`,
+        `${systemctl} disable ${args.name}.service || true`,
+        `${systemctl} reset-failed ${args.name}.service || true`,
+        // rm -rf is idempotent (exit 0 even when absent); drop the legacy state tree.
+        `${rm} -rf ${LEGACY_SYSTEM_DATA_DIR}`,
+        // delete the legacy var_lib_t rule on /opt/.../data — best-effort subshell
+        // (rule may be absent / host non-SELinux), isolated so it can't break the chain.
+        `( ${semanage} fcontext -d '${LEGACY_SYSTEM_DATA_DIR}(/.*)?' || true )`,
+        // ── 2. NEW setup (authoritative) ──────────────────────────────────────
+        // create the FHS state dir (+ logs/ so the unit's StandardOutput append:
+        // target's parent exists before enable --now starts the service).
+        `${mkdir} -p ${stateLogs}`,
+        // seed config.json inline (no tmp-seed file → atomic, and the carried
+        // webPort is auditable in the script). Written BEFORE the relabel so
+        // restorecon labels it var_lib_t.
+        `${printf} '%s' '${args.seedConfigJson}' > ${SYSTEM_STATE_DIR}/config.json`,
+        // label the state dir var_lib_t + restorecon. Best-effort subshell with a
+        // chcon transient fallback + trailing `|| true` so a non-SELinux host still
+        // proceeds to install the unit — mirrors buildSystemInstallScript.
+        `( ( ${semanage} fcontext -a -t var_lib_t '${SYSTEM_STATE_DIR}(/.*)?' && ${restorecon} -Rv "${SYSTEM_STATE_DIR}" ) || ${chcon} -t var_lib_t "${SYSTEM_STATE_DIR}" || true )`,
+        // reinstall the unit (ExecStart still points at the in-place /opt AppImage;
+        // env now carries DATA_ROOT=/var/opt) + reload + enable.
+        `${cp} "${args.unitTmpPath}" "${args.unitPath}"`,
+        `${systemctl} daemon-reload`,
+        `${systemctl} enable --now ${args.name}.service`,
+    ].join(' && ');
 }
 
 /**

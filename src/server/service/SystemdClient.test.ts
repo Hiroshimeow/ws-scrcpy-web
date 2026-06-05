@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SystemdClient, renderUnitFile, STAGED_SYSTEM_DIR, buildSystemInstallScript, systemctlArgv } from './SystemdClient';
+import { SystemdClient, renderUnitFile, STAGED_SYSTEM_DIR, buildSystemInstallScript, systemctlArgv, buildServiceUnitEnv, buildMachineWideInstallScript, buildMachineWideUpdateScript, buildSystemMigrationScript, buildSystemSeedConfig } from './SystemdClient';
 
 describe('system-scope staging', () => {
     const baseOpts = {
@@ -104,24 +104,45 @@ describe('buildSystemInstallScript', () => {
             name: 'WsScrcpyWeb',
         });
         // writable state dir + deps dir created
-        expect(script).toContain('mkdir -p /opt/ws-scrcpy-web/data');
+        expect(script).toContain('mkdir -p /var/opt/ws-scrcpy-web');
         expect(script).toContain('mkdir -p /opt/ws-scrcpy-web/dependencies');
         // deps copied from the user's dir into the app's OWN /opt tree (Local-Deps)
         expect(script).toContain('cp -a "/home/u/.local/share/WsScrcpyWeb/dependencies/." "/opt/ws-scrcpy-web/dependencies/"');
-        // seed config written into the data dir
-        expect(script).toContain('cp "/tmp/WsScrcpyWeb.seed.json" "/opt/ws-scrcpy-web/data/config.json"');
-        // data dir gets the writable var_lib_t label (more-specific beats the tree's bin_t)
-        expect(script).toContain("semanage fcontext -a -t var_lib_t '/opt/ws-scrcpy-web/data(/.*)?'");
+        // seed config written into the state dir (FHS /var/opt)
+        expect(script).toContain('cp "/tmp/WsScrcpyWeb.seed.json" "/var/opt/ws-scrcpy-web/config.json"');
+        // state dir gets the writable var_lib_t label (more-specific beats the tree's bin_t)
+        expect(script).toContain("semanage fcontext -a -t var_lib_t '/var/opt/ws-scrcpy-web(/.*)?'");
         // deps + seed land before the relabel so restorecon labels them correctly
         expect(script.indexOf('config.json')).toBeLessThan(script.indexOf('restorecon -Rv'));
     });
 
-    it('always prepares the writable data dir, but omits deps-copy + seed when not provided', () => {
+    it('always prepares the writable state dir, but omits deps-copy + seed when not provided', () => {
         const script = buildSystemInstallScript(args);
-        expect(script).toContain('mkdir -p /opt/ws-scrcpy-web/data');
-        expect(script).toContain("semanage fcontext -a -t var_lib_t '/opt/ws-scrcpy-web/data(/.*)?'");
+        expect(script).toContain('mkdir -p /var/opt/ws-scrcpy-web');
+        expect(script).toContain("semanage fcontext -a -t var_lib_t '/var/opt/ws-scrcpy-web(/.*)?'");
         expect(script).not.toContain('cp -a');
-        expect(script).not.toContain('/data/config.json');
+        expect(script).not.toContain('config.json');
+    });
+});
+
+describe('SYSTEM_STATE_DIR — FHS /var/opt retargeting', () => {
+    it('system-scope unit env points DATA_ROOT at /var/opt (not /opt/.../data)', () => {
+        const env = buildServiceUnitEnv('linux', 'system', '/home/u/.local/share/WsScrcpyWeb/dependencies');
+        expect(env['DATA_ROOT']).toBe('/var/opt/ws-scrcpy-web');
+        expect(env['DEPS_PATH']).toBe('/opt/ws-scrcpy-web/dependencies');
+    });
+
+    it('system install seeds config + labels state under /var/opt (var_lib_t)', () => {
+        const script = buildSystemInstallScript(
+            { sourceAppImage: '/home/u/App.AppImage', seedConfigTmpPath: '/tmp/seed.json',
+              unitTmpPath: '/tmp/u.service', unitPath: '/etc/systemd/system/WsScrcpyWeb.service', name: 'WsScrcpyWeb' },
+            (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`,
+        );
+        expect(script).toContain('mkdir -p /var/opt/ws-scrcpy-web');
+        expect(script).toContain('cp "/tmp/seed.json" "/var/opt/ws-scrcpy-web/config.json"');
+        expect(script).toContain("semanage fcontext -a -t var_lib_t '/var/opt/ws-scrcpy-web(/.*)?'");
+        expect(script).toContain('restorecon -Rv "/var/opt/ws-scrcpy-web"');
+        expect(script).not.toContain('/opt/ws-scrcpy-web/data');
     });
 });
 
@@ -154,5 +175,156 @@ describe('renderUnitFile', () => {
         expect(unitSection).toContain('StartLimitBurst=3');
         expect(serviceSection).not.toContain('StartLimitIntervalSec');
         expect(serviceSection).not.toContain('StartLimitBurst');
+    });
+});
+
+describe('buildMachineWideInstallScript', () => {
+    it('machine-wide install stages just the binary + label + desktop + VERSION', () => {
+        const s = buildMachineWideInstallScript(
+            { sourceAppImage: '/home/u/Downloads/WsScrcpyWeb-linux-beta.AppImage', version: '0.1.31-beta.1' },
+            (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`,
+        );
+        expect(s).toContain('mkdir -p /opt/ws-scrcpy-web');
+        expect(s).toContain('cp "/home/u/Downloads/WsScrcpyWeb-linux-beta.AppImage" "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"');
+        expect(s).toContain('chmod 0755 "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"');
+        expect(s).toContain("semanage fcontext -a -t bin_t '/opt/ws-scrcpy-web(/.*)?'");
+        expect(s).toContain('restorecon -Rv "/opt/ws-scrcpy-web"');
+        expect(s).toContain('/opt/ws-scrcpy-web/VERSION');
+        expect(s).toContain('/usr/share/applications/ws-scrcpy-web.desktop');   // SYSTEM-WIDE menu (all users)
+        expect(s).toContain('Exec=/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage');     // every user launches the shared /opt binary
+        expect(s).not.toContain('dependencies');   // binary only — deps stay per-user ~/.local
+        expect(s).not.toContain('systemctl');      // no service install here
+    });
+});
+
+describe('buildMachineWideUpdateScript', () => {
+    // Phase 3 — machine-wide-no-service in-app update. The user runs the
+    // root-owned /opt AppImage directly (NOT a service), so the swap needs ONE
+    // pkexec. A `cp` over /opt would ETXTBSY the running file, so the swap is a
+    // RENAME (the old inode stays alive for the running process; renames work
+    // while the AppImage is mounted). The new file gets re-labelled bin_t + a
+    // fresh VERSION.
+    const args = {
+        stagedAppImage:
+            '/home/u/.local/share/WsScrcpyWeb/control/update-staging/WsScrcpyWeb-linux-beta.AppImage.new',
+        version: '0.1.31-beta.2',
+    };
+
+    it('rename-swaps the /opt AppImage (old→.bak, staged→/opt), chmods, relabels best-effort, writes VERSION', () => {
+        const s = buildMachineWideUpdateScript(args, (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`);
+        // 1. back up the RUNNING /opt binary by RENAME (cp would ETXTBSY it).
+        expect(s).toContain(
+            '/usr/bin/mv -f "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage" "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage.bak"',
+        );
+        // 2. move the staged download into place (rename, not cp).
+        expect(s).toContain(
+            `/usr/bin/mv -f "${args.stagedAppImage}" "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"`,
+        );
+        // 3. chmod the new binary executable.
+        expect(s).toContain('/usr/bin/chmod 0755 "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"');
+        // 4. re-apply the bin_t label best-effort: restorecon (persistent rule),
+        //    chcon fallback, trailing `|| true` so a non-SELinux host still writes VERSION.
+        expect(s).toContain('/usr/sbin/restorecon -v "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"');
+        expect(s).toContain('/usr/bin/chcon -t bin_t "/opt/ws-scrcpy-web/WsScrcpyWeb.AppImage"');
+        // 5. write the new VERSION marker.
+        expect(s).toContain(`/usr/bin/printf '%s' '0.1.31-beta.2' > /opt/ws-scrcpy-web/VERSION`);
+    });
+
+    it('NEVER cp the AppImage (cp overwrites in place → ETXTBSY on the running file)', () => {
+        const s = buildMachineWideUpdateScript(args, (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`);
+        expect(s).not.toMatch(/\bcp\b/);
+    });
+
+    it('orders the steps: backup-rename → staged-rename → chmod → relabel → VERSION', () => {
+        const s = buildMachineWideUpdateScript(args);
+        const backup = s.indexOf('.bak');
+        const stagedMove = s.indexOf(args.stagedAppImage);
+        const chmod = s.indexOf('chmod 0755');
+        const relabel = s.indexOf('restorecon -v');
+        const version = s.indexOf('VERSION');
+        expect(backup).toBeGreaterThanOrEqual(0);
+        expect(backup).toBeLessThan(stagedMove);
+        expect(stagedMove).toBeLessThan(chmod);
+        expect(chmod).toBeLessThan(relabel);
+        expect(relabel).toBeLessThan(version);
+    });
+
+    it('relabel is best-effort — restorecon → chcon → || true in one subshell (never aborts the && chain)', () => {
+        const s = buildMachineWideUpdateScript(args, (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`);
+        expect(s).toMatch(/\(\s*\/usr\/sbin\/restorecon -v "[^"]+" \|\| \/usr\/bin\/chcon -t bin_t "[^"]+" \|\| true\s*\)/);
+    });
+
+    it('uses absolute tool paths (no bare names) when resolvers are injected', () => {
+        const s = buildMachineWideUpdateScript(args, (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`);
+        expect(s).toContain('/usr/bin/mv -f');
+        expect(s).toContain('/usr/bin/printf');
+        expect(s).toContain('/usr/sbin/restorecon');
+    });
+});
+
+describe('buildSystemMigrationScript', () => {
+    const args = {
+        seedConfigJson: JSON.stringify(buildSystemSeedConfig(8000)),
+        unitTmpPath: '/tmp/WsScrcpyWeb.service.tmp',
+        unitPath: '/etc/systemd/system/WsScrcpyWeb.service',
+        name: 'WsScrcpyWeb',
+    };
+
+    it('old-cleanup: stops + disables + reset-failed the unit, rm -rf the legacy /opt/.../data, deletes the legacy fcontext rule', () => {
+        const script = buildSystemMigrationScript(args);
+        expect(script).toContain('systemctl stop WsScrcpyWeb.service');
+        expect(script).toContain('systemctl disable WsScrcpyWeb.service');
+        expect(script).toContain('systemctl reset-failed WsScrcpyWeb.service');
+        expect(script).toContain('rm -rf /opt/ws-scrcpy-web/data');
+        expect(script).toContain("semanage fcontext -d '/opt/ws-scrcpy-web/data(/.*)?'");
+    });
+
+    it('new-setup: mkdir /var/opt, seeds config.json there, adds var_lib_t + restorecon, installs the unit, daemon-reload, enable --now', () => {
+        const script = buildSystemMigrationScript(args);
+        expect(script).toContain('mkdir -p /var/opt/ws-scrcpy-web');
+        expect(script).toContain('/var/opt/ws-scrcpy-web/config.json');
+        expect(script).toContain("semanage fcontext -a -t var_lib_t '/var/opt/ws-scrcpy-web(/.*)?'");
+        expect(script).toContain('restorecon -Rv "/var/opt/ws-scrcpy-web"');
+        expect(script).toContain('cp "/tmp/WsScrcpyWeb.service.tmp" "/etc/systemd/system/WsScrcpyWeb.service"');
+        expect(script).toContain('systemctl daemon-reload');
+        expect(script).toContain('systemctl enable --now WsScrcpyWeb.service');
+    });
+
+    it('carries the seeded webPort into /var/opt/.../config.json', () => {
+        const script = buildSystemMigrationScript(args);
+        expect(script).toContain('"webPort":8000');
+        // the config.json write lands BEFORE the relabel so restorecon labels it var_lib_t
+        expect(script.indexOf('config.json')).toBeLessThan(script.indexOf('restorecon -Rv'));
+    });
+
+    it('does NOT re-copy the AppImage or deps — the binary stays in /opt', () => {
+        const script = buildSystemMigrationScript(args);
+        // no cp of the binary / deps — migration only relocates state + unit
+        expect(script).not.toContain('WsScrcpyWeb.AppImage');
+        expect(script).not.toContain('cp -a');
+    });
+
+    it('old cleanup runs before the new-layout setup', () => {
+        const script = buildSystemMigrationScript(args);
+        expect(script.indexOf('rm -rf /opt/ws-scrcpy-web/data'))
+            .toBeLessThan(script.indexOf('mkdir -p /var/opt/ws-scrcpy-web'));
+        expect(script.indexOf('mkdir -p /var/opt/ws-scrcpy-web'))
+            .toBeLessThan(script.indexOf('enable --now'));
+    });
+
+    it('cleanup steps are best-effort (|| true) so a stopped/non-SELinux host still migrates', () => {
+        const script = buildSystemMigrationScript(args);
+        // stop/disable/reset-failed + the legacy fcontext delete must not abort the && chain
+        expect(script).toContain('|| true');
+        // the unit install still happens after the best-effort SELinux relabel
+        expect(script.indexOf('cp "/tmp/WsScrcpyWeb.service.tmp"'))
+            .toBeGreaterThan(script.indexOf('restorecon -Rv'));
+    });
+
+    it('uses absolute tool paths (no bare names)', () => {
+        const script = buildSystemMigrationScript(args, (t) => `/usr/bin/${t}`, (t) => `/usr/sbin/${t}`);
+        expect(script).toContain('/usr/bin/systemctl daemon-reload');
+        expect(script).toContain('/usr/sbin/restorecon -Rv');
+        expect(script).toContain('/usr/sbin/semanage fcontext -d');
     });
 });

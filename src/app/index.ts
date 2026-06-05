@@ -14,6 +14,7 @@ import { createUpdateButton } from './client/UpdateButton';
 import type { Tool } from './client/Tool';
 import { WelcomeModal } from './client/WelcomeModal';
 import type { AppConfigEnvelope } from '../common/ConfigEvents';
+import type { ServiceStatusResponse } from '../common/ServiceEvents';
 import { StreamClientScrcpy } from './googDevice/client/StreamClientScrcpy';
 
 function isResumingUninstall(): boolean {
@@ -129,6 +130,126 @@ function maybeShowWelcomeModal(): void {
         });
 }
 
+/**
+ * Show a sticky banner notice with a single action button. Used for the
+ * migration reinstall offer and the system-wide update offer — both are
+ * status-driven banners that live above the main content (same as
+ * FirstRunBanner), not full-screen modals.
+ *
+ * Returns the container element so the caller can append it to the page.
+ */
+function showStatusBanner(text: string, actionLabel: string, onAction: () => void): HTMLElement {
+    const banner = document.createElement('div');
+    banner.style.cssText =
+        'position:fixed;top:0;left:0;right:0;z-index:9000;background:var(--bg-color,#1e1e2e);' +
+        'color:var(--text-color,#cdd6f4);border-bottom:1px solid var(--border-color,#45475a);' +
+        'padding:0.6rem 1rem;display:flex;align-items:center;gap:1rem;font-size:0.9rem;';
+    const msg = document.createElement('span');
+    msg.textContent = text;
+    banner.appendChild(msg);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = actionLabel;
+    btn.style.cssText =
+        'padding:0.3rem 0.8rem;border-radius:4px;border:1px solid currentColor;' +
+        'background:transparent;color:inherit;cursor:pointer;white-space:nowrap;';
+    btn.addEventListener('click', onAction);
+    banner.appendChild(btn);
+    document.body.insertBefore(banner, document.body.firstChild);
+    return banner;
+}
+
+/**
+ * First-run entry point. On Linux, ahead of the local WelcomeModal, offer to
+ * install the app to /opt for all users when (a) it isn't already installed
+ * machine-wide and (b) the user hasn't previously declined — both surfaced via
+ * /api/service/status. Installing reloads the page (the launcher bootstrapper
+ * then execs the /opt binary); declining records the choice server-side and
+ * falls through to the normal first-run flow. Every non-applicable case (not
+ * Linux, already installed, previously declined, or the status endpoint
+ * unreachable) proceeds straight to maybeShowWelcomeModal.
+ *
+ * Also handles two status-driven offers introduced in P3c-2:
+ * - serviceMigrationNeeded → migration reinstall banner (POST migrate-system → reload)
+ * - optUpdateAvailable → system-wide update banner (POST install-system-wide → reload)
+ */
+function maybeShowFirstRunModal(): void {
+    // Never cover the uninstall-progress overlay (mirrors maybeShowWelcomeModal).
+    if (isResumingUninstall()) return;
+    fetch('/api/service/status')
+        .then((r) => (r.ok ? (r.json() as Promise<ServiceStatusResponse>) : null))
+        .then((status) => {
+            if (status != null && status.platform === 'linux') {
+                // Migration reinstall offer (P3c-2): service uses old /opt/.../data
+                // layout → offer a one-click pkexec reinstall to /var/opt.
+                if (status.serviceMigrationNeeded === true) {
+                    showStatusBanner(
+                        'this service uses the old layout. reinstall it to update to the new layout.',
+                        'reinstall now',
+                        () => {
+                            void fetch('/api/service/migrate-system', { method: 'POST' })
+                                .then((r) => { if (r.ok) window.location.reload(); })
+                                .catch(() => {});
+                        },
+                    );
+                    // Fall through — still show the normal first-run flow below.
+                }
+                // System-wide update offer (P3c-2): a newer home AppImage is running
+                // over an older /opt copy → offer to update the system-wide install.
+                if (status.optUpdateAvailable === true) {
+                    showStatusBanner(
+                        'update the system-wide install?',
+                        'update',
+                        () => {
+                            void fetch('/api/service/install-system-wide', { method: 'POST' })
+                                .then((r) => { if (r.ok) window.location.reload(); })
+                                .catch(() => {});
+                        },
+                    );
+                    // Fall through — still show the normal first-run flow below.
+                }
+            }
+
+            const offerMachineWide =
+                status != null &&
+                status.platform === 'linux' &&
+                status.machineWideInstalled === false &&
+                status.systemInstallDeclined === false;
+            if (!offerMachineWide) {
+                maybeShowWelcomeModal();
+                return;
+            }
+            void import('./client/SystemWideInstallModal').then(({ SystemWideInstallModal }) => {
+                new SystemWideInstallModal({
+                    onInstall: () => {
+                        void fetch('/api/service/install-system-wide', { method: 'POST' })
+                            .then((r) => {
+                                if (r.ok) {
+                                    // Reload so the launcher bootstrapper execs the /opt binary.
+                                    window.location.reload();
+                                } else {
+                                    // Install didn't take (e.g. the admin prompt was
+                                    // dismissed) — continue the normal first-run flow.
+                                    maybeShowWelcomeModal();
+                                }
+                            })
+                            .catch(() => maybeShowWelcomeModal());
+                    },
+                    onDecline: () => {
+                        // Record the decline (server marker) so we don't re-ask, then
+                        // let the normal first-run flow continue.
+                        void fetch('/api/service/decline-system-wide', { method: 'POST' }).catch(() => {});
+                        maybeShowWelcomeModal();
+                    },
+                });
+            });
+        })
+        .catch(() => {
+            // /api/service/status unreachable — fall back to the normal flow.
+            maybeShowWelcomeModal();
+        });
+}
+
 function maybeShowPortChangeModal(
     globallyDismissed: boolean,
     dismissedFor: number | null,
@@ -189,7 +310,7 @@ window.onload = async (): Promise<void> => {
         pageContainer.insertBefore(banner.getElement(), pageContainer.firstChild);
     });
 
-    maybeShowWelcomeModal();
+    maybeShowFirstRunModal();
 
     // v0.1.8 uninstall handoff: if we arrived with
     // ?resume=uninstall-service&token=..., the previous (service)
