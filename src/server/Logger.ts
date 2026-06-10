@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
  * Compute the log file path. Per Local-Dependencies-Only architecture
@@ -37,31 +37,26 @@ function resolveLogFilePath(): string {
 }
 
 const LOG_FILE = resolveLogFilePath();
-const BACKUP_FILE = `${LOG_FILE}.1`;
 
-let rotationChecked = false;
-
-function rotateIfNeeded(): void {
-    if (rotationChecked) return;
-    rotationChecked = true;
-    // Ensure the log directory exists. dataRoot itself is created by the
-    // install hook on Windows, but on first launch / fresh dev checkouts
-    // there's a possible window where the directory hasn't been touched
-    // yet. mkdir is idempotent so this is cheap.
+/**
+ * Rotate `logFile` to `logFile.1` when it reaches `maxBytes`. Called on EVERY
+ * write (no once-per-process guard) so a long-running process stays bounded.
+ * Single backup; a prior `.1` is overwritten by renameSync. All failures are
+ * swallowed — logging must never crash the server.
+ */
+export function rotateIfNeeded(logFile: string, maxBytes: number): void {
     try {
-        fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+        fs.mkdirSync(path.dirname(logFile), { recursive: true });
     } catch {
-        // If we can't even create the directory, the appendFileSync below
-        // will fail and writeToFile will silently swallow — same behavior
-        // as before this defense was added.
+        // directory uncreatable — the appendFileSync below will no-op too
     }
     try {
-        const stats = fs.statSync(LOG_FILE);
-        if (stats.size >= MAX_LOG_SIZE) {
-            fs.renameSync(LOG_FILE, BACKUP_FILE);
+        const stats = fs.statSync(logFile);
+        if (stats.size >= maxBytes) {
+            fs.renameSync(logFile, `${logFile}.1`);
         }
     } catch {
-        // File doesn't exist yet — nothing to rotate
+        // file doesn't exist yet — nothing to rotate
     }
 }
 
@@ -70,12 +65,24 @@ function timestamp(): string {
 }
 
 function writeToFile(line: string): void {
-    rotateIfNeeded();
+    rotateIfNeeded(LOG_FILE, MAX_LOG_SIZE);
     try {
         fs.appendFileSync(LOG_FILE, line + '\n');
     } catch {
         // If we can't write to the log file, don't crash the server
     }
+}
+
+/**
+ * Whether Logger should echo to the console. True only when the target stream
+ * is a terminal (dev). Under the launcher, stdout/stderr are redirected to a
+ * file (server.log), so isTTY is falsy and we skip the console echo — that
+ * echo would only duplicate ws-scrcpy-web.log into server.log. Keyed on the
+ * OS truth (isTTY), never an env var, so it can never drift from the actual
+ * capture state.
+ */
+export function shouldLogToConsole(isTty: boolean): boolean {
+    return isTty;
 }
 
 export class Logger {
@@ -93,11 +100,12 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} ${message}`;
-        // v0.1.17: prefix console output too so server.log (launcher-
-        // redirected stdout/stderr from the Node child) shows timestamps,
-        // matching launcher.log. Pre-v0.1.17 only ws-scrcpy-web.log got
-        // timestamps; server.log was bare [tag] message.
-        console.log(`${ts} ${this.tag}`, ...args);
+        // Console echo is gated on isTTY (dev terminal only); under the
+        // launcher stdout is redirected so isTTY is falsy and server.log
+        // stays a thin crash-catcher rather than a mirror of this file.
+        if (shouldLogToConsole(Boolean(process.stdout.isTTY))) {
+            console.log(`${ts} ${this.tag}`, ...args);
+        }
         writeToFile(line);
     }
 
@@ -105,7 +113,9 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} WARN ${message}`;
-        console.warn(`${ts} ${this.tag} WARN`, ...args);
+        if (shouldLogToConsole(Boolean(process.stderr.isTTY))) {
+            console.warn(`${ts} ${this.tag} WARN`, ...args);
+        }
         writeToFile(line);
     }
 
@@ -113,7 +123,9 @@ export class Logger {
         const ts = timestamp();
         const message = args.map(String).join(' ');
         const line = `${ts} ${this.tag} ERROR ${message}`;
-        console.error(`${ts} ${this.tag} ERROR`, ...args);
+        if (shouldLogToConsole(Boolean(process.stderr.isTTY))) {
+            console.error(`${ts} ${this.tag} ERROR`, ...args);
+        }
         writeToFile(line);
     }
 }

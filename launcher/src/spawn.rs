@@ -69,13 +69,15 @@ pub fn resolve_server_entry_with(exe_dir: &Path) -> Result<PathBuf> {
 
 /// Open the server.log file in append mode for stdout/stderr redirection.
 ///
-/// Without this redirection, the Node child's output goes to the void in
-/// release builds (no attached console). Server-side crashes (e.g., port
-/// already bound, native module load failures, unhandled rejections in
-/// startup) become silent and undebuggable. The v0.1.6 "service runs but
-/// app unreachable" + "no port bound, no idea why" debugging tonight was
-/// only possible by manually running Node from PowerShell — now the same
-/// information is captured automatically.
+/// server.log is a THIN crash-catcher: the launcher still plumbs the Node
+/// child's stdout/stderr here so raw crashes / native output are preserved,
+/// but `Logger` no longer echoes its lines to the console under the launcher
+/// (gated on `process.stdout/stderr.isTTY`). Normal application output lives
+/// exclusively in `ws-scrcpy-web.log`; server.log only fills on unhandled
+/// panics, port-already-bound errors, native module failures, etc.
+///
+/// The file is rename-rotated at open (10 MB) — safe because the prior Node
+/// child has released its fd between spawns.
 ///
 /// Returns `Ok(None)` if we couldn't open the log file (we still spawn the
 /// child with stdio inherited so the user's terminal sees output if any).
@@ -89,6 +91,11 @@ fn open_server_log(data_root: &Path) -> Option<std::fs::File> {
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    // Rotate at 10 MB. server.log is free between spawns (the prior Node child
+    // released its fd), so a rename is safe here. It is now a thin crash-catcher
+    // (Logger no longer echoes to console under the launcher), so this cadence
+    // is ample.
+    crate::log::rotate_by_rename_if_large(&log_path, 10 * 1024 * 1024);
     OpenOptions::new()
         .create(true)
         .append(true)
@@ -122,9 +129,9 @@ pub fn spawn_server(deps_path: &Path, data_root: &Path) -> Result<Child> {
         .env("DATA_ROOT", data_root)
         .creation_flags(CREATE_NO_WINDOW);
 
-    // Plumb the child's stdout AND stderr into <deps>/server.log so a
-    // crashed startup leaves a forensic trail. Both go to the same file
-    // (interleaved); separating them is rarely worth the duplicate I/O.
+    // Plumb the child's stdout AND stderr into server.log (thin crash-catcher).
+    // Logger no longer echoes normal lines here, so this only fills on raw
+    // crashes/native failures. Both streams go to the same file (interleaved).
     if let Some(log) = open_server_log(data_root) {
         let log_clone = log.try_clone().ok();
         cmd.stdout(std::process::Stdio::from(log));
@@ -288,6 +295,18 @@ mod tests {
 
         let err = resolve_server_entry_with(&exe_dir).unwrap_err();
         assert!(err.to_string().contains("Server entry not found"));
+    }
+
+    #[test]
+    fn open_server_log_rotates_when_oversized() {
+        let dir = tempdir().unwrap();
+        let logs = dir.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        let server_log = logs.join("server.log");
+        // Write 10 MB + 1 so it's at/over threshold.
+        fs::write(&server_log, vec![0u8; 10 * 1024 * 1024 + 1]).unwrap();
+        let _f = open_server_log(dir.path());
+        assert!(logs.join("server.log.1").exists(), "oversized server.log rotated to .1");
     }
 
 }
