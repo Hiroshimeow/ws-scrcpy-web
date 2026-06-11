@@ -10,6 +10,7 @@ import { ServerShutdownApi } from './api/ServerShutdownApi';
 import { ServiceApi } from './api/ServiceApi';
 import { UpdatesApi } from './api/UpdatesApi';
 import { WhoamiApi } from './api/WhoamiApi';
+import { forceBlockingStdio } from './util/forceBlockingStdio';
 import { Config } from './Config';
 import { UpdateService } from './UpdateService';
 import { DependencyManager } from './DependencyManager';
@@ -17,7 +18,7 @@ import { findAvailablePort, webPortOverride } from './PortPicker';
 import { DeviceLabelStore } from './DeviceLabelStore';
 import { DeviceProbe } from './DeviceProbe';
 import { Logger } from './Logger';
-import { openBrowser } from './openBrowser';
+import { openBrowser, shouldAutoOpenBrowser } from './openBrowser';
 import { HostTracker } from './mw/HostTracker';
 import type { MwFactory } from './mw/Mw';
 import { ScanMw } from './mw/ScanMw';
@@ -102,7 +103,15 @@ HttpServer.addApiHandler(configApi);
 const serviceApi = new ServiceApi();
 HttpServer.addApiHandler(serviceApi);
 
-const shutdownApi = new ServerShutdownApi({ cleanup: gracefulShutdown });
+const shutdownApi = new ServerShutdownApi({
+    // SE-3: flush stdio to blocking BEFORE the teardown logs run so a button/
+    // tray quit's "Stopping ..." lines reach the console (Windows TTY
+    // async-drop), matching the signal-quit path in exit().
+    cleanup: async () => {
+        forceBlockingStdio();
+        await gracefulShutdown();
+    },
+});
 HttpServer.addApiHandler(shutdownApi);
 
 const updateService = new UpdateService();
@@ -216,7 +225,20 @@ reconcileWebPort()
             // in-app update relaunch) sets WS_SCRCPY_NO_BROWSER=1 — the user
             // already has a tab that reconnects, so don't pop a redundant one.
             const suppressBrowser = process.env['WS_SCRCPY_NO_BROWSER'] === '1';
-            if (appCfg.firstRunComplete === false && !isServiceMode && !suppressBrowser) {
+            // D1: the native launcher's supervisor sets WS_SCRCPY_OPEN_BROWSER=1
+            // on its FIRST Node spawn (a fresh user launch), so a cold start past
+            // first-run still opens a tab — not only on first run. Supervisor
+            // restarts (webPort change, crash) don't set it, so they don't re-pop
+            // a tab; dev (no launcher) falls back to the first-run-only open.
+            const launcherFreshLaunch = process.env['WS_SCRCPY_OPEN_BROWSER'] === '1';
+            if (
+                shouldAutoOpenBrowser({
+                    firstRunComplete: appCfg.firstRunComplete,
+                    isServiceMode,
+                    suppressBrowser,
+                    launcherFreshLaunch,
+                })
+            ) {
                 const port = config.servers[0]?.port ?? appCfg.webPort;
                 openBrowser(`http://localhost:${port}`);
             }
@@ -306,23 +328,10 @@ async function gracefulShutdown(): Promise<void> {
 
 let interrupted = false;
 function exit(signal: string) {
-    // Force stdout/stderr to blocking mode so every subsequent log line
-    // is synchronous-to-the-TTY. After fd4944d removed the readline-pin,
-    // shutdown got fast enough that async Windows-TTY writes (per Node
-    // docs — "TTYs are asynchronous on Windows") were being dropped
-    // before flushing — console showed only "Received signal SIGINT"
-    // then nothing, even though the file log (Logger.writeToFile uses
-    // appendFileSync) had every line. Internal API but a well-established
-    // Node pattern; wrapped in try/catch so a missing _handle on a
-    // future Node version degrades to today's behavior, not a crash.
-    try {
-        const stdoutHandle = (process.stdout as { _handle?: { setBlocking?: (b: boolean) => void } })._handle;
-        const stderrHandle = (process.stderr as { _handle?: { setBlocking?: (b: boolean) => void } })._handle;
-        stdoutHandle?.setBlocking?.(true);
-        stderrHandle?.setBlocking?.(true);
-    } catch {
-        /* best-effort — internal API */
-    }
+    // Flush stdout/stderr to blocking so every teardown line reaches the
+    // console before exit (Windows TTY async-drop). Same helper the button/
+    // tray-quit path uses (ServerShutdownApi cleanup) — see forceBlockingStdio.
+    forceBlockingStdio();
     serverLog.info(`Received signal ${signal}`);
     if (interrupted) {
         serverLog.info('Force exit');
@@ -335,7 +344,7 @@ function exit(signal: string) {
     // entirely, so the daemon stays alive across supervisor-driven restarts —
     // see gracefulShutdown's doc.
     void gracefulShutdown();
-    // setBlocking(true) at top of exit() makes the console.log calls in
+    // forceBlockingStdio() at the top of exit() makes the console.log calls in
     // serverLog / Logger synchronous-to-the-TTY, so by the time control
     // reaches here every "Stopping X" line is already on the console.
     //
