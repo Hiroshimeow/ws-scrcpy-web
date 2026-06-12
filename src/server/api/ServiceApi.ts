@@ -1,6 +1,6 @@
 // biome-ignore lint/style/useNodejsImportProtocol: webpack externals don't support node: prefix
 import type { IncomingMessage, ServerResponse } from 'http';
-import { spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -25,7 +25,8 @@ import {
     type ServiceClientFactoryResult,
 } from '../service';
 import { resolveSystemTool } from '../service/systemTools';
-import { STAGED_SYSTEM_DIR, STAGED_SYSTEM_APPIMAGE, STAGED_SYSTEM_HELPER, SYSTEM_STATE_DIR, buildServiceUnitEnv, buildSystemSeedConfig, buildMachineWideInstallScript, runPkexec, DECLINE_MARKER_NAME } from '../service/SystemdClient';
+import { STAGED_SYSTEM_DIR, STAGED_SYSTEM_APPIMAGE, SYSTEM_STATE_DIR, buildServiceUnitEnv, buildMachineWideInstallScript, runPkexec, DECLINE_MARKER_NAME } from '../service/SystemdClient';
+import type { CommandRunner } from '../service/systemServiceCli';
 import { getAppVersion } from '../appVersion';
 import { readJsonBody } from './utils';
 
@@ -90,6 +91,21 @@ async function defaultVerifyServiceActive(
 }
 
 /**
+ * Default elevated runner: runs argv[0] with the rest as args via execFile,
+ * AWAITED, with NO timeout option (no kill = no EPERM class).
+ * Resolves with the exit code regardless of success/failure — never throws.
+ */
+const defaultRunElevated: CommandRunner = (argv) =>
+    new Promise((resolve) => {
+        const [cmd, ...rest] = argv;
+        execFile(cmd!, rest, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+            const e = err as (NodeJS.ErrnoException & { code?: number; status?: number }) | null;
+            const code = e ? (typeof e.code === 'number' ? e.code : (e.status ?? 1)) : 0;
+            resolve({ code, stdout: stdout?.toString() ?? '', stderr: stderr?.toString() ?? '' });
+        });
+    });
+
+/**
  * HTTP API for SP3 P3 service-mode operations.
  *
  *   GET  /api/service/status     -> ServiceStatusResponse (always 200)
@@ -127,6 +143,9 @@ export class ServiceApi {
             client: ServiceClientFactoryResult['client'],
             name: string,
         ) => Promise<boolean> = defaultVerifyServiceActive,
+        // Linux SYSTEM scope install: awaited pkexec elevation (no timeout/kill).
+        // Injectable so tests can assert argv without spawning a real pkexec.
+        private readonly runElevated: CommandRunner = defaultRunElevated,
     ) {}
 
     public async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -369,24 +388,6 @@ export class ServiceApi {
             }
         }
 
-        // System-scope install only: resolve the home launcher helper so it can
-        // be staged into /opt/ws-scrcpy-web/ at install time. The fcontext rule
-        // `/opt/ws-scrcpy-web(/.*)? -> bin_t` + restorecon will label it bin_t,
-        // allowing init_t to exec it during system-scope uninstall teardown
-        // (SELinux AVC fix, item #2 install side). Best-effort: if the helper
-        // isn't present (from-source / unavailable), log and skip — the install
-        // itself still succeeds, system uninstall may need manual cleanup.
-        let linuxHelperSource: string | undefined;
-        if (result.platform === 'linux' && scope === 'system') {
-            const dr = cfg.dataRoot ?? path.dirname(cfg.dependenciesPath);
-            const cand = path.join(dr, 'control', 'operation-server', 'ws-scrcpy-web-launcher.exe');
-            if (this.existsCheck(cand)) {
-                linuxHelperSource = cand;
-            } else {
-                log.warn(`linux system install: teardown helper not found at ${cand}; /opt staging skipped (system uninstall may need manual cleanup)`);
-            }
-        }
-
         // v0.1.24-beta.7: service.log moves under <dataRoot>/logs/ to
         // colocate with launcher.log + server.log + ws-scrcpy-web.log.
         // Pre-beta.7 it lived at <dataRoot>/dependencies/service.log,
@@ -431,6 +432,45 @@ export class ServiceApi {
             return true;
         }
 
+        // Linux SYSTEM scope: elevate the whole app ONCE via an awaited pkexec
+        // (no timeout, no kill — the kill-EPERM class is gone by construction).
+        // The root core (installSystemService) stages /opt, writes the unit,
+        // enables+starts it; the unit's Restart=on-failure handles the port
+        // takeover while this local copy exits to free the port. Headless installs
+        // never reach here — they enter via the Rust CLI, not this HTTP API.
+        if (result.platform === 'linux' && scope === 'system') {
+            const port = cfg.getAppConfig().webPort;
+            const pkexec = resolveSystemTool('pkexec');
+            // binPath here is the app's own AppImage ($APPIMAGE). From-source runs
+            // (where $APPIMAGE is unset and binPath falls back to process.execPath,
+            // i.e. bare Node) are NOT a supported system-scope install scenario —
+            // $APPIMAGE is always set in packaged installs, which is the only way
+            // this branch is reached from the desktop GUI.
+            const r = await this.runElevated([pkexec, binPath, '--install-system-service', '--port', String(port)]);
+            if (r.code !== 0) {
+                // revert installMode so the next load doesn't see a phantom service mode
+                try { cfg.updateAppConfig({ installMode: previousMode ?? null }); }
+                catch (e) { log.warn(`installMode revert failed after pkexec install: ${(e as Error).message}`); }
+                // pkexec exit 126 == polkit auth dismissed/declined → UAC-style retry prompt
+                if (r.code === 126) {
+                    const body: ServiceActionFailure = { ok: false, error: 'install was cancelled at the authentication prompt', reason: 'uac-declined' };
+                    res.writeHead(403); res.end(JSON.stringify(body)); return true;
+                }
+                const body: ServiceActionFailure = { ok: false, error: (r.stderr || 'system-service install failed').trim(), reason: 'servy-failure' };
+                res.writeHead(500); res.end(JSON.stringify(body)); return true;
+            }
+            // success: the unit is enabled+started (or queued via Restart). Exit local
+            // to free the port; the frontend's /api/service/status poll reconnects.
+            this.scheduleExit(() => { log.info('install-flow: local instance exiting (handoff to system service via pkexec)'); process.exit(0); }, 1_500);
+            const disk = this.readDiskConfig();
+            const body: ServiceActionSuccess = {
+                ok: true, status: 'shutting-down', installMode: newInstallMode,
+                ...(disk.configMtime != null ? { configMtime: disk.configMtime } : {}),
+                ...(disk.diskWebPort != null ? { diskWebPort: disk.diskWebPort } : {}),
+            };
+            res.writeHead(200); res.end(JSON.stringify(body)); return true;
+        }
+
         try {
             await result.client.install({
                 name: WS_SCRCPY_SERVICE_NAME,
@@ -450,18 +490,6 @@ export class ServiceApi {
                 dataRoot: cfg.dataRoot ?? path.dirname(cfg.dependenciesPath),
                 // Linux SystemdClient consumes scope; Windows ServyClient ignores it.
                 scope,
-                // Linux system-scope only: home helper path to stage into /opt (bin_t).
-                // Windows ServyClient ignores this field.
-                linuxHelperSource,
-                // Linux system-scope only (#36): copy the user's deps into /opt
-                // and seed the service config so it doesn't run deps from home or
-                // land its config in /tmp. Windows + user-scope ignore these.
-                ...(result.platform === 'linux' && scope === 'system'
-                    ? {
-                          sourceDeps: cfg.dependenciesPath,
-                          seedConfig: buildSystemSeedConfig(cfg.getAppConfig().webPort),
-                      }
-                    : {}),
             });
         } catch (err) {
             // Install failed — revert installMode so the next page load
@@ -527,33 +555,6 @@ export class ServiceApi {
             return true;
         }
 
-        // B1: Linux SYSTEM scope mirrors user-scope F4. install() enabled the unit
-        // (not --now) and spawned a rootful, out-of-cgroup handoff helper (transient
-        // system unit — from inside the pkexec script, or directly when already root)
-        // that waits for THIS local instance to release the web port, then starts +
-        // verifies the service and rolls back on failure. So we just exit promptly to
-        // free the port; the helper owns verify/rollback (no in-handler verify here —
-        // that path is win32-only). Without this, enable --now started the service
-        // while we still held the port → self-defer / EADDRINUSE (beta.56).
-        if (result.platform === 'linux' && scope === 'system') {
-            log.info('install-flow(linux system): handoff helper spawned by installer; exiting local to free the port');
-            this.scheduleExit(() => {
-                log.info('install-flow: local instance exiting (handoff to system service)');
-                process.exit(0);
-            }, 1_500);
-            const disk = this.readDiskConfig();
-            const body: ServiceActionSuccess = {
-                ok: true,
-                status: 'shutting-down',
-                installMode: newInstallMode,
-                ...(disk.configMtime != null ? { configMtime: disk.configMtime } : {}),
-                ...(disk.diskWebPort != null ? { diskWebPort: disk.diskWebPort } : {}),
-            };
-            res.writeHead(200);
-            res.end(JSON.stringify(body));
-            return true;
-        }
-
         // F3: verify the service actually started before sacrificing this local
         // instance. install() does NOT throw on a failed start (systemd
         // Type=simple reports "started" on fork, before execve fails), so a
@@ -592,7 +593,7 @@ export class ServiceApi {
         const disk = this.readDiskConfig();
 
         // Schedule local-Node exit (win32 only — both Linux scopes hand off + return
-        // above: user scope at the F4 branch, system scope at the B1 branch). This
+        // above: user scope at the F4 branch, system scope at the pkexec branch). This
         // instance is useless once the service is running; it also holds the web port.
         // The frontend navigates to the service port once it detects config.json mtime
         // change — this timer is a safety cap, not a timing mechanism.
@@ -663,11 +664,13 @@ export class ServiceApi {
             let cmd: string;
             let sdArgs: string[];
             if (scope === 'system') {
-                // System scope: exec the /opt-staged helper (bin_t — init_t may exec
+                // System scope: exec the /opt-staged AppImage (bin_t — init_t may exec
                 // it, unlike the data_home_t home copy SELinux blocks), out-of-cgroup
                 // via systemd-run --system, elevated by pkexec when the serving process
-                // isn't already root (the system service itself runs as root).
-                const optHelper = `${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_HELPER}`;
+                // isn't already root (the system service itself runs as root). The new
+                // install stages the AppImage (not a separate launcher helper), so we
+                // exec the bin_t-labeled staged AppImage directly.
+                const optAppImage = `${STAGED_SYSTEM_DIR}/${STAGED_SYSTEM_APPIMAGE}`;
                 const runArgs = [
                     '--system', '--collect', teardownUnit,
                     // DATA_ROOT is MANDATORY: a `systemd-run --system` transient unit has no
@@ -676,7 +679,7 @@ export class ServiceApi {
                     // #9 5.1 core-dump that made uninstall a silent no-op). Mirrors the install
                     // handoff's --setenv.
                     `--setenv=DATA_ROOT=${SYSTEM_STATE_DIR}`,
-                    optHelper, '--linux-service-teardown', '--scope', 'system', '--unit', WS_SCRCPY_SERVICE_NAME,
+                    optAppImage, '--linux-service-teardown', '--scope', 'system', '--unit', WS_SCRCPY_SERVICE_NAME,
                 ];
                 if (process.getuid?.() === 0) {
                     cmd = systemdRun;
