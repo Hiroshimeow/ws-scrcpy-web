@@ -13,12 +13,14 @@ import {
     classifyInstallPoll,
     lockScopeRadioControl,
     resetPromptsPayload,
+    resetPromptSettingsPayload,
     SettingsModal,
     scopeRadioState,
     stopServerButtonState,
     systemServiceInstallGate,
     uninstallFollowupMessage,
 } from '../SettingsModal';
+import * as SettingsServiceModule from '../SettingsService';
 import * as UninstallConfirmModalModule from '../UninstallConfirmModal';
 
 /** Flush microtasks + a macrotask so the awaited fetch handlers settle. */
@@ -83,9 +85,14 @@ describe('classifyInstallPoll', () => {
 });
 
 describe('resetPromptsPayload', () => {
-    it('clears all four first-run / bookmark flags', () => {
-        expect(resetPromptsPayload()).toEqual({
-            firstRunComplete: false,
+    it('clears firstRunComplete (the boot-trio flag sent to /api/config)', () => {
+        expect(resetPromptsPayload()).toEqual({ firstRunComplete: false });
+    });
+});
+
+describe('resetPromptSettingsPayload', () => {
+    it('clears the three per-user prompt flags sent to /api/settings', () => {
+        expect(resetPromptSettingsPayload()).toEqual({
             serviceFirstRunSeen: false,
             bookmarkDismissedForPort: null,
             bookmarkDismissedGlobally: false,
@@ -406,8 +413,12 @@ describe('buildResetControl', () => {
         expect(confirmSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('on confirm=true PATCHes /api/config with resetPromptsPayload and reloads', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    it('on confirm=true calls settingsService.reset() (full user-settings clear) and PATCHes /api/config (firstRunComplete) and reloads', async () => {
+        // Spy on the singleton's reset() method — the full user-settings wipe via
+        // POST /api/settings/reset. The spy replaces the real network call so fetch
+        // only sees the /api/config PATCH (firstRunComplete).
+        const resetSpy = vi.spyOn(SettingsServiceModule.settingsService, 'reset').mockResolvedValue(undefined);
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.stubGlobal('fetch', fetchMock);
         const reload = vi.fn();
         vi.spyOn(ResetConfirmModalModule.ResetConfirmModal, 'confirm').mockResolvedValue(true);
@@ -416,11 +427,16 @@ describe('buildResetControl', () => {
         button.click();
         await flush();
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
-        expect(url).toBe('/api/config');
-        expect(init.method).toBe('PATCH');
-        expect(JSON.parse(init.body as string)).toEqual(resetPromptsPayload());
+        // settingsService.reset() must be called once (the full user-settings clear).
+        expect(resetSpy).toHaveBeenCalledTimes(1);
+        // /api/config PATCH must still fire (firstRunComplete → false, re-triggers first-run).
+        const calls = fetchMock.mock.calls as [string, RequestInit][];
+        const configCall = calls.find(([url]) => url === '/api/config');
+        expect(configCall).toBeTruthy();
+        expect(JSON.parse(configCall![1].body as string)).toEqual(resetPromptsPayload());
+        // /api/settings PATCH must NOT be called separately (reset() covers all user flags).
+        const directSettingsCall = calls.find(([url]) => url === '/api/settings');
+        expect(directSettingsCall).toBeUndefined();
         expect(reload).toHaveBeenCalledTimes(1);
     });
 
@@ -438,7 +454,7 @@ describe('buildResetControl', () => {
         expect(reload).not.toHaveBeenCalled();
     });
 
-    it('reloads even when the PATCH rejects (reset always reloads)', async () => {
+    it('reloads even when both PATCHes reject (reset always reloads)', async () => {
         const fetchMock = vi.fn().mockRejectedValue(new Error('network'));
         vi.stubGlobal('fetch', fetchMock);
         const reload = vi.fn();
@@ -474,7 +490,7 @@ describe('Server section row order (folded App, beta.62)', () => {
             (el) => el.textContent ?? '',
         );
 
-        const resetIdx = labels.indexOf('reset welcome and bookmark prompts');
+        const resetIdx = labels.indexOf('reset all my settings');
         const installIdx = labels.indexOf('install for all users');
         const stopIdx = labels.indexOf('stop the server and close the app');
         const uninstallIdx = labels.indexOf('uninstall ws-scrcpy-web');
