@@ -3,11 +3,11 @@ resolver = "2"
 members = ["common", "launcher", "tray"]
 
 [workspace.package]
-version = "0.1.30-beta.72"
+version = "0.1.30-beta.73"
 edition = "2021"
 authors = ["ws-scrcpy-web contributors"]
 license = "GPL-3.0-or-later"
-repository = "https://github.com/bilbospocketses/ws-scrcpy-web"
+repository = "https://github.com/Hiroshimeow/ws-scrcpy-web"
 
 [workspace.dependencies]
 anyhow = "1.0"

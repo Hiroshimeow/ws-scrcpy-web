@@ -9,6 +9,11 @@ interface ConnectResult {
     message: string;
 }
 
+interface PairResult extends ConnectResult {
+    phase: 'validation' | 'pair' | 'connect' | 'complete';
+    address?: string;
+}
+
 function escapeHtml(s: string): string {
     return s
         .replace(/&/g, '&amp;')
@@ -37,8 +42,23 @@ export class NetworkDiscoveryPanel {
                 <div class="discovery-header-actions">
                     <button class="dep-btn discovery-quick-scan-btn" title="mDNS-only — finds modern Android devices with wireless debugging enabled">quick scan</button>
                     <button class="dep-btn discovery-scan-btn">scan network</button>
+                    <button class="dep-btn discovery-pair-btn">pair via Tailscale</button>
                     <button class="dep-btn discovery-manual-btn">manually add</button>
                 </div>
+            </div>
+            <div class="discovery-pair-form" hidden>
+                <div class="discovery-pair-help">
+                    Android: open Tailscale for the 100.x address, then Developer options → Wireless debugging.
+                    Use “Pair device with pairing code” for the pairing port/code, and the main Wireless debugging screen for the connection port.
+                </div>
+                <input type="text" class="discovery-pair-host" placeholder="Android Tailscale IP (100.x.y.z)" autocomplete="off" />
+                <input type="text" class="discovery-pair-port" placeholder="pair port" inputmode="numeric" autocomplete="off" />
+                <input type="password" class="discovery-pair-code" placeholder="6-digit code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+                <input type="text" class="discovery-connect-port" placeholder="connect port" inputmode="numeric" autocomplete="off" />
+                <input type="text" class="discovery-pair-label" placeholder="optional name" />
+                <button class="dep-btn discovery-connect-btn discovery-pair-connect">pair &amp; connect</button>
+                <button class="discovery-pair-close" aria-label="close" title="close">×</button>
+                <div class="discovery-pair-result" hidden></div>
             </div>
             <div class="discovery-manual-form" hidden>
                 <input type="text" class="discovery-manual-address" placeholder="192.168.86.50" />
@@ -56,13 +76,30 @@ export class NetworkDiscoveryPanel {
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
         this.container.querySelector('.discovery-quick-scan-btn')!.addEventListener('click', () => this.quickScan());
+        this.container.querySelector('.discovery-pair-btn')!.addEventListener('click', () => this.togglePairForm());
         this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
+        this.container
+            .querySelector('.discovery-pair-close')!
+            .addEventListener('click', () => this.togglePairForm(false));
+        this.container.querySelector('.discovery-pair-connect')!.addEventListener('click', () => this.pairAndConnect());
         this.container
             .querySelector('.discovery-manual-close')!
             .addEventListener('click', () => this.toggleManualForm(false));
         this.container
             .querySelector('.discovery-manual-connect')!
             .addEventListener('click', () => this.manualConnect());
+        for (const selector of [
+            '.discovery-pair-host',
+            '.discovery-pair-port',
+            '.discovery-pair-code',
+            '.discovery-connect-port',
+            '.discovery-pair-label',
+        ]) {
+            const input = this.container.querySelector(selector) as HTMLInputElement;
+            input.addEventListener('keydown', (e) => {
+                if ((e as KeyboardEvent).key === 'Enter') this.pairAndConnect();
+            });
+        }
         for (const selector of ['.discovery-manual-address', '.discovery-manual-port', '.discovery-manual-label']) {
             const input = this.container.querySelector(selector) as HTMLInputElement;
             input.addEventListener('keydown', (e) => {
@@ -238,10 +275,120 @@ export class NetworkDiscoveryPanel {
         this.scanSessionHits.set(hit.address, card);
     }
 
+    private togglePairForm(show?: boolean): void {
+        const form = this.container.querySelector('.discovery-pair-form') as HTMLElement;
+        const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
+        if (shouldShow) {
+            this.toggleManualForm(false);
+            form.removeAttribute('hidden');
+            (this.container.querySelector('.discovery-pair-host') as HTMLInputElement).focus();
+        } else {
+            form.setAttribute('hidden', '');
+            this.clearPairForm();
+        }
+    }
+
+    private clearPairForm(): void {
+        for (const selector of [
+            '.discovery-pair-host',
+            '.discovery-pair-port',
+            '.discovery-pair-code',
+            '.discovery-connect-port',
+            '.discovery-pair-label',
+        ]) {
+            (this.container.querySelector(selector) as HTMLInputElement).value = '';
+        }
+        const resultEl = this.container.querySelector('.discovery-pair-result') as HTMLElement;
+        resultEl.setAttribute('hidden', '');
+        resultEl.textContent = '';
+        resultEl.classList.remove('error', 'success');
+    }
+
+    private showPairResult(text: string, kind: 'success' | 'error'): void {
+        const resultEl = this.container.querySelector('.discovery-pair-result') as HTMLElement;
+        resultEl.textContent = text;
+        resultEl.classList.toggle('success', kind === 'success');
+        resultEl.classList.toggle('error', kind === 'error');
+        resultEl.removeAttribute('hidden');
+    }
+
+    private async pairAndConnect(): Promise<void> {
+        const hostInput = this.container.querySelector('.discovery-pair-host') as HTMLInputElement;
+        const pairingPortInput = this.container.querySelector('.discovery-pair-port') as HTMLInputElement;
+        const codeInput = this.container.querySelector('.discovery-pair-code') as HTMLInputElement;
+        const connectPortInput = this.container.querySelector('.discovery-connect-port') as HTMLInputElement;
+        const labelInput = this.container.querySelector('.discovery-pair-label') as HTMLInputElement;
+        const btn = this.container.querySelector('.discovery-pair-connect') as HTMLButtonElement;
+
+        const host = hostInput.value.trim();
+        const pairingPort = pairingPortInput.value.trim();
+        const pairingCode = codeInput.value.trim();
+        const connectPort = connectPortInput.value.trim();
+        const label = labelInput.value.trim();
+        const validPort = (value: string): boolean =>
+            /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535;
+
+        if (!host) {
+            this.showPairResult('Android Tailscale IP is required.', 'error');
+            hostInput.focus();
+            return;
+        }
+        if (!validPort(pairingPort)) {
+            this.showPairResult('Enter the pairing port shown beside the 6-digit code.', 'error');
+            pairingPortInput.focus();
+            return;
+        }
+        if (!/^\d{6}$/.test(pairingCode)) {
+            this.showPairResult('Pairing code must be exactly 6 digits.', 'error');
+            codeInput.focus();
+            return;
+        }
+        if (!validPort(connectPort)) {
+            this.showPairResult('Enter the connection port from the main Wireless debugging screen.', 'error');
+            connectPortInput.focus();
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Pairing...';
+        codeInput.value = '';
+        using _restoreBtn = {
+            [Symbol.dispose](): void {
+                btn.disabled = false;
+                btn.textContent = 'pair & connect';
+            },
+        };
+
+        try {
+            const res = await fetch('/api/devices/pair', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host,
+                    pairingPort,
+                    pairingCode,
+                    connectPort,
+                    label: label || undefined,
+                }),
+            });
+            const result: PairResult = await res.json();
+            if (res.ok && result.success) {
+                this.showPairResult(result.message || `Connected to ${host}:${connectPort}`, 'success');
+                setTimeout(() => this.togglePairForm(false), 2500);
+            } else {
+                this.showPairResult(result.message || `Failed during ${result.phase || 'pairing'}.`, 'error');
+            }
+        } catch (err: any) {
+            this.showPairResult(err?.message || 'Pairing request failed.', 'error');
+        }
+    }
+
     private toggleManualForm(show?: boolean): void {
         const form = this.container.querySelector('.discovery-manual-form') as HTMLElement;
         const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
         if (shouldShow) {
+            const pairForm = this.container.querySelector('.discovery-pair-form') as HTMLElement;
+            pairForm.setAttribute('hidden', '');
             form.removeAttribute('hidden');
             (this.container.querySelector('.discovery-manual-address') as HTMLInputElement).focus();
         } else {

@@ -2,7 +2,7 @@ import { type ChildProcess, execFile, spawn } from 'child_process';
 import * as path from 'path';
 import { promisify } from 'util';
 import { AdbDaemonManager } from './AdbDaemonManager';
-import { assertSerial } from './security/deviceInput';
+import { assertAdbNetworkAddress, assertAdbPairingCode, assertSerial } from './security/deviceInput';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +19,10 @@ export interface MdnsDevice {
 }
 
 export type AdbExecErrorKind = 'timeout' | 'spawn' | 'exit' | 'unknown';
+
+export function redactPairingCode(text: string, pairingCode: string): string {
+    return pairingCode ? text.split(pairingCode).join('<redacted>') : text;
+}
 
 /**
  * Typed error thrown by AdbClient on any failure path. Carries the resolved
@@ -53,6 +57,7 @@ export const DEFAULT_TIMEOUT_MS = {
     devices: 5_000,
     mdnsServices: 8_000,
     connect: 8_000,
+    pair: 20_000,
     disconnect: 5_000,
     forwardOps: 5_000,
     shell: 30_000,
@@ -164,16 +169,25 @@ export class AdbClient {
             return stdout;
         } catch (err) {
             const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string; code?: string | number };
+            // `adb pair host:port 123456` carries a short-lived secret in argv.
+            // Node's execFile error message may repeat the full command, so both
+            // the public args and the preserved cause must be sanitized.
+            const isPair = args[0] === 'pair' && args.length >= 3;
+            const pairingCode = isPair ? args[2]! : '';
+            const safeArgs = isPair ? [args[0]!, args[1]!, '<redacted>'] : args;
+            const safeCause = isPair
+                ? new Error(redactPairingCode(err instanceof Error ? err.message : String(err), pairingCode))
+                : err;
             if (e?.killed && (e.signal === 'SIGKILL' || e.signal === 'SIGTERM')) {
-                throw new AdbExecError('timeout', this.adbPath, args, err);
+                throw new AdbExecError('timeout', this.adbPath, safeArgs, safeCause);
             }
             if (e?.code === 'ENOENT' || e?.code === 'EACCES') {
-                throw new AdbExecError('spawn', this.adbPath, args, err);
+                throw new AdbExecError('spawn', this.adbPath, safeArgs, safeCause);
             }
             if (typeof e?.code === 'number') {
-                throw new AdbExecError('exit', this.adbPath, args, err);
+                throw new AdbExecError('exit', this.adbPath, safeArgs, safeCause);
             }
-            throw new AdbExecError('unknown', this.adbPath, args, err);
+            throw new AdbExecError('unknown', this.adbPath, safeArgs, safeCause);
         }
     }
 
@@ -279,7 +293,14 @@ export class AdbClient {
         return parseMdnsOutput(output);
     }
 
+    async pair(address: string, pairingCode: string): Promise<string> {
+        assertAdbNetworkAddress(address);
+        assertAdbPairingCode(pairingCode);
+        return this.exec(['pair', address, pairingCode], { timeoutMs: DEFAULT_TIMEOUT_MS.pair });
+    }
+
     async connect(address: string): Promise<string> {
+        assertAdbNetworkAddress(address);
         return this.exec(['connect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.connect });
     }
 

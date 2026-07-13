@@ -80,7 +80,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
     autoUpdate: true,
     updateCheckIntervalMinutes: 60,
     channel: 'stable',
-    githubOwner: 'bilbospocketses',
+    githubOwner: 'Hiroshimeow',
     webPort: 8000,
 };
 

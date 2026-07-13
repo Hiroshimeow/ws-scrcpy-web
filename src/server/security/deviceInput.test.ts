@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+    assertAdbNetworkAddress,
+    assertAdbPairingCode,
     assertDeletablePaths,
     assertSafeRemotePath,
     assertSerial,
@@ -65,6 +67,28 @@ describe('deviceInput', () => {
         it('throws on an invalid serial', () => {
             expect(() => assertSerial('-H')).toThrow();
             expect(() => assertSerial('a;b')).toThrow();
+        });
+    });
+
+    describe('wireless adb pairing input', () => {
+        it('accepts Tailscale IPv4 and MagicDNS host endpoints', () => {
+            expect(assertAdbNetworkAddress('100.64.12.34:37123')).toBe('100.64.12.34:37123');
+            expect(assertAdbNetworkAddress('pixel-8.tailnet-name.ts.net:42111')).toBe(
+                'pixel-8.tailnet-name.ts.net:42111',
+            );
+        });
+
+        it('rejects option injection, malformed hosts, and invalid ports', () => {
+            expect(() => assertAdbNetworkAddress('-H:5555')).toThrow();
+            expect(() => assertAdbNetworkAddress('100.64.1.2:0')).toThrow();
+            expect(() => assertAdbNetworkAddress('100.64.1.2:70000')).toThrow();
+            expect(() => assertAdbNetworkAddress('100.64..1:5555')).toThrow();
+        });
+
+        it('accepts only a six-digit Android pairing code', () => {
+            expect(assertAdbPairingCode('123456')).toBe('123456');
+            expect(() => assertAdbPairingCode('12345')).toThrow();
+            expect(() => assertAdbPairingCode('12345a')).toThrow();
         });
     });
 

@@ -9,6 +9,7 @@ import {
     parseGetProp,
     parseMdnsOutput,
     parseSerialFromMdnsName,
+    redactPairingCode,
 } from '../AdbClient';
 import { tempDir } from '../util/disposable';
 
@@ -101,6 +102,16 @@ describe('AdbClient', () => {
         // intent: cwd is NOT inside <installRoot>\current\.
         expect(client.cwd).not.toBe(adbPath);
         expect(client.cwd.endsWith('current') || client.cwd.endsWith('current\\')).toBe(false);
+    });
+});
+
+describe('ADB pairing secret redaction', () => {
+    it('removes every occurrence of the six-digit code from command errors', () => {
+        const code = '654321';
+        const raw = `Command failed: adb pair 100.64.1.2:37123 ${code}\nwrong code ${code}`;
+        const safe = redactPairingCode(raw, code);
+        expect(safe).not.toContain(code);
+        expect(safe.match(/<redacted>/g)).toHaveLength(2);
     });
 });
 

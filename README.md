@@ -35,6 +35,7 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 - **Programmatic stream API** -- load `ws-scrcpy.umd.js` or `ws-scrcpy.esm.js` and call `WsScrcpy.startStream(container, deviceId, options)` to render a stream into any DOM element. Includes bundled TypeScript types (`ws-scrcpy.d.ts`). Also provides a thin `/embed.html?device=<udid>` wrapper for iframe consumers.
 - **Device labels** -- name your devices for easy identification, persisted per-user across sessions in the app's SQLite store, inline edit from device cards or during network scan
 - **Network device discovery** -- two-channel scan for ADB devices on the local network: mDNS advertisement for modern devices plus TCP port-5555 sweep for older devices that don't advertise. Configuration dialog auto-detects your gateway subnet and accepts additional subnets (CIDR, bare IP, or IP range); subnets persist across sessions. Streaming progress chip with cancel support; scan skips already-connected devices and dedupes mDNS+TCP hits. Manual-add fallback for single-IP cases.
+- **Attended Tailscale pairing** -- pair Android Wireless debugging from the browser by entering the Android Tailscale IP, the temporary pairing port/code, and the separate connection port; the code is cleared client-side and redacted from server errors. See [the Windows + Android test guide](docs/TAILSCALE_ANDROID_TEST.md).
 - **Device disconnect** -- disconnect network devices directly from the device card
 - **Sleep/wake toggle** -- turn devices on or off from the device card; state polled server-side and pushed via WebSocket so buttons stay in sync even when the device sleeps on a timer or via the physical remote
 - **Dark/light theme** -- toggle between dark (default) and light modes; first paint follows your OS preference, then your saved choice applies (persisted per-user in the app's SQLite store)
@@ -139,7 +140,7 @@ re-announce `theme-ready`, preventing leak vectors.
 
 ## Downloads
 
-Get the latest release from the [Releases page](https://github.com/bilbospocketses/ws-scrcpy-web/releases/latest):
+Get this fork's latest test build from the [Releases page](https://github.com/Hiroshimeow/ws-scrcpy-web/releases/latest):
 
 - **Windows MSI** (recommended) — installs per-machine to `C:\Program Files\WsScrcpyWeb\` with writable runtime state at `C:\ProgramData\WsScrcpyWeb\`. Requires admin (UAC) to install and to apply each subsequent update. Multi-user friendly; service mode and local mode share configuration.
 - **Windows portable ZIP** — unzip and run; no install required, no auto-updates. Useful for air-gapped setups.
@@ -167,6 +168,8 @@ npm start
 ```
 
 Open `http://localhost:8000` in your browser.
+
+For an attended Windows-to-Android test over Tailscale, follow [Test Android over Tailscale](docs/TAILSCALE_ANDROID_TEST.md).
 
 This mode requires Node.js and ADB installed on your system. See [Self-Contained Deployment](#self-contained-deployment) for a standalone installation that bundles everything.
 
@@ -260,7 +263,7 @@ In dev mode, `start.cmd` / `start.sh` provide a simpler restart loop for the sam
 
 Linux releases ship as a single self-contained AppImage built with [Velopack](https://velopack.io/). No package manager, no sudo (for user-scope installs), no system-wide changes.
 
-1. Download `WsScrcpyWeb-linux-stable.AppImage` (stable channel) or `WsScrcpyWeb-linux-beta.AppImage` (beta channel) from the [Releases](https://github.com/bilbospocketses/ws-scrcpy-web/releases) page.
+1. Download `WsScrcpyWeb-linux-stable.AppImage` (stable channel) or `WsScrcpyWeb-linux-beta.AppImage` (beta channel) from the [Releases](https://github.com/Hiroshimeow/ws-scrcpy-web/releases) page.
 2. Make it executable: `chmod +x WsScrcpyWeb-linux-stable.AppImage`
 3. Run it: `./WsScrcpyWeb-linux-stable.AppImage`
 4. It opens `http://localhost:8000` in your browser on launch — if it doesn't, open it yourself.
@@ -308,7 +311,7 @@ Almost all configuration is managed through the in-app **Settings** panel (gear 
 | `autoUpdate` | `true` | Settings → Updates → Automatically download updates |
 | `updateCheckIntervalMinutes` | `60` | Settings → Updates → Check interval |
 | `channel` | `stable` | Settings → Updates → Channel |
-| `githubOwner` | `bilbospocketses` | Settings → Updates → GitHub owner (override for forks) |
+| `githubOwner` | `Hiroshimeow` | Settings → Updates → GitHub owner |
 
 Not a stored field, but reached the same way: **Settings → Server → stop the server and close the app** cleanly stops the server and quits the app — the primary clean-exit path on Linux (no tray there), disabled in service mode.
 

@@ -1,17 +1,17 @@
 {
   "name": "ws-scrcpy-web",
-  "version": "0.1.30-beta.72",
+  "version": "0.1.30-beta.73",
   "description": "Browser-based Android screen mirroring and control, powered by scrcpy",
   "license": "GPL-3.0-only",
   "author": "bilbospocketses",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bilbospocketses/ws-scrcpy-web.git"
+    "url": "git+https://github.com/Hiroshimeow/ws-scrcpy-web.git"
   },
   "bugs": {
-    "url": "https://github.com/bilbospocketses/ws-scrcpy-web/issues"
+    "url": "https://github.com/Hiroshimeow/ws-scrcpy-web/issues"
   },
-  "homepage": "https://github.com/bilbospocketses/ws-scrcpy-web#readme",
+  "homepage": "https://github.com/Hiroshimeow/ws-scrcpy-web#readme",
   "keywords": [
     "scrcpy",
     "android",

@@ -1,21 +1,31 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { AdbClient, parseSerialFromMdnsName } from '../AdbClient';
+import { AdbClient, parseSerialFromMdnsName, redactPairingCode } from '../AdbClient';
 import { resolveUserId } from '../auth/currentUser';
 import { Config } from '../Config';
 import { Logger } from '../Logger';
 import { resolveMac } from '../network/MacResolver';
 import { detectSubnet } from '../network/SubnetDetector';
-import { assertDeletablePaths, shArg } from '../security/deviceInput';
+import { assertAdbNetworkAddress, assertAdbPairingCode, assertDeletablePaths, shArg } from '../security/deviceInput';
 import { upsertObservedDevices } from './deviceObserved';
 import { BodyTooLargeError, InvalidJsonError, readJsonBodyStrict, sendInternalError } from './utils';
 
 const log = Logger.for('DeviceDiscoveryApi');
 
-export class DeviceDiscoveryApi {
-    private adbClient: AdbClient;
+type DiscoveryAdbClient = Pick<AdbClient, 'mdnsServices' | 'devices' | 'pair' | 'connect' | 'disconnect' | 'shell'>;
 
-    constructor() {
-        this.adbClient = new AdbClient(Config.getInstance().adbPath);
+function pairSucceeded(output: string): boolean {
+    return /(?:successfully|already) paired/i.test(output);
+}
+
+function connectSucceeded(output: string): boolean {
+    return /(?:already )?connected to/i.test(output);
+}
+
+export class DeviceDiscoveryApi {
+    private adbClient: DiscoveryAdbClient;
+
+    constructor(adbClient?: DiscoveryAdbClient) {
+        this.adbClient = adbClient ?? new AdbClient(Config.getInstance().adbPath);
     }
 
     async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -72,6 +82,112 @@ export class DeviceDiscoveryApi {
                 return true;
             }
 
+            if (req.method === 'POST' && url === '/api/devices/pair') {
+                const { host, pairingPort, pairingCode, connectPort, label } = await readJsonBodyStrict<{
+                    host?: string;
+                    pairingPort?: string | number;
+                    pairingCode?: string;
+                    connectPort?: string | number;
+                    label?: string;
+                }>(req);
+
+                const cleanHost = typeof host === 'string' ? host.trim() : '';
+                const cleanPairingPort = String(pairingPort ?? '').trim();
+                const cleanConnectPort = String(connectPort ?? '').trim();
+                const cleanCode = typeof pairingCode === 'string' ? pairingCode.trim() : '';
+                const cleanLabel = typeof label === 'string' ? label.trim() : '';
+
+                let pairAddress: string;
+                let connectAddress: string;
+                try {
+                    pairAddress = assertAdbNetworkAddress(`${cleanHost}:${cleanPairingPort}`);
+                    connectAddress = assertAdbNetworkAddress(`${cleanHost}:${cleanConnectPort}`);
+                    assertAdbPairingCode(cleanCode);
+                } catch (err) {
+                    res.writeHead(400);
+                    res.end(
+                        JSON.stringify({
+                            success: false,
+                            phase: 'validation',
+                            message: (err as Error).message,
+                        }),
+                    );
+                    return true;
+                }
+
+                let pairResult: string;
+                try {
+                    pairResult = await this.adbClient.pair(pairAddress, cleanCode);
+                } catch (err) {
+                    log.warn(`pair ${pairAddress} failed: ${(err as Error).message}`);
+                    res.writeHead(502);
+                    res.end(
+                        JSON.stringify({
+                            success: false,
+                            phase: 'pair',
+                            message: 'Pairing failed. Check the Tailscale IP, pairing port, and fresh 6-digit code.',
+                        }),
+                    );
+                    return true;
+                }
+                if (!pairSucceeded(pairResult)) {
+                    const safePairResult = redactPairingCode(pairResult, cleanCode).trim().replace(/\s+/g, ' ');
+                    log.warn(`pair ${pairAddress} returned no success marker: ${safePairResult}`);
+                    res.writeHead(502);
+                    res.end(
+                        JSON.stringify({
+                            success: false,
+                            phase: 'pair',
+                            message: 'ADB did not confirm pairing. Generate a fresh code and try again.',
+                        }),
+                    );
+                    return true;
+                }
+
+                let connectResult: string;
+                try {
+                    connectResult = await this.adbClient.connect(connectAddress);
+                } catch (err) {
+                    log.warn(`connect ${connectAddress} after pairing failed: ${(err as Error).message}`);
+                    res.writeHead(502);
+                    res.end(
+                        JSON.stringify({
+                            success: false,
+                            phase: 'connect',
+                            message:
+                                'Paired, but connection failed. Re-check the connection port shown on Wireless debugging.',
+                        }),
+                    );
+                    return true;
+                }
+                if (!connectSucceeded(connectResult)) {
+                    res.writeHead(502);
+                    res.end(
+                        JSON.stringify({
+                            success: false,
+                            phase: 'connect',
+                            message: connectResult.trim() || 'ADB did not confirm the device connection.',
+                        }),
+                    );
+                    return true;
+                }
+
+                if (cleanLabel) {
+                    Config.getInstance().db.devices.setLabel(resolveUserId(req), connectAddress, cleanLabel);
+                }
+                log.info(`paired ${pairAddress} and connected ${connectAddress}`);
+                res.writeHead(200);
+                res.end(
+                    JSON.stringify({
+                        success: true,
+                        phase: 'complete',
+                        address: connectAddress,
+                        message: `Paired and connected to ${connectAddress}`,
+                    }),
+                );
+                return true;
+            }
+
             if (req.method === 'POST' && url === '/api/devices/connect') {
                 const { address, serial, label } = await readJsonBodyStrict<{
                     address?: string;
@@ -89,8 +205,15 @@ export class DeviceDiscoveryApi {
                 if (serial && label) {
                     db.devices.setLabel(userId, serial, label);
                 }
+                try {
+                    assertAdbNetworkAddress(address);
+                } catch (err) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ success: false, message: (err as Error).message }));
+                    return true;
+                }
                 const result = await this.adbClient.connect(address);
-                const success = result.includes('connected');
+                const success = connectSucceeded(result);
                 log.info(`connect ${address} → ${success ? 'OK' : 'FAIL'}: ${result.trim().replace(/\s+/g, ' ')}`);
                 if (success && label) {
                     // Persist the label under the device's real serial AND its MAC.

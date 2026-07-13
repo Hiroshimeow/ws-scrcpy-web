@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.73] - 2026-07-13
+
+### Added
+
+- **Attended Android Wireless-debugging pairing over Tailscale.** The network-device panel now accepts an Android Tailscale IP or MagicDNS name, the temporary six-digit pairing code and pairing port, and the separate Wireless-debugging connection port. The server runs `adb pair` followed by `adb connect`, validates every endpoint, clears the code from the browser field immediately, and redacts it from typed ADB errors and logs. This preserves explicit Android approval while removing the need to run ADB commands manually on Windows.
+
 ## [0.1.30-beta.72] - 2026-07-08
 
 ### Fixed

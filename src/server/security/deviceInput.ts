@@ -33,6 +33,41 @@ export function assertSerial(serial: unknown): string {
     return serial;
 }
 
+const ADB_NETWORK_HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/;
+
+/**
+ * Validate an adb network endpoint in host:port form. This deliberately targets
+ * IPv4 and DNS/MagicDNS names (the Tailscale MVP path); bracketed IPv6 can be
+ * added later once every URL/serial consumer is proven to handle it.
+ */
+export function assertAdbNetworkAddress(address: unknown): string {
+    if (typeof address !== 'string' || address.length === 0 || address.length > 320) {
+        throw new Error('invalid adb network address');
+    }
+    const colon = address.lastIndexOf(':');
+    if (colon <= 0 || colon === address.length - 1) {
+        throw new Error('adb network address must be host:port');
+    }
+    const host = address.slice(0, colon);
+    const portText = address.slice(colon + 1);
+    const port = Number(portText);
+    if (!ADB_NETWORK_HOST_RE.test(host) || host.endsWith('-') || host.includes('..')) {
+        throw new Error('invalid adb network host');
+    }
+    if (!/^\d{1,5}$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error('invalid adb network port');
+    }
+    return address;
+}
+
+/** Android Wireless debugging currently displays a six-digit pairing code. */
+export function assertAdbPairingCode(code: unknown): string {
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+        throw new Error('pairing code must be exactly 6 digits');
+    }
+    return code;
+}
+
 // Encoder names look like `OMX.qcom.video.encoder.avc` / `c2.android.avc.encoder`.
 const ENCODER_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
