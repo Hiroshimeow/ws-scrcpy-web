@@ -130,8 +130,8 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
                 if (this.decoder.state === 'configured') {
                     this.decoder.flush().catch(() => {});
                 }
-                // Supply SPS/PPS (and VPS for H.265) once via `description` so the
-                // per-frame keyframe path no longer concatenates config + frame data.
+                // scrcpy emits Annex-B. Keep `description` unset so WebCodecs
+                // expects Annex-B chunks rather than avcC/hvcC length-prefixed data.
                 this.decoder.configure(
                     buildDecoderConfig({
                         codec: result.codec,
@@ -153,15 +153,20 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
                 this.receivedFirstFrame = true;
             }
 
-            // SPS/PPS (and VPS for H.265) were handed to the decoder via the
-            // `description` field of VideoDecoderConfig at configure() time, and
-            // AV1 carries its sequence header inline — so decode the keyframe
-            // data directly with no per-frame config concatenation (finding #41).
+            let keyframeData = data;
+            if (this.detectedCodec !== 'av1') {
+                // H.264/H.265 config packets and media packets are separate on
+                // the scrcpy socket. In Annex-B mode, prepend VPS/SPS/PPS to each
+                // keyframe so the decoder always has the required parameter sets.
+                keyframeData = new Uint8Array(this.configData.length + data.length);
+                keyframeData.set(this.configData);
+                keyframeData.set(data, this.configData.length);
+            }
             this.decoder.decode(
                 new EncodedVideoChunk({
                     type: 'key',
                     timestamp: Number(pts),
-                    data,
+                    data: keyframeData,
                 }),
             );
             return;
