@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     assertAdbNetworkAddress,
     assertAdbPairingCode,
+    assertAdbQrPairingPassword,
     assertDeletablePaths,
     assertSafeRemotePath,
     assertSerial,
@@ -89,6 +90,13 @@ describe('deviceInput', () => {
             expect(assertAdbPairingCode('123456')).toBe('123456');
             expect(() => assertAdbPairingCode('12345')).toThrow();
             expect(() => assertAdbPairingCode('12345a')).toThrow();
+        });
+
+        it('accepts a generated QR pairing password but rejects unsafe input', () => {
+            expect(assertAdbQrPairingPassword('AbCdEf0123_-xyzQ')).toBe('AbCdEf0123_-xyzQ');
+            expect(() => assertAdbQrPairingPassword('short')).toThrow();
+            expect(() => assertAdbQrPairingPassword('contains space 123')).toThrow();
+            expect(() => assertAdbQrPairingPassword('abc;P:injected-value')).toThrow();
         });
     });
 

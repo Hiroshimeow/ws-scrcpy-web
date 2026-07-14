@@ -1,17 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { AdbClient, parseSerialFromMdnsName, redactPairingCode } from '../AdbClient';
+import { AdbQrPairingSessionManager, type AdbQrPairingStatus, type StartedAdbQrPairing } from '../AdbQrPairingSession';
 import { resolveUserId } from '../auth/currentUser';
 import { Config } from '../Config';
 import { Logger } from '../Logger';
 import { resolveMac } from '../network/MacResolver';
 import { detectSubnet } from '../network/SubnetDetector';
+import { renderQrSvg } from '../QrCodeRenderer';
 import { assertAdbNetworkAddress, assertAdbPairingCode, assertDeletablePaths, shArg } from '../security/deviceInput';
 import { upsertObservedDevices } from './deviceObserved';
 import { BodyTooLargeError, InvalidJsonError, readJsonBodyStrict, sendInternalError } from './utils';
 
 const log = Logger.for('DeviceDiscoveryApi');
 
-type DiscoveryAdbClient = Pick<AdbClient, 'mdnsServices' | 'devices' | 'pair' | 'connect' | 'disconnect' | 'shell'>;
+type DiscoveryAdbClient = Pick<
+    AdbClient,
+    'mdnsServices' | 'devices' | 'pair' | 'pairQr' | 'connect' | 'disconnect' | 'shell'
+>;
+type QrPairingSessions = Pick<AdbQrPairingSessionManager, 'start' | 'getStatus' | 'cancel'>;
+type QrRenderer = (payload: string) => Promise<string>;
 
 function pairSucceeded(output: string): boolean {
     return /(?:successfully|already) paired/i.test(output);
@@ -23,9 +30,13 @@ function connectSucceeded(output: string): boolean {
 
 export class DeviceDiscoveryApi {
     private adbClient: DiscoveryAdbClient;
+    private qrPairing: QrPairingSessions;
+    private renderQr: QrRenderer;
 
-    constructor(adbClient?: DiscoveryAdbClient) {
+    constructor(adbClient?: DiscoveryAdbClient, qrPairing?: QrPairingSessions, renderQr: QrRenderer = renderQrSvg) {
         this.adbClient = adbClient ?? new AdbClient(Config.getInstance().adbPath);
+        this.qrPairing = qrPairing ?? new AdbQrPairingSessionManager(this.adbClient);
+        this.renderQr = renderQr;
     }
 
     async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -35,6 +46,63 @@ export class DeviceDiscoveryApi {
         res.setHeader('Content-Type', 'application/json');
 
         try {
+            const parsedUrl = new URL(url, 'http://localhost');
+            if (parsedUrl.pathname === '/api/devices/pair/qr') {
+                res.setHeader('Cache-Control', 'no-store');
+                const id = parsedUrl.searchParams.get('id')?.trim() ?? '';
+
+                if (req.method === 'POST') {
+                    const session: StartedAdbQrPairing = this.qrPairing.start();
+                    let qrSvg: string;
+                    try {
+                        qrSvg = await this.renderQr(session.payload);
+                    } catch (err) {
+                        this.qrPairing.cancel(session.id);
+                        throw err;
+                    }
+                    res.writeHead(200);
+                    res.end(
+                        JSON.stringify({
+                            id: session.id,
+                            state: session.state,
+                            message: session.message,
+                            expiresAt: session.expiresAt,
+                            qrSvg,
+                        }),
+                    );
+                    return true;
+                }
+
+                if (!id) {
+                    res.writeHead(400);
+                    res.end(JSON.stringify({ error: 'session id is required' }));
+                    return true;
+                }
+
+                if (req.method === 'GET') {
+                    const status: AdbQrPairingStatus | null = this.qrPairing.getStatus(id);
+                    if (!status) {
+                        res.writeHead(404);
+                        res.end(JSON.stringify({ error: 'QR pairing session not found' }));
+                        return true;
+                    }
+                    res.writeHead(200);
+                    res.end(JSON.stringify(status));
+                    return true;
+                }
+
+                if (req.method === 'DELETE') {
+                    if (!this.qrPairing.cancel(id)) {
+                        res.writeHead(404);
+                        res.end(JSON.stringify({ error: 'QR pairing session not found or already finished' }));
+                        return true;
+                    }
+                    res.writeHead(200);
+                    res.end(JSON.stringify({ success: true }));
+                    return true;
+                }
+            }
+
             if (req.method === 'POST' && url === '/api/devices/scan') {
                 const discovered = await this.adbClient.mdnsServices();
                 const connectable = discovered.filter(

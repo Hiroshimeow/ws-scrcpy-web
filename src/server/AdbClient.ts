@@ -2,7 +2,12 @@ import { type ChildProcess, execFile, spawn } from 'child_process';
 import * as path from 'path';
 import { promisify } from 'util';
 import { AdbDaemonManager } from './AdbDaemonManager';
-import { assertAdbNetworkAddress, assertAdbPairingCode, assertSerial } from './security/deviceInput';
+import {
+    assertAdbNetworkAddress,
+    assertAdbPairingCode,
+    assertAdbQrPairingPassword,
+    assertSerial,
+} from './security/deviceInput';
 
 const execFileAsync = promisify(execFile);
 
@@ -297,6 +302,12 @@ export class AdbClient {
         assertAdbNetworkAddress(address);
         assertAdbPairingCode(pairingCode);
         return this.exec(['pair', address, pairingCode], { timeoutMs: DEFAULT_TIMEOUT_MS.pair });
+    }
+
+    async pairQr(address: string, pairingPassword: string): Promise<string> {
+        assertAdbNetworkAddress(address);
+        assertAdbQrPairingPassword(pairingPassword);
+        return this.exec(['pair', address, pairingPassword], { timeoutMs: DEFAULT_TIMEOUT_MS.pair });
     }
 
     async connect(address: string): Promise<string> {

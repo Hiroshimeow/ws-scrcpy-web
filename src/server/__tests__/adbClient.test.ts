@@ -60,6 +60,11 @@ describe('AdbClient', () => {
         expect(typeof client.mdnsServices).toBe('function');
     });
 
+    it('has a separate QR pairing method for non-numeric ADB secrets', () => {
+        const client = new AdbClient('adb');
+        expect(typeof client.pairQr).toBe('function');
+    });
+
     it('has connect method', () => {
         const client = new AdbClient('adb');
         expect(typeof client.connect).toBe('function');

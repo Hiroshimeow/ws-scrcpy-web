@@ -14,6 +14,17 @@ interface PairResult extends ConnectResult {
     address?: string;
 }
 
+interface QrPairingStatus {
+    id: string;
+    state: 'waiting' | 'pairing' | 'complete' | 'failed' | 'expired' | 'cancelled';
+    message: string;
+    expiresAt: number;
+}
+
+interface StartedQrPairing extends QrPairingStatus {
+    qrSvg: string;
+}
+
 function escapeHtml(s: string): string {
     return s
         .replace(/&/g, '&amp;')
@@ -31,6 +42,9 @@ export class NetworkDiscoveryPanel {
     private scanWs?: WebSocket | undefined;
     private scanSessionHits = new Map<string, HTMLElement>();
     private defaultInfoText = '';
+    private qrSessionId: string | undefined;
+    private qrPollTimer: number | undefined;
+    private qrRequestVersion = 0;
 
     constructor() {
         this.container = document.createElement('div');
@@ -42,9 +56,24 @@ export class NetworkDiscoveryPanel {
                 <div class="discovery-header-actions">
                     <button class="dep-btn discovery-quick-scan-btn" title="mDNS-only — finds modern Android devices with wireless debugging enabled">quick scan</button>
                     <button class="dep-btn discovery-scan-btn">scan network</button>
+                    <button class="dep-btn discovery-qr-pair-btn">pair with QR</button>
                     <button class="dep-btn discovery-pair-btn">pair via Tailscale</button>
                     <button class="dep-btn discovery-manual-btn">manually add</button>
                 </div>
+            </div>
+            <div class="discovery-qr-pair-form" hidden>
+                <button class="discovery-qr-close" aria-label="close" title="close">×</button>
+                <div class="discovery-qr-guide">
+                    <strong>Pair Android over the same Wi-Fi</strong>
+                    <ol>
+                        <li>On Android, open Developer options → Wireless debugging.</li>
+                        <li>Tap “Pair device with QR code”.</li>
+                        <li>Scan this code. Pairing continues automatically.</li>
+                    </ol>
+                    <div class="discovery-qr-lan-note">Windows and Android must be on the same Wi-Fi/LAN for QR discovery.</div>
+                </div>
+                <div class="discovery-qr-code" aria-label="ADB wireless debugging QR code"></div>
+                <div class="discovery-qr-status" role="status">Generating secure QR code…</div>
             </div>
             <div class="discovery-pair-form" hidden>
                 <div class="discovery-pair-help">
@@ -76,8 +105,14 @@ export class NetworkDiscoveryPanel {
         this.resultsContainer = this.container.querySelector('.discovery-results')!;
         this.container.querySelector('.discovery-scan-btn')!.addEventListener('click', () => this.scan());
         this.container.querySelector('.discovery-quick-scan-btn')!.addEventListener('click', () => this.quickScan());
+        this.container
+            .querySelector('.discovery-qr-pair-btn')!
+            .addEventListener('click', () => this.toggleQrPairForm());
         this.container.querySelector('.discovery-pair-btn')!.addEventListener('click', () => this.togglePairForm());
         this.container.querySelector('.discovery-manual-btn')!.addEventListener('click', () => this.toggleManualForm());
+        this.container
+            .querySelector('.discovery-qr-close')!
+            .addEventListener('click', () => this.toggleQrPairForm(false));
         this.container
             .querySelector('.discovery-pair-close')!
             .addEventListener('click', () => this.togglePairForm(false));
@@ -275,10 +310,127 @@ export class NetworkDiscoveryPanel {
         this.scanSessionHits.set(hit.address, card);
     }
 
+    private toggleQrPairForm(show?: boolean): void {
+        const form = this.container.querySelector('.discovery-qr-pair-form') as HTMLElement;
+        const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
+        if (shouldShow) {
+            this.togglePairForm(false);
+            this.toggleManualForm(false);
+            form.removeAttribute('hidden');
+            void this.startQrPairing();
+        } else {
+            form.setAttribute('hidden', '');
+            this.stopQrPairing(true);
+            (this.container.querySelector('.discovery-qr-code') as HTMLElement).innerHTML = '';
+            this.showQrStatus('Generating secure QR code…');
+        }
+    }
+
+    private async startQrPairing(): Promise<void> {
+        this.stopQrPairing(true);
+        const version = ++this.qrRequestVersion;
+        const qrEl = this.container.querySelector('.discovery-qr-code') as HTMLElement;
+        qrEl.innerHTML = '';
+        this.showQrStatus('Generating secure QR code…');
+
+        try {
+            const res = await fetch('/api/devices/pair/qr', { method: 'POST' });
+            const result = (await res.json()) as StartedQrPairing & { error?: string };
+            if (version !== this.qrRequestVersion) {
+                if (result.id) {
+                    void fetch(`/api/devices/pair/qr?id=${encodeURIComponent(result.id)}`, { method: 'DELETE' });
+                }
+                return;
+            }
+            if (!res.ok || !result.id || !result.qrSvg) {
+                this.showQrStatus(result.error || 'Could not create a QR pairing session.', 'error');
+                return;
+            }
+
+            this.qrSessionId = result.id;
+            qrEl.innerHTML = result.qrSvg;
+            this.showQrStatus(result.message);
+            this.scheduleQrPoll();
+        } catch (err: any) {
+            if (version === this.qrRequestVersion) {
+                this.showQrStatus(err?.message || 'Could not create a QR pairing session.', 'error');
+            }
+        }
+    }
+
+    private scheduleQrPoll(): void {
+        if (!this.qrSessionId) return;
+        if (this.qrPollTimer !== undefined) window.clearTimeout(this.qrPollTimer);
+        this.qrPollTimer = window.setTimeout(() => void this.pollQrPairing(), 1_000);
+    }
+
+    private async pollQrPairing(): Promise<void> {
+        this.qrPollTimer = undefined;
+        const id = this.qrSessionId;
+        if (!id) return;
+
+        try {
+            const res = await fetch(`/api/devices/pair/qr?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
+            const status = (await res.json()) as QrPairingStatus & { error?: string };
+            if (this.qrSessionId !== id) return;
+            if (!res.ok) {
+                this.showQrStatus(status.error || 'QR pairing status is unavailable.', 'error');
+                this.qrSessionId = undefined;
+                return;
+            }
+
+            this.showQrStatus(
+                status.message,
+                status.state === 'complete'
+                    ? 'success'
+                    : status.state === 'failed' || status.state === 'expired' || status.state === 'cancelled'
+                      ? 'error'
+                      : undefined,
+            );
+
+            if (status.state === 'complete') {
+                this.qrSessionId = undefined;
+                this.quickScan();
+                return;
+            }
+            if (status.state === 'failed' || status.state === 'expired' || status.state === 'cancelled') {
+                this.qrSessionId = undefined;
+                return;
+            }
+            this.scheduleQrPoll();
+        } catch {
+            if (this.qrSessionId === id) {
+                this.showQrStatus('Connection interrupted. Retrying…');
+                this.scheduleQrPoll();
+            }
+        }
+    }
+
+    private stopQrPairing(cancelServer: boolean): void {
+        this.qrRequestVersion += 1;
+        if (this.qrPollTimer !== undefined) {
+            window.clearTimeout(this.qrPollTimer);
+            this.qrPollTimer = undefined;
+        }
+        const id = this.qrSessionId;
+        this.qrSessionId = undefined;
+        if (cancelServer && id) {
+            void fetch(`/api/devices/pair/qr?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        }
+    }
+
+    private showQrStatus(text: string, kind?: 'success' | 'error'): void {
+        const status = this.container.querySelector('.discovery-qr-status') as HTMLElement;
+        status.textContent = text;
+        status.classList.toggle('success', kind === 'success');
+        status.classList.toggle('error', kind === 'error');
+    }
+
     private togglePairForm(show?: boolean): void {
         const form = this.container.querySelector('.discovery-pair-form') as HTMLElement;
         const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
         if (shouldShow) {
+            this.toggleQrPairForm(false);
             this.toggleManualForm(false);
             form.removeAttribute('hidden');
             (this.container.querySelector('.discovery-pair-host') as HTMLInputElement).focus();
@@ -387,6 +539,7 @@ export class NetworkDiscoveryPanel {
         const form = this.container.querySelector('.discovery-manual-form') as HTMLElement;
         const shouldShow = show !== undefined ? show : form.hasAttribute('hidden');
         if (shouldShow) {
+            this.toggleQrPairForm(false);
             const pairForm = this.container.querySelector('.discovery-pair-form') as HTMLElement;
             pairForm.setAttribute('hidden', '');
             form.removeAttribute('hidden');

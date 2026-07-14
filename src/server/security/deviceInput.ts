@@ -68,6 +68,14 @@ export function assertAdbPairingCode(code: unknown): string {
     return code;
 }
 
+/** Host-generated password embedded in Android's standard ADB QR payload. */
+export function assertAdbQrPairingPassword(password: unknown): string {
+    if (typeof password !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(password)) {
+        throw new Error('invalid QR pairing password');
+    }
+    return password;
+}
+
 // Encoder names look like `OMX.qcom.video.encoder.avc` / `c2.android.avc.encoder`.
 const ENCODER_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
