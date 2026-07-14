@@ -7,22 +7,21 @@ import {
 } from '../AudioDefaults';
 
 describe('audioEnabledDefault', () => {
-    // All kinds default ON. We use --audio-source=playback + --audio-dup which
-    // keeps device audio playing normally (SDK<33 is force-off server-side).
-    it('returns true for TV devices', () => {
-        expect(audioEnabledDefault('tv')).toBe(true);
+    // Stable mode starts without audio. Users may enable and save it explicitly.
+    it('returns false for TV devices', () => {
+        expect(audioEnabledDefault('tv')).toBe(false);
     });
 
-    it('returns true for phones', () => {
-        expect(audioEnabledDefault('phone')).toBe(true);
+    it('returns false for phones', () => {
+        expect(audioEnabledDefault('phone')).toBe(false);
     });
 
-    it('returns true for tablets', () => {
-        expect(audioEnabledDefault('tablet')).toBe(true);
+    it('returns false for tablets', () => {
+        expect(audioEnabledDefault('tablet')).toBe(false);
     });
 
-    it('returns true when device kind is unknown', () => {
-        expect(audioEnabledDefault(undefined)).toBe(true);
+    it('returns false when device kind is unknown', () => {
+        expect(audioEnabledDefault(undefined)).toBe(false);
     });
 });
 

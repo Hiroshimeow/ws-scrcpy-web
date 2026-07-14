@@ -3,18 +3,11 @@ import type { DeviceKind } from '../server/goog-device/deviceKind';
 export type AudioSource = 'playback' | 'output' | 'mic';
 
 /**
- * Whether audio streaming should default to ON for a given device kind.
- *
- * Returns `true` for all kinds. We default to `--audio-source=playback` with
- * `--audio-dup`, which keeps device audio playing normally while also streaming
- * it to the browser (requires Android 13+ / SDK 33+; the server forces audio
- * off below that threshold — see ScrcpyConnection.start()).
- *
- * The `kind` parameter is preserved for forward-compat in case a future device
- * class needs a different default.
+ * Audio streaming starts disabled for the compatibility-first default.
+ * Users may still enable and persist audio per device from the existing UI.
  */
 export function audioEnabledDefault(_kind: DeviceKind | undefined): boolean {
-    return true;
+    return false;
 }
 
 /**
