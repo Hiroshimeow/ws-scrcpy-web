@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.75] - 2026-07-14
+
+### Changed
+
+- **New stream sessions now start with compatibility-first defaults without removing any option.** H.264 is selected by default, vendor/hardware encoders are preferred over Android/Google software encoders, video starts at 4 Mbps and 20 FPS, and audio starts disabled. H.265, AV1, audio, encoder, bitrate, and FPS controls remain available; saved codec, encoder, and audio choices are restored on later sessions. Reset returns the form to these defaults without saving automatically.
+
 ## [0.1.30-beta.74] - 2026-07-14
 
 ### Fixed
