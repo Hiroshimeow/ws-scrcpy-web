@@ -303,7 +303,8 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
             settings: JSON.parse(JSON.stringify(videoSettings)) as Record<string, unknown>,
             fit: fitToScreen,
         };
-        if (codec) stored.codec = codec;
+        const persistedCodec = codec ?? settingsService.getDeviceVideo(udid)?.codec;
+        if (persistedCodec) stored.codec = persistedCodec;
         settingsService.setDeviceVideo(udid, stored);
     }
 

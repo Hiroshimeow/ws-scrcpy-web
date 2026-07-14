@@ -153,6 +153,23 @@ describe('BasePlayer video storage — Task 4c (SettingsService-backed)', () => 
         expect(BasePlayer.getFitToScreenFromStorage('WebCodecsPlayer', UDID)).toBe(true);
     });
 
+    it('keeps the saved codec when a runtime resize persists video settings without a codec argument', async () => {
+        const { BasePlayer, VideoSettings } = await importModules();
+        fakeDeviceCache.set(UDID, { video: { codec: 'h265', settings: {}, fit: false } });
+        const vs = new VideoSettings({ bitrate: 4_000_000, maxFps: 20, iFrameInterval: 2 });
+
+        // biome-ignore lint/complexity/noBannedTypes: test-only access to a protected static method
+        (BasePlayer as unknown as { putVideoSettingsToStorage: Function }).putVideoSettingsToStorage(
+            'WebCodecsPlayer',
+            UDID,
+            vs,
+            true,
+        );
+
+        expect(capturedSetDeviceVideo).toHaveLength(1);
+        expect(capturedSetDeviceVideo[0]!.video['codec']).toBe('h265');
+    });
+
     it('null-bounds crash-fix: stored bounds:null falls through to preferred.bounds (no throw)', async () => {
         // VideoSettings.toJSON() emits bounds:null for boundless settings. The old
         // code would have thrown trying to read null.width. The new null-guard in
