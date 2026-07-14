@@ -4,7 +4,11 @@
   <img src="assets/banner.png" alt="ws-scrcpy-web" width="600">
 </p>
 
-ws-scrcpy-web is a self-hosted, browser-based Android screen-mirroring app (independent project at [bilbospocketses/ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web), descended from [NetrisTV/ws-scrcpy](https://github.com/NetrisTV/ws-scrcpy)) that needs no client install beyond a browser. A local Node.js server uses ADB to push Genymobile's vanilla [scrcpy-server](https://github.com/Genymobile/scrcpy) onto the device and multiplexes its video/audio/control TCP sockets onto a single WebSocket via a 1-byte channel prefix. The browser client is a custom TypeScript protocol layer that demuxes the stream and decodes H.264/H.265/AV1 video and Opus/AAC/FLAC/PCM audio entirely through WebCodecs (no WASM fallbacks).
+> **Fork attribution**
+>
+> This repository, [`Hiroshimeow/ws-scrcpy-web`](https://github.com/Hiroshimeow/ws-scrcpy-web), is a fork of [`bilbospocketses/ws-scrcpy-web`](https://github.com/bilbospocketses/ws-scrcpy-web), which descends from [`NetrisTV/ws-scrcpy`](https://github.com/NetrisTV/ws-scrcpy). Android capture and control use Genymobile's unmodified [`scrcpy-server`](https://github.com/Genymobile/scrcpy). Original copyright notices and licenses are retained in this repository. Changes in this fork include attended Tailscale pairing, compatibility-first stream defaults, Android 16/WebCodecs fixes, and Windows/Linux release packaging.
+
+ws-scrcpy-web is a self-hosted, browser-based Android screen-mirroring app that needs no Android client app beyond ADB/Wireless debugging. A local Node.js server uses ADB to push Genymobile's vanilla `scrcpy-server` onto the device and multiplexes its video/audio/control TCP sockets onto a single WebSocket via a 1-byte channel prefix. The browser client is a custom TypeScript protocol layer that demuxes the stream and decodes H.264/H.265/AV1 video and Opus/AAC/FLAC/PCM audio entirely through WebCodecs (no WASM fallbacks).
 
 Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/Touch mode toggle for leanback TV apps, alongside extras like an ADB shell, file manager, mDNS scan, sleep/wake, and device labels. It ships self-contained (bundled Node + ADB, launcher scripts, in-app updater) and exposes a public `WsScrcpy.startStream()` UMD/ESM library plus an `embed.html` shim for embedding live streams into other apps.
 
@@ -140,13 +144,17 @@ re-announce `theme-ready`, preventing leak vectors.
 
 ## Downloads
 
-Get this fork's latest test build from the [Releases page](https://github.com/Hiroshimeow/ws-scrcpy-web/releases/latest):
+### Windows installer
+
+[**Download the latest Windows MSI**](https://github.com/Hiroshimeow/ws-scrcpy-web/releases/latest/download/WsScrcpyWeb-beta.msi)
+
+The repository and published releases are public, so downloading the MSI does **not** require a GitHub account. For version-specific files, Portable ZIP, Linux AppImage, checksums, and release notes, open the [latest release page](https://github.com/Hiroshimeow/ws-scrcpy-web/releases/latest).
 
 - **Windows MSI** (recommended) — installs per-machine to `C:\Program Files\WsScrcpyWeb\` with writable runtime state at `C:\ProgramData\WsScrcpyWeb\`. Requires admin (UAC) to install and to apply each subsequent update. Multi-user friendly; service mode and local mode share configuration.
 - **Windows portable ZIP** — unzip and run; no install required, no auto-updates. Useful for air-gapped setups.
 - **Linux AppImage** — download `WsScrcpyWeb-linux-stable.AppImage` (or `WsScrcpyWeb-linux-beta.AppImage` for the beta channel), `chmod +x` it, and run. See [Linux install](#linux-install-appimage) below.
 
-Release artifacts are currently **unsigned** (no Authenticode / codesign) — code-signing is under evaluation. Each release ships a `SHA256SUMS` file and [Sigstore SLSA Provenance](https://slsa.dev/) attestations for supply-chain verification.
+Release artifacts are currently **unsigned** (no Authenticode / codesign), so Windows SmartScreen may display a warning. Each release ships a `SHA256SUMS` file and [Sigstore SLSA Provenance](https://slsa.dev/) attestations for supply-chain verification.
 
 For data-handling details, see our [Privacy Policy](PRIVACY.md).
 
