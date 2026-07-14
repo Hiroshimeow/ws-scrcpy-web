@@ -159,3 +159,45 @@ export function assertDeletablePaths(paths: unknown): string[] {
     }
     return paths as string[];
 }
+
+/**
+ * Restricts remote QR endpoint discovery to a Tailscale-owned target.
+ *
+ * Port discovery is intentionally more powerful than a normal adb connect, so
+ * it must never accept an arbitrary LAN or Internet host. Full MagicDNS names
+ * are allowed; short MagicDNS aliases are not, because they cannot be
+ * distinguished from arbitrary DNS names at validation time.
+ */
+export function assertTailscaleQrHost(host: unknown): string {
+    if (typeof host !== 'string') throw new Error('Tailscale host is required');
+    const normalized = host.trim().toLowerCase().replace(/\.$/, '');
+    if (!normalized || normalized.length > 253) throw new Error('invalid Tailscale host');
+
+    const octets = normalized.split('.');
+    if (octets.length === 4 && octets.every((part) => /^\d{1,3}$/.test(part))) {
+        if (octets.some((part) => part.length > 1 && part.startsWith('0'))) {
+            throw new Error('Tailscale IPv4 address must use canonical decimal octets');
+        }
+        const values = octets.map(Number);
+        if (values.some((value) => value < 0 || value > 255)) throw new Error('invalid Tailscale IPv4 address');
+        const [first, second] = values;
+        if (first !== 100 || second! < 64 || second! > 127) {
+            throw new Error('Tailscale QR requires an address in 100.64.0.0/10');
+        }
+        return normalized;
+    }
+
+    if (!normalized.endsWith('.ts.net')) {
+        throw new Error('Tailscale QR requires a 100.x address or full .ts.net hostname');
+    }
+    const labels = normalized.split('.');
+    if (
+        labels.length < 4 ||
+        labels.some(
+            (label) => label.length < 1 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+        )
+    ) {
+        throw new Error('invalid Tailscale hostname');
+    }
+    return normalized;
+}

@@ -1,5 +1,7 @@
 # Standard ADB QR Pairing
 
+> This document records the initial same-LAN implementation. The later Tailscale discovery extension is specified in [Tailscale QR Pairing Extension](2026-07-15-tailscale-qr-pairing-design.md).
+
 ## Goal
 
 Add Android's built-in **Pair device with QR code** flow to the existing network-device panel. Keep the pairing-code/Tailscale form as the fallback for remote networks.

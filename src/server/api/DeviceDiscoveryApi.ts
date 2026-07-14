@@ -7,7 +7,13 @@ import { Logger } from '../Logger';
 import { resolveMac } from '../network/MacResolver';
 import { detectSubnet } from '../network/SubnetDetector';
 import { renderQrSvg } from '../QrCodeRenderer';
-import { assertAdbNetworkAddress, assertAdbPairingCode, assertDeletablePaths, shArg } from '../security/deviceInput';
+import {
+    assertAdbNetworkAddress,
+    assertAdbPairingCode,
+    assertDeletablePaths,
+    assertTailscaleQrHost,
+    shArg,
+} from '../security/deviceInput';
 import { upsertObservedDevices } from './deviceObserved';
 import { BodyTooLargeError, InvalidJsonError, readJsonBodyStrict, sendInternalError } from './utils';
 
@@ -52,7 +58,29 @@ export class DeviceDiscoveryApi {
                 const id = parsedUrl.searchParams.get('id')?.trim() ?? '';
 
                 if (req.method === 'POST') {
-                    const session: StartedAdbQrPairing = this.qrPairing.start();
+                    const body = await readJsonBodyStrict<{ mode?: unknown; host?: unknown }>(req);
+                    const mode = body.mode ?? 'lan';
+                    if (mode !== 'lan' && mode !== 'tailscale') {
+                        res.writeHead(400);
+                        res.end(JSON.stringify({ error: 'QR pairing mode must be lan or tailscale' }));
+                        return true;
+                    }
+
+                    let session: StartedAdbQrPairing;
+                    if (mode === 'tailscale') {
+                        let host: string;
+                        try {
+                            host = assertTailscaleQrHost(body.host);
+                        } catch (error) {
+                            res.writeHead(400);
+                            res.end(JSON.stringify({ error: (error as Error).message }));
+                            return true;
+                        }
+                        session = this.qrPairing.start({ mode, host });
+                    } else {
+                        session = this.qrPairing.start({ mode });
+                    }
+
                     let qrSvg: string;
                     try {
                         qrSvg = await this.renderQr(session.payload);
@@ -65,6 +93,8 @@ export class DeviceDiscoveryApi {
                         JSON.stringify({
                             id: session.id,
                             state: session.state,
+                            mode: session.mode,
+                            ...(session.host ? { host: session.host } : {}),
                             message: session.message,
                             expiresAt: session.expiresAt,
                             qrSvg,

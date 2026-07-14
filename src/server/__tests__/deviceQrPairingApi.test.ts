@@ -7,6 +7,7 @@ import { makeReqRes } from './helpers/httpMock';
 const started: StartedAdbQrPairing = {
     id: 'session_abc',
     state: 'waiting',
+    mode: 'lan',
     message: 'Waiting for Android to scan the QR code…',
     expiresAt: 123_456,
     payload: 'WIFI:T:ADB;S:studio-wssw-test;P:super-secret;;',
@@ -19,15 +20,16 @@ function fakeAdb(): AdbClient {
         mdnsServices: vi.fn(),
         devices: vi.fn(),
         pair: vi.fn(),
+        pairQr: vi.fn(),
         connect: vi.fn(),
         disconnect: vi.fn(),
         shell: vi.fn(),
     } as unknown as AdbClient;
 }
 
-function fakeSessions(status: AdbQrPairingStatus | null = started) {
+function fakeSessions(status: AdbQrPairingStatus | null = started, startedSession: StartedAdbQrPairing = started) {
     return {
-        start: vi.fn(() => ({ ...started })),
+        start: vi.fn(() => ({ ...startedSession })),
         getStatus: vi.fn(() => status),
         cancel: vi.fn(() => true),
     };
@@ -42,17 +44,91 @@ describe('DeviceDiscoveryApi — QR pairing', () => {
         await new DeviceDiscoveryApi(fakeAdb(), sessions, renderQr).handle(r.req, r.res);
 
         expect(r.getStatus()).toBe(200);
+        expect(sessions.start).toHaveBeenCalledWith({ mode: 'lan' });
         expect(renderQr).toHaveBeenCalledWith(started.payload);
         expect(r.getHeader('cache-control')).toBe('no-store');
         expect(r.getJson()).toEqual({
             id: started.id,
             state: 'waiting',
+            mode: 'lan',
             message: started.message,
             expiresAt: started.expiresAt,
             qrSvg: '<svg data-test="qr"></svg>',
         });
         expect(JSON.stringify(r.getJson())).not.toContain(started.password);
         expect(JSON.stringify(r.getJson())).not.toContain(started.payload);
+    });
+
+    it('starts a Tailscale QR session for a validated tailnet target', async () => {
+        const remote: StartedAdbQrPairing = {
+            ...started,
+            mode: 'tailscale',
+            host: '100.64.1.20',
+            message: 'Searching the Tailscale endpoint…',
+        };
+        const sessions = fakeSessions(remote, remote);
+        const renderQr = vi.fn(async () => '<svg data-test="tailscale-qr"></svg>');
+        const r = makeReqRes('POST', '/api/devices/pair/qr', {
+            mode: 'tailscale',
+            host: '100.64.1.20',
+        });
+
+        await new DeviceDiscoveryApi(fakeAdb(), sessions, renderQr).handle(r.req, r.res);
+
+        expect(r.getStatus()).toBe(200);
+        expect(sessions.start).toHaveBeenCalledWith({ mode: 'tailscale', host: '100.64.1.20' });
+        expect(r.getJson()).toEqual({
+            id: remote.id,
+            state: remote.state,
+            mode: 'tailscale',
+            host: '100.64.1.20',
+            message: remote.message,
+            expiresAt: remote.expiresAt,
+            qrSvg: '<svg data-test="tailscale-qr"></svg>',
+        });
+        expect(JSON.stringify(r.getJson())).not.toContain(remote.password);
+        expect(JSON.stringify(r.getJson())).not.toContain(remote.payload);
+    });
+
+    it('normalizes a full MagicDNS hostname for Tailscale QR', async () => {
+        const remote: StartedAdbQrPairing = {
+            ...started,
+            mode: 'tailscale',
+            host: 'pixel-8.my-tailnet.ts.net',
+        };
+        const sessions = fakeSessions(remote, remote);
+        const r = makeReqRes('POST', '/api/devices/pair/qr', {
+            mode: 'tailscale',
+            host: 'PIXEL-8.MY-TAILNET.TS.NET.',
+        });
+
+        await new DeviceDiscoveryApi(
+            fakeAdb(),
+            sessions,
+            vi.fn(async () => '<svg></svg>'),
+        ).handle(r.req, r.res);
+
+        expect(r.getStatus()).toBe(200);
+        expect(sessions.start).toHaveBeenCalledWith({
+            mode: 'tailscale',
+            host: 'pixel-8.my-tailnet.ts.net',
+        });
+    });
+
+    it.each([
+        [{ mode: 'internet', host: '100.64.1.20' }, 'QR pairing mode'],
+        [{ mode: 'tailscale', host: '' }, 'Tailscale'],
+        [{ mode: 'tailscale', host: '192.168.1.20' }, '100.64.0.0/10'],
+        [{ mode: 'tailscale', host: 'example.com' }, '.ts.net'],
+    ])('rejects an unsafe QR session request %#', async (body, message) => {
+        const sessions = fakeSessions();
+        const r = makeReqRes('POST', '/api/devices/pair/qr', body);
+
+        await new DeviceDiscoveryApi(fakeAdb(), sessions, vi.fn()).handle(r.req, r.res);
+
+        expect(r.getStatus()).toBe(400);
+        expect((r.getJson() as { error: string }).error).toContain(message);
+        expect(sessions.start).not.toHaveBeenCalled();
     });
 
     it('returns current status for the matching session', async () => {

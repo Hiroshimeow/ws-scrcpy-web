@@ -6,6 +6,7 @@ import {
     assertDeletablePaths,
     assertSafeRemotePath,
     assertSerial,
+    assertTailscaleQrHost,
     isSafeEncoderName,
     isValidSerial,
     shArg,
@@ -97,6 +98,25 @@ describe('deviceInput', () => {
             expect(() => assertAdbQrPairingPassword('short')).toThrow();
             expect(() => assertAdbQrPairingPassword('contains space 123')).toThrow();
             expect(() => assertAdbQrPairingPassword('abc;P:injected-value')).toThrow();
+        });
+
+        it('accepts only tailnet-scoped QR targets', () => {
+            expect(assertTailscaleQrHost('100.64.0.1')).toBe('100.64.0.1');
+            expect(assertTailscaleQrHost('100.127.255.254')).toBe('100.127.255.254');
+            expect(assertTailscaleQrHost('pixel-8.my-tailnet.ts.net')).toBe('pixel-8.my-tailnet.ts.net');
+            expect(assertTailscaleQrHost('PIXEL-8.MY-TAILNET.TS.NET.')).toBe('pixel-8.my-tailnet.ts.net');
+        });
+
+        it('rejects arbitrary scan targets for Tailscale QR', () => {
+            expect(() => assertTailscaleQrHost('100.63.255.255')).toThrow();
+            expect(() => assertTailscaleQrHost('100.128.0.1')).toThrow();
+            expect(() => assertTailscaleQrHost('100.064.1.2')).toThrow();
+            expect(() => assertTailscaleQrHost('100.64.01.2')).toThrow();
+            expect(() => assertTailscaleQrHost('192.168.1.20')).toThrow();
+            expect(() => assertTailscaleQrHost('localhost')).toThrow();
+            expect(() => assertTailscaleQrHost('example.com')).toThrow();
+            expect(() => assertTailscaleQrHost('device.ts.net')).toThrow();
+            expect(() => assertTailscaleQrHost('-evil.ts.net')).toThrow();
         });
     });
 

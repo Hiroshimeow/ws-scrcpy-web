@@ -39,8 +39,8 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 - **Programmatic stream API** -- load `ws-scrcpy.umd.js` or `ws-scrcpy.esm.js` and call `WsScrcpy.startStream(container, deviceId, options)` to render a stream into any DOM element. Includes bundled TypeScript types (`ws-scrcpy.d.ts`). Also provides a thin `/embed.html?device=<udid>` wrapper for iframe consumers.
 - **Device labels** -- name your devices for easy identification, persisted per-user across sessions in the app's SQLite store, inline edit from device cards or during network scan
 - **Network device discovery** -- two-channel scan for ADB devices on the local network: mDNS advertisement for modern devices plus TCP port-5555 sweep for older devices that don't advertise. Configuration dialog auto-detects your gateway subnet and accepts additional subnets (CIDR, bare IP, or IP range); subnets persist across sessions. Streaming progress chip with cancel support; scan skips already-connected devices and dedupes mDNS+TCP hits. Manual-add fallback for single-IP cases.
-- **Standard ADB QR pairing** -- when Windows and Android are on the same Wi-Fi/LAN, generate the official Android Wireless-debugging QR code in the browser, scan it from **Pair device with QR code**, and let the bundled ADB client discover and pair with the exact temporary mDNS service automatically.
-- **Attended Tailscale pairing** -- for remote networks where QR/mDNS cannot cross the tunnel, pair Android Wireless debugging by entering the Android Tailscale IP, the temporary pairing port/code, and the separate connection port; the code is cleared client-side and redacted from server errors. See [the Windows + Android test guide](docs/TAILSCALE_ANDROID_TEST.md).
+- **ADB QR pairing on LAN or Tailscale** -- generate Android's official Wireless-debugging QR code in the browser. Same-Wi-Fi mode resolves the exact temporary mDNS service; Tailscale mode accepts one `100.64.0.0/10` address or full `.ts.net` hostname, discovers the temporary high ports through the tailnet, runs `adb pair`, then connects the authenticated ADB endpoint automatically.
+- **Attended pairing-code fallback** -- when an Android/OEM build does not expose its QR pairing server on the Tailscale interface, retain the explicit remote fallback: enter the Tailscale IP, temporary pairing port/code, and separate connection port. The code is cleared client-side and redacted from server errors. See [the Windows + Android test guide](docs/TAILSCALE_ANDROID_TEST.md).
 - **Device disconnect** -- disconnect network devices directly from the device card
 - **Sleep/wake toggle** -- turn devices on or off from the device card; state polled server-side and pushed via WebSocket so buttons stay in sync even when the device sleeps on a timer or via the physical remote
 - **Dark/light theme** -- toggle between dark (default) and light modes; first paint follows your OS preference, then your saved choice applies (persisted per-user in the app's SQLite store)
@@ -178,17 +178,34 @@ npm start
 
 Open `http://localhost:8000` in your browser.
 
-### Pair Android with QR on the same Wi-Fi
+### Pair Android with QR
+
+The QR panel has two transport modes. Both generate Android's official `WIFI:T:ADB` payload and keep the random pairing password only in memory.
+
+#### Same Wi-Fi
 
 1. Put Windows and Android on the same Wi-Fi/LAN.
 2. On Android, enable **Developer options → Wireless debugging**.
-3. In **Available Network Devices**, select **pair with QR**.
+3. In **Available Network Devices**, select **pair with QR → same Wi-Fi**.
 4. On Android, select **Pair device with QR code** and scan the displayed code.
-5. The browser waits for Android's exact temporary mDNS pairing service, runs `adb pair`, and then quick-scans for the connected device.
+5. The server waits for the exact temporary `_adb-tls-pairing._tcp` mDNS instance, runs `adb pair`, and quick-scans for the connected device.
 
-The QR session expires after two minutes and is never persisted. QR pairing depends on same-LAN mDNS; it normally does not work through Tailscale by itself. For remote pairing, use the retained **pair via Tailscale** form and follow [Test Android over Tailscale](docs/TAILSCALE_ANDROID_TEST.md).
+The LAN QR session expires after two minutes.
 
-This mode requires Node.js and ADB installed on your system. See [Self-Contained Deployment](#self-contained-deployment) for a standalone installation that bundles everything.
+#### Tailscale
+
+1. Install Tailscale on Windows and Android, sign both into the same tailnet, and keep both online.
+2. Note Android's Tailscale IPv4 address (`100.x.y.z`) or full MagicDNS hostname ending in `.ts.net`.
+3. Enable **Wireless debugging** on Android.
+4. In **Available Network Devices**, select **pair with QR → Tailscale**, enter only the Tailscale address/hostname, and generate the QR.
+5. On Android, select **Pair device with QR code** and scan it.
+6. A full MagicDNS name is resolved once and must return a Tailscale `100.64.0.0/10` address. The server then scans only that validated target's Android ephemeral range (`32768-65535`), identifies the temporary pairing endpoint using the QR password, and connects the authenticated secure-ADB endpoint.
+
+No pairing port, connection port, or six-digit code is required in this mode. The remote QR session expires after three minutes. The scan is bounded, cancellable, limited to one active QR session, and cannot target arbitrary LAN/Internet hosts.
+
+Some Android/OEM builds expose Wireless debugging only on the physical Wi-Fi interface even though AOSP binds the service to all interfaces. On those devices, use the retained **pair via Tailscale** pairing-code form. Physical Android acceptance remains device-specific; follow [Test Android over Tailscale](docs/TAILSCALE_ANDROID_TEST.md).
+
+This source mode requires Node.js and ADB installed on your system. See [Self-Contained Deployment](#self-contained-deployment) for a standalone installation that bundles everything.
 
 ### Optional: `npm run fetch-prebuilts`
 

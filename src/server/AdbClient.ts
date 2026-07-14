@@ -304,15 +304,19 @@ export class AdbClient {
         return this.exec(['pair', address, pairingCode], { timeoutMs: DEFAULT_TIMEOUT_MS.pair });
     }
 
-    async pairQr(address: string, pairingPassword: string): Promise<string> {
+    async pairQr(
+        address: string,
+        pairingPassword: string,
+        timeoutMs: number = DEFAULT_TIMEOUT_MS.pair,
+    ): Promise<string> {
         assertAdbNetworkAddress(address);
         assertAdbQrPairingPassword(pairingPassword);
-        return this.exec(['pair', address, pairingPassword], { timeoutMs: DEFAULT_TIMEOUT_MS.pair });
+        return this.exec(['pair', address, pairingPassword], { timeoutMs });
     }
 
-    async connect(address: string): Promise<string> {
+    async connect(address: string, timeoutMs: number = DEFAULT_TIMEOUT_MS.connect): Promise<string> {
         assertAdbNetworkAddress(address);
-        return this.exec(['connect', address], { timeoutMs: DEFAULT_TIMEOUT_MS.connect });
+        return this.exec(['connect', address], { timeoutMs });
     }
 
     async disconnect(address: string): Promise<string> {

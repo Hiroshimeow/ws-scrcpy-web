@@ -14,11 +14,16 @@ interface PairResult extends ConnectResult {
     address?: string;
 }
 
+type QrPairingMode = 'lan' | 'tailscale';
+
 interface QrPairingStatus {
     id: string;
-    state: 'waiting' | 'pairing' | 'complete' | 'failed' | 'expired' | 'cancelled';
+    state: 'waiting' | 'scanning' | 'pairing' | 'connecting' | 'complete' | 'failed' | 'expired' | 'cancelled';
+    mode: QrPairingMode;
     message: string;
     expiresAt: number;
+    host?: string;
+    address?: string;
 }
 
 interface StartedQrPairing extends QrPairingStatus {
@@ -45,6 +50,7 @@ export class NetworkDiscoveryPanel {
     private qrSessionId: string | undefined;
     private qrPollTimer: number | undefined;
     private qrRequestVersion = 0;
+    private qrMode: QrPairingMode = 'lan';
 
     constructor() {
         this.container = document.createElement('div');
@@ -64,13 +70,22 @@ export class NetworkDiscoveryPanel {
             <div class="discovery-qr-pair-form" hidden>
                 <button class="discovery-qr-close" aria-label="close" title="close">×</button>
                 <div class="discovery-qr-guide">
-                    <strong>Pair Android over the same Wi-Fi</strong>
+                    <div class="discovery-qr-mode" role="group" aria-label="QR pairing network">
+                        <button class="dep-btn discovery-qr-mode-lan active" type="button">same Wi-Fi</button>
+                        <button class="dep-btn discovery-qr-mode-tailscale" type="button">Tailscale</button>
+                    </div>
+                    <strong class="discovery-qr-guide-title">Pair Android over the same Wi-Fi</strong>
                     <ol>
-                        <li>On Android, open Developer options → Wireless debugging.</li>
-                        <li>Tap “Pair device with QR code”.</li>
-                        <li>Scan this code. Pairing continues automatically.</li>
+                        <li class="discovery-qr-step-one">On Android, open Developer options → Wireless debugging.</li>
+                        <li class="discovery-qr-step-two">Tap “Pair device with QR code”.</li>
+                        <li class="discovery-qr-step-three">Scan this code. Pairing continues automatically.</li>
                     </ol>
                     <div class="discovery-qr-lan-note">Windows and Android must be on the same Wi-Fi/LAN for QR discovery.</div>
+                    <div class="discovery-qr-tailscale-target" hidden>
+                        <input type="text" class="discovery-qr-tailscale-host" placeholder="Android Tailscale IP (100.x.y.z) or full .ts.net name" autocomplete="off" />
+                        <button class="dep-btn discovery-qr-generate" type="button">generate Tailscale QR</button>
+                        <small>Only a Tailscale 100.64.0.0/10 address or full MagicDNS .ts.net hostname is accepted.</small>
+                    </div>
                 </div>
                 <div class="discovery-qr-code" aria-label="ADB wireless debugging QR code"></div>
                 <div class="discovery-qr-status" role="status">Generating secure QR code…</div>
@@ -113,6 +128,21 @@ export class NetworkDiscoveryPanel {
         this.container
             .querySelector('.discovery-qr-close')!
             .addEventListener('click', () => this.toggleQrPairForm(false));
+        this.container
+            .querySelector('.discovery-qr-mode-lan')!
+            .addEventListener('click', () => this.selectQrMode('lan'));
+        this.container
+            .querySelector('.discovery-qr-mode-tailscale')!
+            .addEventListener('click', () => this.selectQrMode('tailscale'));
+        this.container
+            .querySelector('.discovery-qr-generate')!
+            .addEventListener('click', () => void this.startQrPairing());
+        (this.container.querySelector('.discovery-qr-tailscale-host') as HTMLInputElement).addEventListener(
+            'keydown',
+            (event) => {
+                if ((event as KeyboardEvent).key === 'Enter') void this.startQrPairing();
+            },
+        );
         this.container
             .querySelector('.discovery-pair-close')!
             .addEventListener('click', () => this.togglePairForm(false));
@@ -317,7 +347,13 @@ export class NetworkDiscoveryPanel {
             this.togglePairForm(false);
             this.toggleManualForm(false);
             form.removeAttribute('hidden');
-            void this.startQrPairing();
+            this.applyQrModeUi();
+            if (this.qrMode === 'lan') {
+                void this.startQrPairing();
+            } else {
+                this.showQrStatus('Enter the Android Tailscale IP, then generate a QR code.');
+                (this.container.querySelector('.discovery-qr-tailscale-host') as HTMLInputElement).focus();
+            }
         } else {
             form.setAttribute('hidden', '');
             this.stopQrPairing(true);
@@ -326,15 +362,74 @@ export class NetworkDiscoveryPanel {
         }
     }
 
+    private selectQrMode(mode: QrPairingMode): void {
+        if (this.qrMode === mode) return;
+        this.qrMode = mode;
+        this.stopQrPairing(true);
+        (this.container.querySelector('.discovery-qr-code') as HTMLElement).innerHTML = '';
+        this.applyQrModeUi();
+
+        const form = this.container.querySelector('.discovery-qr-pair-form') as HTMLElement;
+        if (form.hasAttribute('hidden')) return;
+        if (mode === 'lan') {
+            void this.startQrPairing();
+        } else {
+            this.showQrStatus('Enter the Android Tailscale IP, then generate a QR code.');
+            (this.container.querySelector('.discovery-qr-tailscale-host') as HTMLInputElement).focus();
+        }
+    }
+
+    private applyQrModeUi(): void {
+        const tailscale = this.qrMode === 'tailscale';
+        const lanBtn = this.container.querySelector('.discovery-qr-mode-lan') as HTMLButtonElement;
+        const tailscaleBtn = this.container.querySelector('.discovery-qr-mode-tailscale') as HTMLButtonElement;
+        lanBtn.classList.toggle('active', !tailscale);
+        tailscaleBtn.classList.toggle('active', tailscale);
+        lanBtn.setAttribute('aria-pressed', String(!tailscale));
+        tailscaleBtn.setAttribute('aria-pressed', String(tailscale));
+
+        const target = this.container.querySelector('.discovery-qr-tailscale-target') as HTMLElement;
+        target.toggleAttribute('hidden', !tailscale);
+        (this.container.querySelector('.discovery-qr-guide-title') as HTMLElement).textContent = tailscale
+            ? 'Pair Android over Tailscale'
+            : 'Pair Android over the same Wi-Fi';
+        (this.container.querySelector('.discovery-qr-step-one') as HTMLElement).textContent = tailscale
+            ? 'Keep Tailscale connected on both Windows and Android.'
+            : 'On Android, open Developer options → Wireless debugging.';
+        (this.container.querySelector('.discovery-qr-step-two') as HTMLElement).textContent = tailscale
+            ? 'On Android, open Wireless debugging → Pair device with QR code.'
+            : 'Tap “Pair device with QR code”.';
+        (this.container.querySelector('.discovery-qr-step-three') as HTMLElement).textContent = tailscale
+            ? 'Scan this code. Windows discovers the temporary ADB ports through the tailnet.'
+            : 'Scan this code. Pairing continues automatically.';
+        (this.container.querySelector('.discovery-qr-lan-note') as HTMLElement).textContent = tailscale
+            ? 'No port or 6-digit code is needed. The phone must expose Wireless debugging on its Tailscale interface.'
+            : 'Windows and Android must be on the same Wi-Fi/LAN for QR discovery.';
+    }
+
     private async startQrPairing(): Promise<void> {
+        const mode = this.qrMode;
+        const hostInput = this.container.querySelector('.discovery-qr-tailscale-host') as HTMLInputElement;
+        const host = hostInput.value.trim();
+        if (mode === 'tailscale' && !host) {
+            this.showQrStatus('Android Tailscale IP or full .ts.net hostname is required.', 'error');
+            hostInput.focus();
+            return;
+        }
+
         this.stopQrPairing(true);
         const version = ++this.qrRequestVersion;
         const qrEl = this.container.querySelector('.discovery-qr-code') as HTMLElement;
         qrEl.innerHTML = '';
-        this.showQrStatus('Generating secure QR code…');
+        this.showQrStatus(mode === 'tailscale' ? 'Generating Tailscale QR code…' : 'Generating secure QR code…');
 
         try {
-            const res = await fetch('/api/devices/pair/qr', { method: 'POST' });
+            const requestBody = mode === 'tailscale' ? { mode, host } : { mode };
+            const res = await fetch('/api/devices/pair/qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+            });
             const result = (await res.json()) as StartedQrPairing & { error?: string };
             if (version !== this.qrRequestVersion) {
                 if (result.id) {
@@ -390,7 +485,12 @@ export class NetworkDiscoveryPanel {
 
             if (status.state === 'complete') {
                 this.qrSessionId = undefined;
-                this.quickScan();
+                if (status.mode === 'tailscale') {
+                    const address = status.address || status.host || 'the Tailscale device';
+                    this.setInfoText(`Android connected over Tailscale at ${address}.`);
+                } else {
+                    this.quickScan();
+                }
                 return;
             }
             if (status.state === 'failed' || status.state === 'expired' || status.state === 'cancelled') {

@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.78] - 2026-07-15
+
+### Added
+
+- **Official Android QR pairing now works across a Tailscale tailnet without entering temporary ports or a six-digit code.** Select **pair with QR → Tailscale**, provide one Android `100.64.0.0/10` address or full `.ts.net` hostname, and scan the generated code. The server replaces non-routable mDNS discovery with a bounded high-port scan, identifies the pairing endpoint with the generated QR password, then connects the authenticated secure-ADB endpoint automatically. The original same-LAN QR mode and explicit pairing-code fallback remain available.
+
+### Security
+
+- **Remote QR discovery is restricted, bounded, cancellable, and secret-safe.** Arbitrary LAN/Internet targets are rejected; the scanner has fixed range/concurrency/timeout/open-port limits and one shared abort listener; cancellation, replacement, and expiry close active sockets. QR passwords are redacted from typed ADB errors, command arguments, and preserved causes and are cleared from memory at every terminal state.
+
 ## [0.1.30-beta.77] - 2026-07-14
 
 ### Added

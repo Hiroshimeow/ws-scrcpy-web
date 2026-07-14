@@ -118,6 +118,25 @@ describe('ADB pairing secret redaction', () => {
         expect(safe).not.toContain(code);
         expect(safe.match(/<redacted>/g)).toHaveLength(2);
     });
+
+    it('redacts a QR password from typed adb pair errors', async () => {
+        const password = 'AbCdEf0123_-xyzQ';
+        const client = new AdbClient(process.execPath);
+        (client as any).daemon = { ensureReady: async () => undefined };
+
+        try {
+            await client.pairQr('100.64.1.2:37123', password, 2_000);
+            expect.fail('expected adb pair to fail');
+        } catch (error) {
+            expect(error).toBeInstanceOf(AdbExecError);
+            const adbError = error as AdbExecError;
+            expect(adbError.args).toEqual(['pair', '100.64.1.2:37123', '<redacted>']);
+            expect(adbError.message).not.toContain(password);
+            expect(adbError.cause instanceof Error ? adbError.cause.message : String(adbError.cause)).not.toContain(
+                password,
+            );
+        }
+    });
 });
 
 describe('AdbClient — error surfacing', () => {
