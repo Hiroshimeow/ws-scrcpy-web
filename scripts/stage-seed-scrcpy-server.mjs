@@ -7,7 +7,7 @@
 //
 // Runs from `prestart` (see package.json). Unconditional copy — matches
 // install-side. Idempotent in the sense that two runs produce identical
-// state; cost is one 90KB file copy per `npm start`, which is trivial.
+// state; cost is one small file copy per `npm start`, which is trivial.
 
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

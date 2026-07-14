@@ -6,7 +6,7 @@ export interface ScrcpyEncoders {
 /**
  * Parse the output of `scrcpy-server list_encoders=true`.
  *
- * Expected format (from scrcpy v3.x LogUtils.buildEncoderListMessage):
+ * Expected format (from scrcpy v4.x LogUtils.buildEncoderListMessage):
  *
  *   [server] INFO: List of video encoders:
  *       --video-codec=h264 --video-encoder=OMX.qcom.video.encoder.avc

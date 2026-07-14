@@ -214,7 +214,7 @@ export class ScrcpyConnection extends Mw {
         // IMPORTANT: adb-forward accepts host-side TCP connections eagerly even
         // before the device-side socket is bound. A successful connect() does
         // NOT mean scrcpy-server is actually ready. We detect real readiness by
-        // waiting for scrcpy's dummy 0x00 byte on the first socket (scrcpy v3
+        // waiting for scrcpy's dummy 0x00 byte on the first socket (scrcpy
         // writes it on exactly one socket, video-first). If no byte arrives in
         // a short window, the connection is stale — close it and retry. This
         // matches what the upstream scrcpy client does.

@@ -266,9 +266,9 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
         this.tag.style.transformOrigin = 'top left';
     }
 
-    /** Legacy decode path — not used with v3.x demuxer. */
+    /** Legacy decode path — not used with the framed scrcpy demuxer. */
     protected override decode(_data: Uint8Array): void {
-        // No-op: v3.x uses pushVideoFrame() instead
+        // No-op: the framed stream path uses pushVideoFrame() instead
     }
 
     protected override drawDecoded = (): void => {

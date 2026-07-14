@@ -194,7 +194,7 @@ function main() {
     }
 
     // 8a. v0.1.9: stage scrcpy-server seed. Source is the repo's vendored
-    // copy at assets/scrcpy-server (90 KB JAR, version pinned to whatever
+    // copy at assets/scrcpy-server (vendored JAR, version pinned to whatever
     // Constants.SERVER_VERSION says). Destination is publish/seed/scrcpy-server/
     // so DependencyManager.promoteSeedScrcpyServer can promote it on
     // first run for offline-capable installs. Network-driven updates via

@@ -4,7 +4,7 @@ export default class DeviceMessage {
     public static TYPE_CLIPBOARD = 0;
     public static TYPE_ACK_CLIPBOARD = 1;
     public static TYPE_UHID_OUTPUT = 2;
-    public static TYPE_PUSH_RESPONSE = 101; // custom, not used with vanilla scrcpy v3.x
+    public static TYPE_PUSH_RESPONSE = 101; // custom, not used with vanilla scrcpy v4.x
 
     public static readonly MAGIC_BYTES_MESSAGE = new TextEncoder().encode('scrcpy_message');
 

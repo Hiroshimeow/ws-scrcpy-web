@@ -4,7 +4,7 @@ This document covers the internal architecture of ws-scrcpy-web -- a browser-bas
 
 **Target audience:** Developers who need to understand, modify, or debug the codebase without re-discovering its internals.
 
-**scrcpy-server version:** 3.3.4 (vanilla Genymobile binary, no modifications)
+**scrcpy-server version:** 4.1 (vanilla Genymobile binary, no modifications)
 
 ---
 
@@ -212,14 +212,15 @@ The connection lifecycle in `ScrcpyConnection.start()`:
 1. **Push binary:** ADB-push `scrcpy-server.jar` to `/data/local/tmp/scrcpy-server.jar`
 2. **TCP server:** Create an ephemeral-port TCP server on `127.0.0.1`
 3. **ADB reverse tunnel:** `adb reverse localabstract:scrcpy_<scid> tcp:<port>` so scrcpy-server can connect back
-4. **Launch scrcpy-server:** Via `adb shell` with `CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server 3.3.4 <options>`
-5. **Accept 3 TCP sockets:** Video, audio, and control, in that order (10-second timeout)
-6. **Parse metadata:** 76 bytes from the video socket:
+4. **Launch scrcpy-server:** Via `adb shell` with `CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server 4.1 <options>`
+5. **Accept TCP sockets:** Video and control when audio is disabled; video, audio, and control when audio is enabled (10-second timeout). The host normalizes both cases to `[video, audio, control]` by inserting an in-memory disabled-audio sentinel when needed.
+6. **Parse metadata:** 80 bytes from the video socket (scrcpy v4+):
    - Bytes 0-63: Device name (null-terminated UTF-8, padded to 64 bytes)
    - Bytes 64-67: Video codec ID (uint32 BE, e.g., `0x68323635` = "h265")
-   - Bytes 68-71: Screen width (uint32 BE)
-   - Bytes 72-75: Screen height (uint32 BE)
-   - Audio socket: 4 bytes for audio codec ID (or `0x00000000` disabled / `0x00000001` error)
+   - Bytes 68-71: Initial session-packet flags (`0x80000000` marks a session packet)
+   - Bytes 72-75: Screen width (uint32 BE)
+   - Bytes 76-79: Screen height (uint32 BE)
+   - Audio socket: 4 bytes for audio codec ID (or the synthetic `0x00000000` disabled sentinel / `0x00000001` error)
 7. **Send metadata:** JSON on channel 4 to the browser
 8. **Start forwarding:** `FrameReader` instances on video and audio TCP sockets parse the frame-header format and forward via `sendChannel()`
 
@@ -909,7 +910,7 @@ These are not npm packages in the build -- they are external binaries bundled in
 | 16 | `node-pty` | 1.1.0 | Provides pseudo-terminal for ADB shell sessions in the browser | npm prebuilt binaries | Native DLL (conpty.dll + OpenConsole.exe) is ABI-locked to Node.js version. Must update together with Node.js. |
 | 17 | Node.js | 24.14.1 LTS | JavaScript runtime that runs the ws-scrcpy-web server | nodejs.org | Paired with node-pty (#16). Only use LTS (even-numbered) releases. |
 | 18 | ADB (platform-tools) | latest | Communicates with Android devices (push, shell, tunnel) | Google SDK | Standalone zip download and extract |
-| 19 | scrcpy-server | 3.3.4 (bundled seed) | Runs on Android device to capture screen, audio, and accept input | Genymobile/scrcpy releases | Single binary replace via the in-app dep panel — installed version is tracked at `<deps>/scrcpy-server/.version` and read by `src/server/scrcpyServerVersion.ts`; both the UI display and the wire-protocol arg passed to `app_process` resolve from the marker. `SERVER_VERSION` in `src/common/Constants.ts` is the fallback for legacy seed installs predating the marker — bump it only when bumping the bundled seed binary, not on every user-facing scrcpy release. |
+| 19 | scrcpy-server | 4.1 (bundled seed) | Runs on Android device to capture screen, audio, and accept input | Genymobile/scrcpy releases | Single binary replace via the in-app dep panel — installed version is tracked at `<deps>/scrcpy-server/.version` and read by `src/server/scrcpyServerVersion.ts`; both the UI display and the wire-protocol arg passed to `app_process` resolve from the marker. `SERVER_VERSION` in `src/common/Constants.ts` is the fallback for legacy seed installs predating the marker — bump it only when bumping the bundled seed binary, not on every user-facing scrcpy release. |
 
 ### Quick check
 
