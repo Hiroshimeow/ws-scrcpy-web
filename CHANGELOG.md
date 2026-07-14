@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.76] - 2026-07-14
+
+### Fixed
+
+- **Audio-off sessions now open correctly over the default ADB reverse tunnel.** scrcpy opens only video and control sockets when audio is disabled; the host now waits for two sockets and inserts an internal disabled-audio sentinel instead of timing out while waiting for a nonexistent third socket.
+- **The first decoded browser frame no longer fails with `Illegal invocation`.** Animation-frame APIs are now invoked with the browser global as their receiver, matching real Chrome behavior rather than only the unit-test mocks.
+- **H.264/H.265 WebCodecs decoding now uses scrcpy's native Annex-B stream format.** Raw SPS/PPS bytes are no longer passed as an invalid avcC/hvcC `description`; parameter sets are prepended to keyframes, eliminating the black screen and `Failed to parse avcC` decoder error.
+- **The bundled Android server now matches the host's scrcpy v4 wire parser.** The old 3.3.4 seed emitted the pre-v4 metadata layout while the host expected v4 session packets, causing stream startup to fail before the first frame.
+
+### Changed
+
+- **Bundled vanilla `scrcpy-server` updated to 4.1.** The vendored binary matches Genymobile's official SHA-256 and was verified end to end on an Android 16/API 36 emulator with H.264 streaming, click, and swipe.
+
 ## [0.1.30-beta.75] - 2026-07-14
 
 ### Changed
