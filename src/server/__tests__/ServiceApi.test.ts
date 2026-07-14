@@ -81,6 +81,10 @@ describe('ServiceApi', () => {
     };
 
     beforeEach(() => {
+        // ServiceApi intentionally schedules delayed process exits after install/uninstall
+        // handoffs. Keep every test on an isolated fake clock so an unobserved safety
+        // timer from one case can never fire inside a later case's process.exit spy.
+        vi.useFakeTimers();
         const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-svc-api-'));
         tmpDirs.push(tmpRoot);
         const configPath = path.join(tmpRoot, 'config.json');
@@ -105,6 +109,8 @@ describe('ServiceApi', () => {
     });
 
     afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
         // Capture paths that need cleanup BEFORE resetting the Config singleton.
         let uninstallMarkerPath: string | undefined;
         try {
@@ -2211,17 +2217,6 @@ describe('ServiceApi', () => {
     // ── reason discriminator + no-direct-uninstall guard (v0.1.25) ──────────
 
     it('service+LocalSystem uninstall writes marker and returns shutting-down (Phase 4 replaces handoff)', async () => {
-        // Use fake timers to prevent the hardcoded setTimeout(process.exit, 5000) in
-        // the LocalSystem uninstall path from leaking a real pending timer that fires
-        // during later tests (specifically the "schedules process.exit(0) after 5s"
-        // test that uses a global process.exit spy).
-        vi.useFakeTimers();
-        using _restoreTimers = {
-            [Symbol.dispose]() {
-                vi.useRealTimers();
-            },
-        };
-
         const uninstallSpy = vi.fn(async () => undefined);
         const client = fakeClient({
             uninstall: uninstallSpy,
@@ -2235,6 +2230,9 @@ describe('ServiceApi', () => {
         const api = new ServiceApi(
             () => factoryResult,
             () => 'user',
+            undefined,
+            undefined,
+            () => {},
         );
         vi.spyOn(api as unknown as { isLikelyLocalSystem: () => boolean }, 'isLikelyLocalSystem').mockReturnValue(true);
         Config.getInstance().updateAppConfig({ installMode: 'system-service' });
@@ -2344,16 +2342,6 @@ describe('ServiceApi', () => {
 
     describe('handleUninstall — operation-server flow (Phase 4)', () => {
         it('writes uninstall-pending marker when service+LocalSystem on Windows', async () => {
-            // Use fake timers to prevent the hardcoded setTimeout(process.exit, 5000) in
-            // the LocalSystem uninstall path from leaking a real pending timer that fires
-            // during the "schedules process.exit(0) after 5s" test's global spy window.
-            vi.useFakeTimers();
-            using _restoreTimers = {
-                [Symbol.dispose]() {
-                    vi.useRealTimers();
-                },
-            };
-
             const client = fakeClient({ status: vi.fn(async () => 'running' as const) });
             const factoryResult: ServiceClientFactoryResult = {
                 client,
@@ -2363,6 +2351,9 @@ describe('ServiceApi', () => {
             const api = new ServiceApi(
                 () => factoryResult,
                 () => 'user',
+                undefined,
+                undefined,
+                () => {},
             );
             vi.spyOn(api as unknown as { isLikelyLocalSystem: () => boolean }, 'isLikelyLocalSystem').mockReturnValue(
                 true,
@@ -2377,16 +2368,6 @@ describe('ServiceApi', () => {
         });
 
         it('returns 200 with status=shutting-down and no redirectTo', async () => {
-            // Use fake timers to prevent the hardcoded setTimeout(process.exit, 5000) in
-            // the LocalSystem uninstall path from leaking a real pending timer that fires
-            // during the "schedules process.exit(0) after 5s" test's global spy window.
-            vi.useFakeTimers();
-            using _restoreTimers = {
-                [Symbol.dispose]() {
-                    vi.useRealTimers();
-                },
-            };
-
             const client = fakeClient({ status: vi.fn(async () => 'running' as const) });
             const factoryResult: ServiceClientFactoryResult = {
                 client,
@@ -2396,6 +2377,9 @@ describe('ServiceApi', () => {
             const api = new ServiceApi(
                 () => factoryResult,
                 () => 'user',
+                undefined,
+                undefined,
+                () => {},
             );
             vi.spyOn(api as unknown as { isLikelyLocalSystem: () => boolean }, 'isLikelyLocalSystem').mockReturnValue(
                 true,
@@ -2414,12 +2398,11 @@ describe('ServiceApi', () => {
         });
 
         it('schedules process.exit(0) after 5s', async () => {
-            vi.useFakeTimers();
+            const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
             const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
             using _restore = {
                 [Symbol.dispose]() {
                     exitSpy.mockRestore();
-                    vi.useRealTimers();
                 },
             };
 
@@ -2432,6 +2415,9 @@ describe('ServiceApi', () => {
             const api = new ServiceApi(
                 () => factoryResult,
                 () => 'user',
+                undefined,
+                undefined,
+                (callback, delayMs) => scheduled.push({ callback, delayMs }),
             );
             vi.spyOn(api as unknown as { isLikelyLocalSystem: () => boolean }, 'isLikelyLocalSystem').mockReturnValue(
                 true,
@@ -2442,7 +2428,9 @@ describe('ServiceApi', () => {
             await api.handle(req, res);
 
             expect(exitSpy).not.toHaveBeenCalled();
-            vi.advanceTimersByTime(5000);
+            expect(scheduled).toHaveLength(1);
+            expect(scheduled[0]!.delayMs).toBe(5_000);
+            scheduled[0]!.callback();
             expect(exitSpy).toHaveBeenCalledWith(0);
         });
 

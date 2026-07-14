@@ -891,10 +891,10 @@ export class ServiceApi {
                     );
                 }
 
-                setTimeout(() => {
+                this.scheduleExit(() => {
                     log.info('uninstall: scheduled exit firing (post-stop.bat takes over)');
                     process.exit(0);
-                }, 5000).unref();
+                }, 5_000);
 
                 const disk = this.readDiskConfig();
                 const body: ServiceActionSuccess = {
