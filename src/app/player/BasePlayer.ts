@@ -1,5 +1,5 @@
 import { TypedEmitter } from '../../common/TypedEmitter';
-import { settingsService } from '../client/SettingsService';
+import { type StoredVideo, settingsService, type VideoCodec } from '../client/SettingsService';
 import type { DisplayInfo } from '../DisplayInfo';
 import Rect from '../Rect';
 import ScreenInfo from '../ScreenInfo';
@@ -48,6 +48,7 @@ export interface PlayerClass {
         videoSettings: VideoSettings,
         fitToScreen: boolean,
         displayInfo?: DisplayInfo,
+        codec?: VideoCodec,
     ): void;
     new (udid: string, displayInfo?: DisplayInfo): BasePlayer;
 }
@@ -296,11 +297,14 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
         videoSettings: VideoSettings,
         fitToScreen: boolean,
         _displayInfo?: DisplayInfo,
+        codec?: VideoCodec,
     ): void {
-        settingsService.setDeviceVideo(udid, {
+        const stored: StoredVideo = {
             settings: JSON.parse(JSON.stringify(videoSettings)) as Record<string, unknown>,
             fit: fitToScreen,
-        });
+        };
+        if (codec) stored.codec = codec;
+        settingsService.setDeviceVideo(udid, stored);
     }
 
     public abstract getImageDataURL(): string;
@@ -609,7 +613,8 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
         videoSettings: VideoSettings,
         fitToScreen: boolean,
         displayInfo?: DisplayInfo,
+        codec?: VideoCodec,
     ): void {
-        this.putVideoSettingsToStorage(this.storageKeyPrefix, udid, videoSettings, fitToScreen, displayInfo);
+        this.putVideoSettingsToStorage(this.storageKeyPrefix, udid, videoSettings, fitToScreen, displayInfo, codec);
     }
 }

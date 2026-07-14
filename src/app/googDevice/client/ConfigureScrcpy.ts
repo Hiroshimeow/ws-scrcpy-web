@@ -11,7 +11,7 @@ import type { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import { Attribute } from '../../Attribute';
 import { AudioSettingsStore } from '../../client/AudioSettingsStore';
 import { DeviceProbeClient } from '../../client/DeviceProbeClient';
-import { settingsService } from '../../client/SettingsService';
+import { settingsService, type VideoCodec } from '../../client/SettingsService';
 import { DisplayInfo } from '../../DisplayInfo';
 import type { PlayerClass } from '../../player/BasePlayer';
 import Size from '../../Size';
@@ -136,6 +136,10 @@ export class ConfigureScrcpy extends Modal {
                 opt.innerText = codec;
                 this.videoCodecSelect!.appendChild(opt);
             });
+            const savedCodec = settingsService.getDeviceVideo(this.udid)?.codec;
+            if (savedCodec && videoCodecs.includes(savedCodec)) {
+                this.videoCodecSelect.value = savedCodec;
+            }
         }
 
         // Populate audio codec dropdown
@@ -178,16 +182,6 @@ export class ConfigureScrcpy extends Modal {
         // first, so new devices also get the most broadly compatible browser path.
         // Now that the codec is settled, filter encoders to match.
         this.populateEncoderDropdown(this.videoCodecSelect?.value || '');
-        if (this.encoderSelectElement) {
-            const currentEncoder = this.encoderSelectElement.value;
-            if (!currentEncoder) {
-                const opts = Array.from(this.encoderSelectElement.options);
-                const hevcHw = opts.find((o) => /\.mtk\.hevc\.|\.qcom\.hevc\.|\.exynos\.hevc\./i.test(o.value));
-                if (hevcHw) {
-                    this.encoderSelectElement.selectedIndex = hevcHw.index;
-                }
-            }
-        }
 
         // Mark ready
         this.setStatus('Ready');
@@ -220,7 +214,11 @@ export class ConfigureScrcpy extends Modal {
         const matching = codec
             ? this.allVideoEncoders.filter((e) => this.encoderMatchesCodec(e, codec))
             : this.allVideoEncoders;
-        const options = ['', ...matching];
+        const ordered = [
+            ...matching.filter((encoder) => !this.isSoftwareEncoder(encoder)),
+            ...matching.filter((encoder) => this.isSoftwareEncoder(encoder)),
+        ];
+        const options = ['', ...ordered];
         options.forEach((value) => {
             const opt = document.createElement('option');
             opt.value = value;
@@ -229,9 +227,18 @@ export class ConfigureScrcpy extends Modal {
         });
         if (previousValue && options.includes(previousValue)) {
             this.encoderSelectElement.value = previousValue;
-        } else if (matching.length > 0) {
-            this.encoderSelectElement.value = matching[0]!;
+        } else if (ordered.length > 0) {
+            this.encoderSelectElement.value = ordered[0]!;
         }
+    }
+
+    private isSoftwareEncoder(encoderName: string): boolean {
+        return /c2\.android|omx\.google|software/i.test(encoderName);
+    }
+
+    private getSelectedVideoCodec(): VideoCodec | undefined {
+        const codec = this.videoCodecSelect?.value;
+        return codec === 'h264' || codec === 'h265' || codec === 'av1' ? codec : undefined;
     }
 
     private onVideoCodecChange = (): void => {
@@ -764,7 +771,13 @@ export class ConfigureScrcpy extends Modal {
         const player = this.getPlayer();
         if (videoSettings && player) {
             const fitToScreen = this.getFitToScreenValue();
-            player.saveVideoSettings(this.udid, videoSettings, fitToScreen, this.displayInfo);
+            player.saveVideoSettings(
+                this.udid,
+                videoSettings,
+                fitToScreen,
+                this.displayInfo,
+                this.getSelectedVideoCodec(),
+            );
         }
         // Persist the audio group (enable / source / codec) alongside video.
         // ConnectModal.connect-button flow loads these on click via AudioSettingsStore.
@@ -796,7 +809,7 @@ export class ConfigureScrcpy extends Modal {
         const playerName = this.playerName;
         const udid = this.udid;
         const displayInfo = this.displayInfo;
-        const videoCodec = this.videoCodecSelect?.value;
+        const videoCodec = this.getSelectedVideoCodec();
         const audioCodec = this.audioCodecSelect?.value;
         const audioEnabled = this.audioEnabledCheckbox?.checked ?? audioEnabledDefault(this.deviceKind);
         const audioSource =

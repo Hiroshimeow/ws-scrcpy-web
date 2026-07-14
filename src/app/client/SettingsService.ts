@@ -3,10 +3,13 @@ async function ok(res: Response): Promise<Response> {
     return res;
 }
 
+export type VideoCodec = 'h264' | 'h265' | 'av1';
+
 // Shape stored under device scope 'video'.
 export interface StoredVideo {
     settings?: Record<string, unknown> | undefined; // raw VideoSettings JSON
     fit?: boolean | undefined;
+    codec?: VideoCodec | undefined;
 }
 
 // Scope 'audio' is typed as Record<string,unknown> at the service boundary to

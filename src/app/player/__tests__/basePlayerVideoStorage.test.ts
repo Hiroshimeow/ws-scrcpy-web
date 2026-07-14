@@ -126,6 +126,8 @@ describe('BasePlayer video storage — Task 4c (SettingsService-backed)', () => 
             UDID,
             vs,
             true,
+            undefined,
+            'h265',
         );
 
         // Exactly one setDeviceVideo call.
@@ -141,6 +143,7 @@ describe('BasePlayer video storage — Task 4c (SettingsService-backed)', () => 
         // Plain-object check: JSON.parse(JSON.stringify(...)) — constructor name should not be VideoSettings.
         expect(Object.getPrototypeOf(settings)).toBe(Object.prototype);
         expect((video as Record<string, unknown>)['fit']).toBe(true);
+        expect((video as Record<string, unknown>)['codec']).toBe('h265');
 
         // Read back: getVideoSettingFromStorage should now return the written value.
         const preferred = new VideoSettings({ bitrate: 1_000_000, maxFps: 15, iFrameInterval: 5 });
