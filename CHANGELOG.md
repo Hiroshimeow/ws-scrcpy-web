@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.77] - 2026-07-14
+
+### Added
+
+- **Standard Android Wireless-debugging QR pairing on the same LAN.** The network-device panel now generates Android's official `WIFI:T:ADB` QR payload, waits for the exact temporary `_adb-tls-pairing._tcp` mDNS service created by the phone, and delegates the handshake to the bundled ADB client. The session expires after two minutes, never returns or persists the pairing password, and automatically quick-scans after success. The existing pairing-code/Tailscale form remains available for remote networks where mDNS cannot cross the tunnel.
+
+### Security
+
+- **QR pairing uses a separate validated secret path and exact service matching.** Six-digit pairing-code validation remains unchanged; QR passwords accept only the generated base64url format, are redacted from ADB errors, and are cleared on completion, failure, cancellation, replacement, or expiry. Cancelling an in-flight pair can no longer be overwritten by a late success result.
+
 ## [0.1.30-beta.76] - 2026-07-14
 
 ### Fixed

@@ -1,5 +1,7 @@
 # Test Android over Tailscale (Windows + Android)
 
+> **Same Wi-Fi? Use QR instead.** In **Available Network Devices**, select **pair with QR**, then on Android open **Wireless debugging → Pair device with QR code** and scan it. QR relies on LAN mDNS and avoids entering IP addresses, ports, or a six-digit code. This document covers the remote/Tailscale fallback where LAN mDNS is unavailable.
+
 This flow is **attended**: the Android owner explicitly enables Wireless debugging and provides a fresh pairing code. It is not unattended access.
 
 ## Before starting

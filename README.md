@@ -6,7 +6,7 @@
 
 > **Fork attribution**
 >
-> This repository, [`Hiroshimeow/ws-scrcpy-web`](https://github.com/Hiroshimeow/ws-scrcpy-web), is a fork of [`bilbospocketses/ws-scrcpy-web`](https://github.com/bilbospocketses/ws-scrcpy-web), which descends from [`NetrisTV/ws-scrcpy`](https://github.com/NetrisTV/ws-scrcpy). Android capture and control use Genymobile's unmodified [`scrcpy-server`](https://github.com/Genymobile/scrcpy). Original copyright notices and licenses are retained in this repository. Changes in this fork include attended Tailscale pairing, compatibility-first stream defaults, Android 16/WebCodecs fixes, and Windows/Linux release packaging.
+> This repository, [`Hiroshimeow/ws-scrcpy-web`](https://github.com/Hiroshimeow/ws-scrcpy-web), is a fork of [`bilbospocketses/ws-scrcpy-web`](https://github.com/bilbospocketses/ws-scrcpy-web), which descends from [`NetrisTV/ws-scrcpy`](https://github.com/NetrisTV/ws-scrcpy). Android capture and control use Genymobile's unmodified [`scrcpy-server`](https://github.com/Genymobile/scrcpy). Original copyright notices and licenses are retained in this repository. Changes in this fork include standard ADB QR pairing, attended Tailscale pairing, compatibility-first stream defaults, Android 16/WebCodecs fixes, and Windows/Linux release packaging.
 
 ws-scrcpy-web is a self-hosted, browser-based Android screen-mirroring app that needs no Android client app beyond ADB/Wireless debugging. A local Node.js server uses ADB to push Genymobile's vanilla `scrcpy-server` onto the device and multiplexes its video/audio/control TCP sockets onto a single WebSocket via a 1-byte channel prefix. The browser client is a custom TypeScript protocol layer that demuxes the stream and decodes H.264/H.265/AV1 video and Opus/AAC/FLAC/PCM audio entirely through WebCodecs (no WASM fallbacks).
 
@@ -39,7 +39,8 @@ Input flows back as mouse, UHID keyboard, i16-fixed-point scroll, and a D-pad/To
 - **Programmatic stream API** -- load `ws-scrcpy.umd.js` or `ws-scrcpy.esm.js` and call `WsScrcpy.startStream(container, deviceId, options)` to render a stream into any DOM element. Includes bundled TypeScript types (`ws-scrcpy.d.ts`). Also provides a thin `/embed.html?device=<udid>` wrapper for iframe consumers.
 - **Device labels** -- name your devices for easy identification, persisted per-user across sessions in the app's SQLite store, inline edit from device cards or during network scan
 - **Network device discovery** -- two-channel scan for ADB devices on the local network: mDNS advertisement for modern devices plus TCP port-5555 sweep for older devices that don't advertise. Configuration dialog auto-detects your gateway subnet and accepts additional subnets (CIDR, bare IP, or IP range); subnets persist across sessions. Streaming progress chip with cancel support; scan skips already-connected devices and dedupes mDNS+TCP hits. Manual-add fallback for single-IP cases.
-- **Attended Tailscale pairing** -- pair Android Wireless debugging from the browser by entering the Android Tailscale IP, the temporary pairing port/code, and the separate connection port; the code is cleared client-side and redacted from server errors. See [the Windows + Android test guide](docs/TAILSCALE_ANDROID_TEST.md).
+- **Standard ADB QR pairing** -- when Windows and Android are on the same Wi-Fi/LAN, generate the official Android Wireless-debugging QR code in the browser, scan it from **Pair device with QR code**, and let the bundled ADB client discover and pair with the exact temporary mDNS service automatically.
+- **Attended Tailscale pairing** -- for remote networks where QR/mDNS cannot cross the tunnel, pair Android Wireless debugging by entering the Android Tailscale IP, the temporary pairing port/code, and the separate connection port; the code is cleared client-side and redacted from server errors. See [the Windows + Android test guide](docs/TAILSCALE_ANDROID_TEST.md).
 - **Device disconnect** -- disconnect network devices directly from the device card
 - **Sleep/wake toggle** -- turn devices on or off from the device card; state polled server-side and pushed via WebSocket so buttons stay in sync even when the device sleeps on a timer or via the physical remote
 - **Dark/light theme** -- toggle between dark (default) and light modes; first paint follows your OS preference, then your saved choice applies (persisted per-user in the app's SQLite store)
@@ -177,7 +178,15 @@ npm start
 
 Open `http://localhost:8000` in your browser.
 
-For an attended Windows-to-Android test over Tailscale, follow [Test Android over Tailscale](docs/TAILSCALE_ANDROID_TEST.md).
+### Pair Android with QR on the same Wi-Fi
+
+1. Put Windows and Android on the same Wi-Fi/LAN.
+2. On Android, enable **Developer options → Wireless debugging**.
+3. In **Available Network Devices**, select **pair with QR**.
+4. On Android, select **Pair device with QR code** and scan the displayed code.
+5. The browser waits for Android's exact temporary mDNS pairing service, runs `adb pair`, and then quick-scans for the connected device.
+
+The QR session expires after two minutes and is never persisted. QR pairing depends on same-LAN mDNS; it normally does not work through Tailscale by itself. For remote pairing, use the retained **pair via Tailscale** form and follow [Test Android over Tailscale](docs/TAILSCALE_ANDROID_TEST.md).
 
 This mode requires Node.js and ADB installed on your system. See [Self-Contained Deployment](#self-contained-deployment) for a standalone installation that bundles everything.
 
