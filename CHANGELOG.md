@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30-beta.74] - 2026-07-14
+
+### Fixed
+
+- **H.264 is no longer silently replaced by H.265 while the stream dialog initializes.** New sessions now default to H.264, the most broadly compatible browser decode path, while H.265 and AV1 remain available when explicitly selected.
+
 ## [0.1.30-beta.73] - 2026-07-13
 
 ### Added

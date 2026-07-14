@@ -124,7 +124,7 @@ export class ConfigureScrcpy extends Modal {
         this.populateEncoderDropdown('');
         let child;
 
-        // Populate video codec dropdown, preferring H.265 (hardware) then AV1
+        // Populate video codec dropdown in compatibility order: H.264, H.265, AV1
         if (this.videoCodecSelect) {
             while ((child = this.videoCodecSelect.firstChild)) {
                 this.videoCodecSelect.removeChild(child);
@@ -174,19 +174,9 @@ export class ConfigureScrcpy extends Modal {
         // Apply player video settings (may reset dropdowns from stored prefs)
         this.updateVideoSettingsForPlayer();
 
-        // Apply preferred codec/encoder defaults if stored settings didn't set them
-        if (this.videoCodecSelect) {
-            const currentCodec = this.videoCodecSelect.value;
-            if (!currentCodec || currentCodec === 'h264') {
-                const opts = Array.from(this.videoCodecSelect.options);
-                const hevcOpt = opts.find((o) => o.value === 'h265');
-                if (hevcOpt) {
-                    this.videoCodecSelect.selectedIndex = hevcOpt.index;
-                }
-                // H.264 stays as default if H.265 unavailable; AV1 is software-only and slow
-            }
-        }
-        // Now that the codec is settled (stored prefs or default), filter encoders to match
+        // Keep the stored/player-selected codec. The codec list is ordered with H.264
+        // first, so new devices also get the most broadly compatible browser path.
+        // Now that the codec is settled, filter encoders to match.
         this.populateEncoderDropdown(this.videoCodecSelect?.value || '');
         if (this.encoderSelectElement) {
             const currentEncoder = this.encoderSelectElement.value;
