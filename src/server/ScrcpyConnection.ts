@@ -32,6 +32,22 @@ function installedVersion(): string {
     return getInstalledScrcpyServerVersion(Config.getInstance().dependenciesPath);
 }
 
+function disabledAudioSocket(): net.Socket {
+    const socket = new net.Socket();
+    socket.unshift(Buffer.alloc(4)); // AUDIO_DISABLED (0x00000000)
+    return socket;
+}
+
+/** Normalize scrcpy's socket order to [video, audio, control]. */
+export function normalizeReverseSockets(sockets: net.Socket[], audioEnabled: boolean): net.Socket[] {
+    if (audioEnabled) return sockets;
+    const [videoSocket, controlSocket] = sockets;
+    if (!videoSocket || !controlSocket) {
+        throw new Error(`Expected 2 reverse-tunnel sockets with audio disabled, got ${sockets.length}`);
+    }
+    return [videoSocket, disabledAudioSocket(), controlSocket];
+}
+
 interface SessionMetadata {
     deviceName: string;
     videoCodec: string;
@@ -176,7 +192,8 @@ export class ScrcpyConnection extends Mw {
 
     private async startWithReverseTunnel(options: ScrcpyOptions): Promise<net.Socket[]> {
         // Host listens on an ephemeral port; adb reverses device's localabstract
-        // socket to that port. scrcpy-server connects out (3 sockets) — we accept.
+        // socket to that port. scrcpy-server connects in protocol order:
+        // video → audio (only when enabled) → control.
         const { server, port } = await this.createTcpServer();
         this.tcpServer = server;
         this.reverseTunnel = `localabstract:scrcpy_${options.scid}`;
@@ -184,7 +201,9 @@ export class ScrcpyConnection extends Mw {
 
         this.launchServer(options);
 
-        return this.acceptSockets(server, 3, 10000);
+        const audioEnabled = options.audio !== false;
+        const sockets = await this.acceptSockets(server, audioEnabled ? 3 : 2, 10000);
+        return normalizeReverseSockets(sockets, audioEnabled);
     }
 
     private async startWithForwardTunnel(options: ScrcpyOptions): Promise<net.Socket[]> {
@@ -222,8 +241,7 @@ export class ScrcpyConnection extends Mw {
             // audio=false means scrcpy-server skips the audio accept. Feed
             // parseMetadata a synthetic AUDIO_DISABLED 4-byte status so the rest
             // of the pipeline keeps the same shape without needing a special case.
-            audioSocket = new net.Socket();
-            audioSocket.unshift(Buffer.from([0x00, 0x00, 0x00, 0x00])); // AUDIO_DISABLED (0x00000000) sentinel
+            audioSocket = disabledAudioSocket();
         }
         const controlSocket = await this.connectLocal(localPort, 15000);
 
