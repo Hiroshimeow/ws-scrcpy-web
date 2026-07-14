@@ -760,6 +760,17 @@ export class ConfigureScrcpy extends Modal {
         if (player) {
             this.fillInputsFromVideoSettings(player.getPreferredVideoSetting(), false);
         }
+        if (
+            this.videoCodecSelect &&
+            Array.from(this.videoCodecSelect.options).some((option) => option.value === 'h264')
+        ) {
+            this.videoCodecSelect.value = 'h264';
+            this.populateEncoderDropdown('h264');
+        }
+        if (this.audioEnabledCheckbox) {
+            this.audioEnabledCheckbox.checked = false;
+            this.audioEnabledCheckbox.dispatchEvent(new Event('change'));
+        }
     };
 
     private loadSettings = (): void => {

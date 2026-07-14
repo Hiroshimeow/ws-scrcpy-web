@@ -26,6 +26,7 @@ vi.mock('../../../client/SettingsService', () => ({
     },
 }));
 
+import { WebCodecsPlayer } from '../../../player/WebCodecsPlayer';
 import { ConfigureScrcpy } from '../ConfigureScrcpy';
 
 function makeModal(udid = 'test-device'): any {
@@ -95,6 +96,38 @@ describe('ConfigureScrcpy codec selection', () => {
 
         expect(modal.videoCodecSelect.value).toBe('h265');
         expect(modal.encoderSelectElement.value).toBe('c2.exynos.hevc.encoder');
+    });
+
+    it('reset restores stable defaults without locking the controls', async () => {
+        const modal = new ConfigureScrcpy(
+            {} as any,
+            { udid: 'reset-device', 'ro.build.version.sdk': '36', deviceKind: 'phone' } as any,
+            'Reset device',
+            { action: 'stream' } as any,
+        ) as any;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        modal.getPlayer = () => ({ getPreferredVideoSetting: () => WebCodecsPlayer.preferredVideoSettings });
+
+        modal.videoCodecSelect.value = 'h265';
+        modal.onVideoCodecChange();
+        modal.audioEnabledCheckbox.checked = true;
+        modal.audioEnabledCheckbox.dispatchEvent(new Event('change'));
+        const bitrateInput = modal.getBasicInput('bitrate') as HTMLInputElement;
+        const maxFpsInput = modal.getBasicInput('maxFps') as HTMLInputElement;
+        bitrateInput.value = '8000000';
+        maxFpsInput.value = '60';
+
+        modal.resetSettings();
+
+        expect(modal.videoCodecSelect.value).toBe('h264');
+        expect(modal.encoderSelectElement.value).toBe('c2.exynos.avc.encoder');
+        expect(modal.audioEnabledCheckbox.checked).toBe(false);
+        expect(modal.audioCodecSelect.disabled).toBe(true);
+        expect(modal.audioSourceSelect.disabled).toBe(true);
+        expect(bitrateInput.value).toBe('4000000');
+        expect(maxFpsInput.value).toBe('20');
+        expect(modal.videoCodecSelect.disabled).toBe(false);
+        modal.close();
     });
 
     it('passes the selected codec when saving video settings', async () => {
